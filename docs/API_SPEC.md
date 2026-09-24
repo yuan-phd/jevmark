@@ -12,11 +12,11 @@ response = systemone(state, questions, model=None, max_tokens=None)
 
 - `state`: a string, or a JSON-serialisable dict or list. Dicts and lists are rendered as pretty-printed JSON.
 - `questions`: dict mapping a question id (str, `[a-z0-9_]+`) to a question definition (section 2).
-- `model`: a loaded `JevMark` instance; if None, the default checkpoint from config is used.
-- `max_tokens`: encoded length limit. If None, the value from the loaded model's config is used (2048 in `configs/base.yaml`); an explicit argument overrides it. Training configs carry their own `max_tokens` (1024 in v1), which only governs which records are kept for training.
+- `model`: a loaded `JevMark` instance. If None, a default model is loaded lazily on first use and reused for the rest of the process. Its config is `configs/base.yaml`. If the environment variable `JEVMARK_CHECKPOINT` names a run directory, that run's adapter, `calibration.json` and `model_id.txt` are loaded too, and the run's own `config.yaml` replaces `configs/base.yaml` when it exists, so the adapter is loaded onto the backbone it was trained with. The variable is read once, at first use.
+- `max_tokens`: encoded length limit. If None, the model's `max_tokens` is used, which `JevMark.load` reads from the config (2048 in `configs/base.yaml`); an explicit argument overrides it. Training configs carry their own `max_tokens` (1024 in v1), which only governs which records are kept for training.
 - Returns a response dict (section 3). Raises `ValueError` with the offending field path on invalid input.
 
-A batch variant `systemone_batch(list_of_requests)` returns a list of responses and must produce identical numbers to calling `systemone` one at a time.
+A batch variant `systemone_batch(requests, model=None, max_tokens=None, batch_size=16)` takes a list of `{"state": ..., "questions": ...}` dicts, runs them through the model `batch_size` requests per forward pass, and returns a list of responses with numbers identical to calling `systemone` one at a time.
 
 ## 2. Question definitions
 
