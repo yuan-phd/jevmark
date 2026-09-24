@@ -20,12 +20,11 @@ def test_requirements_file_matches_uv_lock():
     assert (REPO / "requirements-kaggle.txt").read_text() == export.render()
 
 
-def test_requirements_pin_everything_but_torch():
+def test_requirements_pin_exactly_the_hugging_face_packages():
     lines = [l for l in (REPO / "requirements-kaggle.txt").read_text().splitlines() if l and not l.startswith("#")]
-    names = {re.match(r"^([A-Za-z0-9_.-]+)==", l).group(1).lower() for l in lines}
-    assert {"transformers", "peft", "datasets", "accelerate", "tokenizers", "huggingface-hub", "safetensors"} <= names
-    assert "torch" not in names
-    assert all("==" in l for l in lines)
+    names = [re.match(r"^([A-Za-z0-9_.-]+)==", l).group(1).lower() for l in lines]
+    assert sorted(names) == sorted(["transformers", "tokenizers", "peft", "datasets", "accelerate", "huggingface-hub", "safetensors"])
+    assert "torch" not in names and "numpy" not in names  # Kaggle keeps its own (decision 23)
 
 
 def test_notebook_parameters_come_first():
