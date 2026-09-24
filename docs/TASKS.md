@@ -60,11 +60,19 @@ Datasets are referenced by Hugging Face id. Ids move; the first step of any data
 - [x] Batching precision: on 200 requests, record in metrics.json the max absolute difference between batched and single-call probabilities (API_SPEC section 1, decision 30). Proof: `tests/test_evaluate.py::test_metrics_json_structure` (`batching_precision` on 200 requests, CPU); the GPU value arrives with the B0 run.
 - [x] Acceptance: `evaluate.py --ckpt base` on Kaggle produces the frozen-base baseline B0 on all test splits for both backbones (`base_06b`, `base_17b`). About 0.5 GPU hours for 0.6B and 1.0 for 1.7B per full evaluation (measured 0.46 and 0.94 on one T4). Proof: `runs/base_06b/metrics.json`, `runs/base_17b/metrics.json` (commit 79fc74b, not dirty, data hashes match `make data`).
 
+### 1.6b Evaluation follow-up (after B0)
+- [x] model.py: on CUDA, frozen backbone weights in fp16, LoRA parameters and the letter readout in fp32; the fp32 fallback reloads the model in fp32. CPU stays fp32. Proof: `tests/test_model.py::test_half_backbone_policy`, `::test_load_on_cpu_keeps_everything_fp32`, `::test_half_load_keeps_lora_and_readout_fp32`, `::test_use_fp32_reloads_the_model_in_fp32`, `::test_use_fp32_without_a_source_casts_in_place`.
+- [ ] encode.py: cache letter ids per tokenizer object.
+- [ ] evaluate.py writes `runs/<run_name>/results.jsonl.gz` (one line per question, gitignored); `scripts/recompute_metrics.py` rebuilds `metrics.json` from it.
+- [ ] metrics.py: noul by kind with yes rate; choice by gold `other` versus gold named label with the rate of predicting `other`; letter bias by position and K jointly.
+- [ ] API_SPEC section 1 and decision 30 carry the measured batched versus single differences.
+- [ ] Decision: B0 is re-evaluated in the task 1.7 Kaggle session with the extended evaluate.py.
+
 ### 1.7 train_sft.py
 - [ ] LoRA SFT: cross-entropy at each slot over the selected letter columns only. Starting hyperparameters: r 16, alpha 32, dropout 0.05, targets q k v o, lr 2e-4, effective batch 32, 2 epochs, max_tokens 1024, fp16 autocast with GradScaler, fp32 LoRA weights, first-batch NaN check with fp32 fallback. Option shuffling on every epoch. Gradient checkpointing on for 1.7B.
 - [ ] Checkpoint every N steps and on session end; `--resume` flag.
 - [ ] Training scripts write a complete merged `config.yaml` into the run directory (backbone, tokenizer_reference, run_name, max_tokens, precision, LoRA and training settings), never only the overrides, because `default_model()` loads a run with its own `config.yaml` (API_SPEC section 1).
-- [ ] If 1.7B training runs out of memory on a T4 with fp32 frozen weights, switch the frozen backbone to fp16 with LoRA parameters in fp32, and make the fp32 fallback reload the model in fp32 instead of only disabling autocast (`JevMark.use_fp32`, decision 28).
+- [x] If 1.7B training runs out of memory on a T4 with fp32 frozen weights, switch the frozen backbone to fp16 with LoRA parameters in fp32, and make the fp32 fallback reload the model in fp32 instead of only disabling autocast (`JevMark.use_fp32`, decision 28). Done ahead of need in task 1.6b (fp16 frozen backbone on CUDA for inference and training; fallback reloads).
 - [ ] Cache letter ids per tokenizer instead of recomputing them on every `encode` call, once the data loader exists (decision 26 records the current per-call cost).
 - [ ] Validation every N steps: accuracy and ECE on `valid`; keep best by validation NLL.
 - [ ] `notebooks/kaggle_train.ipynb` thin wrapper: clone repo, pip install, run the script, upload `runs/<run_name>` as a Kaggle dataset or to the HF Hub.

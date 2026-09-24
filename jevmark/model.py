@@ -48,6 +48,27 @@ def collate(encoded: Sequence[Encoded], pad_id: int) -> Batch:
     )
 
 
+def half_backbone(config: Mapping[str, Any], device: torch.device) -> bool:
+    """Frozen backbone weights in fp16 only on CUDA with precision.autocast fp16; fp32 everywhere else."""
+    return device.type == "cuda" and config.get("precision", {}).get("autocast") == "fp16"
+
+
+def keep_lora_fp32(model: torch.nn.Module) -> None:
+    """Cast LoRA parameters to fp32, whatever dtype the backbone is in."""
+    for name, param in model.named_parameters():
+        if "lora_" in name and param.dtype != torch.float32:
+            param.data = param.data.float()
+
+
+@dataclass(frozen=True)
+class LoadSource:
+    """What JevMark.load was called with, so the fp32 fallback can reload the same model."""
+
+    config: Mapping[str, Any]
+    checkpoint: Path | None
+    device: torch.device
+
+
 def flat_index(encoded: Sequence[Encoded]) -> list[tuple[int, int]]:
     """(request index, question index) for each entry of the flat per-question lists."""
     return [(r, q) for r, e in enumerate(encoded) for q in range(len(e.slot_positions))]
@@ -65,8 +86,10 @@ class JevMark:
         temperature: float = 1.0,
         model_id: str = "jevmark",
         autocast_dtype: torch.dtype | None = None,
+        source: LoadSource | None = None,
     ) -> None:
         self.model = model
+        self.source = source
         self.tokenizer = tokenizer
         self.max_tokens = max_tokens
         self.temperature = temperature
@@ -83,17 +106,22 @@ class JevMark:
         config: Mapping[str, Any],
         checkpoint: str | Path | None = None,
         device: str | torch.device | None = None,
+        half: bool | None = None,
     ) -> JevMark:
         """Backbone and max_tokens from config, plus the adapter, calibration.json and model_id.txt of a run directory.
 
         Raises RuntimeError if checkpoint is given but has no adapter directory.
-        Weights load in fp32; on CUDA with precision.autocast fp16 the forward pass runs under fp16 autocast.
+        Precision (decision 28): on CUDA with precision.autocast fp16, the frozen backbone
+        loads in fp16 and runs under fp16 autocast; LoRA parameters stay fp32 and the
+        letter readout is fp32. Elsewhere everything is fp32. half overrides the policy
+        (the tests use it to exercise the fp16 path on CPU).
         """
         device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
+        use_half = half_backbone(config, device) if half is None else half
         tokenizer = load_tokenizer(config)
         backbone = config["backbone"]
         model: PreTrainedModel | PeftModel = AutoModelForCausalLM.from_pretrained(
-            backbone["id"], revision=backbone.get("revision"), dtype=torch.float32
+            backbone["id"], revision=backbone.get("revision"), dtype=torch.float16 if use_half else torch.float32
         )
         temperature = 1.0
         model_id = f"jevmark-{config['run_name']}"
@@ -103,6 +131,7 @@ class JevMark:
             if not adapter_dir.is_dir():
                 raise RuntimeError(f"checkpoint missing: no adapter directory at {adapter_dir}")
             model = PeftModel.from_pretrained(model, adapter_dir)
+            keep_lora_fp32(model)
             calibration = run_dir / "calibration.json"
             if calibration.is_file():
                 temperature = float(json.loads(calibration.read_text())["temperature"])
@@ -110,14 +139,14 @@ class JevMark:
             if model_id_file.is_file():
                 model_id = model_id_file.read_text().strip()
         model.to(device).eval()
-        use_fp16 = device.type == "cuda" and config.get("precision", {}).get("autocast") == "fp16"
         return cls(
             model,
             tokenizer,
             max_tokens=int(config["max_tokens"]),
             temperature=temperature,
             model_id=model_id,
-            autocast_dtype=torch.float16 if use_fp16 else None,
+            autocast_dtype=torch.float16 if use_half else None,
+            source=LoadSource(config, Path(checkpoint) if checkpoint is not None else None, device),
         )
 
     @property
@@ -125,7 +154,17 @@ class JevMark:
         return next(self.model.parameters()).device
 
     def use_fp32(self) -> None:
-        """Disable autocast; the fallback when the first batch has NaN or inf slot logits."""
+        """The fallback when the first batch has NaN or inf slot logits: reload the same model in fp32.
+
+        Reloading reads the checkpoint's original weights; casting fp16 weights up would
+        keep their fp16 rounding. A model built without JevMark.load has no source to
+        reload from and is cast to fp32 in place. The reloaded model is in eval mode.
+        """
+        if self.source is not None:
+            reloaded = JevMark.load(self.source.config, self.source.checkpoint, self.source.device, half=False)
+            self.model = reloaded.model
+        else:
+            self.model.float()
         self.autocast_dtype = None
 
     def _autocast(self) -> contextlib.AbstractContextManager:

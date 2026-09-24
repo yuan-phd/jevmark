@@ -228,3 +228,59 @@ def test_load_missing_checkpoint_raises_runtime_error(saved_run, tmp_path):
     config, _ = saved_run
     with pytest.raises(RuntimeError, match="checkpoint"):
         JevMark.load(config, checkpoint=tmp_path / "runs" / "does_not_exist", device="cpu")
+
+
+# Precision (decision 28): fp16 frozen backbone on CUDA, LoRA and readout in fp32, fallback reloads fp32
+
+
+def test_half_backbone_policy():
+    from jevmark.model import half_backbone
+
+    fp16 = {"precision": {"autocast": "fp16"}}
+    assert half_backbone(fp16, torch.device("cuda"))
+    assert not half_backbone(fp16, torch.device("cpu"))
+    assert not half_backbone({"precision": {"autocast": None}}, torch.device("cuda"))
+
+
+def dtypes(model):
+    lora = {p.dtype for n, p in model.named_parameters() if "lora_" in n}
+    base = {p.dtype for n, p in model.named_parameters() if "lora_" not in n}
+    return base, lora
+
+
+def test_load_on_cpu_keeps_everything_fp32(saved_run):
+    config, run_dir = saved_run
+    loaded = JevMark.load(config, checkpoint=run_dir, device="cpu")
+    assert dtypes(loaded.model) == ({torch.float32}, {torch.float32})
+    assert loaded.autocast_dtype is None
+
+
+def test_half_load_keeps_lora_and_readout_fp32(saved_run, encoded_pair):
+    config, run_dir = saved_run
+    half = JevMark.load(config, checkpoint=run_dir, device="cpu", half=True)
+    full = JevMark.load(config, checkpoint=run_dir, device="cpu")
+    assert dtypes(half.model) == ({torch.float16}, {torch.float32})
+    assert half.autocast_dtype == torch.float16
+    for x, y in zip(half.slot_logits(list(encoded_pair)), full.slot_logits(list(encoded_pair))):
+        assert x.dtype == torch.float32 and torch.isfinite(x).all()
+        torch.testing.assert_close(x.detach(), y.detach(), atol=5e-2, rtol=5e-2)
+
+
+def test_use_fp32_reloads_the_model_in_fp32(saved_run, encoded_pair):
+    config, run_dir = saved_run
+    jev = JevMark.load(config, checkpoint=run_dir, device="cpu", half=True)
+    half_model = jev.model
+    jev.use_fp32()
+    assert jev.model is not half_model
+    assert dtypes(jev.model) == ({torch.float32}, {torch.float32})
+    assert jev.autocast_dtype is None and not jev.model.training
+    reference = JevMark.load(config, checkpoint=run_dir, device="cpu")
+    for x, y in zip(jev.forward_distributions(list(encoded_pair)), reference.forward_distributions(list(encoded_pair))):
+        torch.testing.assert_close(x, y, atol=0, rtol=0)
+
+
+def test_use_fp32_without_a_source_casts_in_place(tiny_config, tokenizer):
+    model = Qwen3ForCausalLM(copy.deepcopy(tiny_config)).half()
+    jev = JevMark(model, tokenizer, max_tokens=2048, autocast_dtype=torch.float16)
+    jev.use_fp32()
+    assert {p.dtype for p in jev.model.parameters()} == {torch.float32} and jev.autocast_dtype is None
