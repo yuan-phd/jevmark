@@ -980,7 +980,10 @@ baselines = [
     { name = "openai" },
 ]
 dev = [
+    { name = "fastapi" },
+    { name = "httpx" },
     { name = "pytest" },
+    { name = "uvicorn" },
 ]
 serve = [
     { name = "fastapi" },
@@ -990,7 +993,9 @@ serve = [
 [package.metadata]
 requires-dist = [
     { name = "datasets", specifier = ">=2.19" },
+    { name = "fastapi", marker = "extra == 'dev'", specifier = ">=0.110" },
     { name = "fastapi", marker = "extra == 'serve'", specifier = ">=0.110" },
+    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
     { name = "matplotlib", specifier = ">=3.8" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "openai", marker = "extra == 'baselines'", specifier = ">=1.30" },
@@ -1000,6 +1005,7 @@ requires-dist = [
     { name = "torch", marker = "sys_platform != 'linux'", specifier = ">=2.2" },
     { name = "torch", marker = "sys_platform == 'linux'", specifier = ">=2.2", index = "https://download.pytorch.org/whl/cpu" },
     { name = "transformers", specifier = ">=4.56" },
+    { name = "uvicorn", marker = "extra == 'dev'", specifier = ">=0.29" },
     { name = "uvicorn", marker = "extra == 'serve'", specifier = ">=0.29" },
 ]
 provides-extras = ["dev", "serve", "baselines"]

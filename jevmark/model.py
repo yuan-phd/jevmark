@@ -61,12 +61,14 @@ class JevMark:
         model: PreTrainedModel | PeftModel,
         tokenizer: PreTrainedTokenizerBase,
         *,
+        max_tokens: int,
         temperature: float = 1.0,
         model_id: str = "jevmark",
         autocast_dtype: torch.dtype | None = None,
     ) -> None:
         self.model = model
         self.tokenizer = tokenizer
+        self.max_tokens = max_tokens
         self.temperature = temperature
         self.model_id = model_id
         self.autocast_dtype = autocast_dtype
@@ -82,7 +84,7 @@ class JevMark:
         checkpoint: str | Path | None = None,
         device: str | torch.device | None = None,
     ) -> JevMark:
-        """Backbone from config, plus the adapter, calibration.json and model_id.txt of a run directory.
+        """Backbone and max_tokens from config, plus the adapter, calibration.json and model_id.txt of a run directory.
 
         Raises RuntimeError if checkpoint is given but has no adapter directory.
         Weights load in fp32; on CUDA with precision.autocast fp16 the forward pass runs under fp16 autocast.
@@ -112,6 +114,7 @@ class JevMark:
         return cls(
             model,
             tokenizer,
+            max_tokens=int(config["max_tokens"]),
             temperature=temperature,
             model_id=model_id,
             autocast_dtype=torch.float16 if use_fp16 else None,

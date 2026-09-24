@@ -35,9 +35,9 @@ Datasets are referenced by Hugging Face id. Ids move; the first step of any data
 - Acceptance: `tests/test_model.py` on the tiny model checks output shapes, that each distribution sums to 1, and that a batch of two requests gives the same numbers (within float tolerance) as two single calls. Permutation behaviour is measured in evaluation, not unit-tested on a random model.
 
 ### 1.4 systemone.py
-- [ ] `systemone` and `systemone_batch` per API_SPEC sections 1 and 3, including confidence, score expectation, legend, rounding, usage.
-- [ ] `scripts/serve.py` optional FastAPI wrapper exposing `POST /v1/systemone` with the same JSON.
-- [ ] `serve.py` parses the request body with a `json` `object_pairs_hook` that raises `ValueError` on any duplicate key, because `json.loads` otherwise keeps only the last duplicate and duplicate option labels would go undetected.
+- [x] `systemone` and `systemone_batch` per API_SPEC sections 1 and 3, including confidence, score expectation, legend, rounding, usage. Proof: `tests/test_systemone.py::test_top_level_shape`, `::test_noul_answer`, `::test_choice_answer`, `::test_score_answer`, `::test_answers_match_model_distributions`, `::test_choice_argmax_is_computed_before_rounding`, `::test_score_expectation_is_computed_before_rounding`, `::test_confidence_is_one_minus_normalised_entropy`, `::test_batch_responses_identical_to_single_calls`, `::test_max_tokens_default_comes_from_model_and_argument_overrides`, `::test_default_model_loads_lazily_once_with_env_checkpoint`.
+- [x] `scripts/serve.py` optional FastAPI wrapper exposing `POST /v1/systemone` with the same JSON. Proof: `tests/test_systemone.py::test_serve_returns_the_same_response`, `::test_serve_rejects_invalid_request_with_path`, `::test_serve_maps_runtime_error_to_500`, `::test_serve_loads_default_model_once_at_startup`.
+- [x] `serve.py` parses the request body with a `json` `object_pairs_hook` that raises `ValueError` on any duplicate key, because `json.loads` otherwise keeps only the last duplicate and duplicate option labels would go undetected. Proof: `tests/test_systemone.py::test_serve_rejects_duplicate_keys`, `::test_serve_rejects_malformed_json`.
 - Acceptance: `tests/test_systemone.py` round-trips the three-question example from API_SPEC through the tiny model and validates the response shape field by field, with probabilities summing to 1 within 1e-3.
 
 ### 1.5 Data

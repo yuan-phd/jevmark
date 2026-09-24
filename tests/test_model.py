@@ -71,7 +71,7 @@ def make_lora(tiny_model):
 
 @pytest.fixture(scope="module")
 def plain(tiny_model, tokenizer):
-    return JevMark(tiny_model, tokenizer)
+    return JevMark(tiny_model, tokenizer, max_tokens=2048)
 
 
 @pytest.fixture(scope="module")
@@ -81,7 +81,7 @@ def lora_model(tiny_model):
 
 @pytest.fixture(scope="module")
 def lora(lora_model, tokenizer):
-    return JevMark(lora_model, tokenizer)
+    return JevMark(lora_model, tokenizer, max_tokens=2048)
 
 
 @pytest.fixture(scope="module")
@@ -91,7 +91,7 @@ def untied(tiny_config, tokenizer):
     torch.manual_seed(1)
     model = Qwen3ForCausalLM(config).eval()
     assert model.get_output_embeddings().weight.data_ptr() != model.get_input_embeddings().weight.data_ptr()
-    return JevMark(model, tokenizer)
+    return JevMark(model, tokenizer, max_tokens=2048)
 
 
 # Shapes, order, sums
@@ -166,7 +166,7 @@ def test_forward_distributions_has_no_grad(lora, encoded_pair):
 
 
 def test_temperature_divides_letter_logits(tiny_model, tokenizer, encoded_pair):
-    warm = JevMark(tiny_model, tokenizer, temperature=2.0)
+    warm = JevMark(tiny_model, tokenizer, max_tokens=2048, temperature=2.0)
     logits = warm.slot_logits(list(encoded_pair))
     for d, x in zip(warm.forward_distributions(list(encoded_pair)), logits):
         torch.testing.assert_close(d, torch.softmax(x.detach() / 2.0, dim=-1))
@@ -211,7 +211,8 @@ def test_load_backbone_adapter_and_calibration(saved_run, lora_model, tokenizer,
     loaded = JevMark.load(config, checkpoint=run_dir, device="cpu")
     assert loaded.temperature == 1.5
     assert loaded.model_id == "jevmark-tiny_run"
-    reference = JevMark(lora_model, tokenizer, temperature=1.5)
+    assert loaded.max_tokens == config["max_tokens"] == 2048
+    reference = JevMark(lora_model, tokenizer, max_tokens=2048, temperature=1.5)
     for x, y in zip(loaded.forward_distributions(list(encoded_pair)), reference.forward_distributions(list(encoded_pair))):
         torch.testing.assert_close(x, y, atol=1e-5, rtol=1e-5)
 
