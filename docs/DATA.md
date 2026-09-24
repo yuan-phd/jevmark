@@ -206,3 +206,24 @@ uv run --extra baselines --env-file .env python scripts/generate_descriptions.py
     --model <model> --temperature 0.3 \
     --usd-per-million-input <current price> --usd-per-million-output <current price>
 ```
+
+## 7. Description overrides and normalisation
+
+Builders read descriptions only through `jevmark/data/description_loader.py`, never the JSON files directly. The loader starts from the generated files (section 6), applies `jevmark/data/descriptions/overrides.json`, then normalises every text.
+
+Overrides:
+
+- Shape: `{"<dataset key>": {"<label>": {"canonical": "...", "paraphrases": ["..."], "reason": "..."}}}`, with the dataset keys `clinc`, `banking77`, `ag_news` and `emotion`.
+- An override replaces the generated entry for that label whole. It must name a label that exists in the generated file, carry exactly as many paraphrases as the generated entry (2 for CLINC, 0 otherwise) and a non-empty reason, and have exactly those three fields. Any other entry fails loudly.
+- Every override is listed in the table below with its reason; `tests/test_description_loader.py` fails if one is missing.
+
+Normalisation, applied to generated and overridden texts alike, in this order:
+
+1. The curly apostrophe (U+2019) becomes a straight apostrophe.
+2. One trailing period is stripped, so option lines never differ only by a final period.
+
+After normalisation every text must still be a valid option description under API_SPEC section 2 (single line, non-empty, no edge whitespace), or loading fails.
+
+| Dataset / label | Reason |
+|---|---|
+| (no overrides yet) | |

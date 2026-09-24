@@ -44,6 +44,7 @@ jevmark/
       clinc.py        CLINC150 -> choice and noul records
       sst5.py         SST-5 -> score records
       sources.py      pinned dataset ids and revisions
+      description_loader.py  generated descriptions + overrides.json, normalised
       unseen.py       AG News, emotion, Banking77 -> unseen-schema eval sets
       descriptions/   option descriptions (JSON, generated once, checked in)
   scripts/
