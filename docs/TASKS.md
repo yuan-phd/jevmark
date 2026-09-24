@@ -29,9 +29,9 @@ Datasets are referenced by Hugging Face id. Ids move; the first step of any data
 - Acceptance: `tests/test_encode.py` checks that decoding `input_ids` reproduces a golden string for a three-question request, checks that every slot id decodes to a string ending in `:` and that the next id begins a `\n\n` separator or is the end of the sequence, checks that whole-text tokenization would have moved at least one slot (documenting why per-segment is required), and checks that changing option order changes letter assignment but not the set of letter ids.
 
 ### 1.3 model.py
-- [ ] `JevMark.load(config, checkpoint=None)` loads backbone plus optional LoRA adapter and calibration.json.
-- [ ] `JevMark.forward_distributions(encoded_batch) -> list of per-question probability tensors`, one forward pass per batch, softmax over selected letter columns only, temperature applied.
-- [ ] Padding handled on the right; slot positions adjusted accordingly.
+- [x] `JevMark.load(config, checkpoint=None)` loads backbone plus optional LoRA adapter and calibration.json. Proof: `tests/test_model.py::test_load_backbone_adapter_and_calibration`, `::test_load_without_checkpoint_uses_defaults`, `::test_load_missing_checkpoint_raises_runtime_error`.
+- [x] `JevMark.forward_distributions(encoded_batch) -> list of per-question probability tensors`, one forward pass per batch, softmax over selected letter columns only, temperature applied. Proof: `tests/test_model.py::test_flat_output_shapes_and_order`, `::test_distributions_sum_to_one`, `::test_hidden_state_letter_logits_equal_full_logit_columns` (tied, untied, LoRA), `::test_temperature_divides_letter_logits`, `::test_slot_logits_carry_gradients_to_lora`, `::test_forward_distributions_has_no_grad`.
+- [x] Padding handled on the right; slot positions adjusted accordingly. Proof: `tests/test_model.py::test_collate_pads_on_the_right_with_mask` (right padding leaves slot positions unchanged), `::test_batch_of_two_equals_two_single_calls`.
 - Acceptance: `tests/test_model.py` on the tiny model checks output shapes, that each distribution sums to 1, and that a batch of two requests gives the same numbers (within float tolerance) as two single calls. Permutation behaviour is measured in evaluation, not unit-tested on a random model.
 
 ### 1.4 systemone.py
