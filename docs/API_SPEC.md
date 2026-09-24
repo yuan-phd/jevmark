@@ -146,5 +146,6 @@ runs/<run_name>/
 
 ## 7. Errors
 
-- Unknown type, missing instructions, wrong criteria shape, fewer than 2 or more than 26 choice options, fewer than 2 or more than 10 score levels, duplicate option labels, a line break (`\n` or `\r`) or leading or trailing whitespace in instructions, an option label, an option description or a score level text, state over 8000 characters, encoded length over `max_tokens`: `ValueError("<question_id>.<field>: <reason>")`.
+- Unknown type, missing instructions, wrong criteria shape, fewer than 2 or more than 26 choice options, fewer than 2 or more than 10 score levels, duplicate option labels, a line break (`\n` or `\r`) or leading or trailing whitespace in instructions, an option label, an option description or a score level text, state over 8000 characters: `ValueError("<question_id>.<field>: <reason>")`.
+- Encoded length over `max_tokens`: `ValueError("max_tokens: <reason>")`. The length belongs to no single question, so the path is the argument name.
 - Model not loaded or checkpoint missing: `RuntimeError`.
