@@ -1,8 +1,8 @@
 """Negation templates for the noul symmetry test, one per noul kind (docs/TASKS.md 1.6).
 
 A template rewrites the fixed part of a noul instruction and keeps the rest, so
-"Is this message about travel, such as flights, ...?" becomes "Is this message not
-about travel, such as flights, ...?". A consistent model gives
+"Is this message about travel, such as flights, ...?" becomes "Is this message about
+something other than travel, such as flights, ...?". A consistent model gives
 P(yes | q) + P(yes | not q) close to 1.
 """
 
@@ -12,7 +12,7 @@ from jevmark.data.clinc import DOMAIN_INSTRUCTIONS, OUT_OF_SCOPE_INSTRUCTIONS
 
 # kind -> (text the instruction starts with, replacement for that text)
 NEGATIONS = {
-    "about_domain": (DOMAIN_INSTRUCTIONS.split("{phrase}")[0], "Is this message not about "),
+    "about_domain": (DOMAIN_INSTRUCTIONS.split("{phrase}")[0], "Is this message about something other than "),
     "out_of_scope": (OUT_OF_SCOPE_INSTRUCTIONS, "Is this request something a banking, travel, home, work or everyday assistant can help with?"),
 }
 

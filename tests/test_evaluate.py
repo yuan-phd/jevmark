@@ -30,7 +30,7 @@ PER_SPLIT = 30
 def test_negation_templates_cover_both_noul_kinds():
     assert set(NEGATIONS) == {"about_domain", "out_of_scope"}
     phrase = DOMAIN_PHRASES["travel"]
-    assert negate("about_domain", DOMAIN_INSTRUCTIONS.format(phrase=phrase)) == f"Is this message not about {phrase}?"
+    assert negate("about_domain", DOMAIN_INSTRUCTIONS.format(phrase=phrase)) == f"Is this message about something other than {phrase}?"
     assert negate("out_of_scope", OUT_OF_SCOPE_INSTRUCTIONS) == "Is this request something a banking, travel, home, work or everyday assistant can help with?"
 
 
