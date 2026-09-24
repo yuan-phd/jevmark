@@ -194,3 +194,12 @@ def test_recompute_rebuilds_metrics_exactly(run, tmp_path):
     for key in ("git", "precision", "latency", "batching_precision", "data_files_sha256"):
         assert rebuilt[key] == original[key]
     assert rebuilt["recomputed"]["questions"] == sum(s["overall"]["n"] for s in original["splits"].values())
+
+
+def test_new_breakdowns_reach_metrics_json(run):
+    metrics = json.loads((run / "metrics.json").read_text())
+    indomain = metrics["splits"]["test_indomain"]
+    assert set(indomain["noul"]["by_kind"]) <= {"about_domain", "out_of_scope"} and "yes_rate" in indomain["noul"]
+    assert {"n_offering_other", "predicted_other_rate"} <= set(indomain["choice"]["by_gold_other"])
+    assert "by_k_position" in indomain["letter_bias"]
+    assert "by_gold_other" not in metrics["splits"]["test_agnews"]["choice"]  # AG News offers no "other"

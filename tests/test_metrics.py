@@ -176,3 +176,65 @@ def test_result_line_round_trip():
     line = result_to_line(r)
     assert line["type"] == "noul" and line["confidence"] == pytest.approx(0.7) and line["prediction"] == 0
     assert result_from_line(line) == r
+
+
+# Breakdowns added in task 1.6b
+
+
+def kinded(p_true, gold_true, kind):
+    return QuestionResult("r", kind, "noul", (p_true, 1 - p_true), 0 if gold_true else 1, ("true", "false"), kind=kind)
+
+
+def test_noul_by_kind_by_hand():
+    from jevmark.metrics import noul_by_kind
+
+    results = [
+        kinded(0.9, True, "about_domain"),  # predicts yes, correct, top1 0.9
+        kinded(0.6, False, "about_domain"),  # predicts yes, wrong, top1 0.6
+        kinded(0.2, False, "out_of_scope"),  # predicts no, correct, top1 0.8
+    ]
+    by_kind = noul_by_kind(results)
+    # about_domain ECE: confidence 0.9 (correct, gap 0.1) and 0.6 (wrong, gap 0.6) in separate bins, weight 1/2 each.
+    assert by_kind["about_domain"] == {"n": 2, "accuracy": 0.5, "ece": pytest.approx(0.35), "yes_rate": 1.0}
+    assert by_kind["out_of_scope"] == {"n": 1, "accuracy": 1.0, "ece": pytest.approx(0.2), "yes_rate": 0.0}
+
+
+def test_noul_block_reports_overall_yes_rate():
+    metrics = split_metrics([kinded(0.9, True, "about_domain"), kinded(0.2, False, "out_of_scope")])
+    assert metrics["noul"]["yes_rate"] == 0.5
+    assert set(metrics["noul"]["by_kind"]) == {"about_domain", "out_of_scope"}
+
+
+def test_choice_by_gold_other_by_hand():
+    from jevmark.metrics import choice_by_gold_other
+
+    labels = ("a", "other", "b")
+    results = [
+        choice([0.2, 0.7, 0.1], 1, labels),  # gold other, predicts other: correct
+        choice([0.6, 0.3, 0.1], 1, labels),  # gold other, predicts a: wrong
+        choice([0.1, 0.6, 0.3], 0, labels),  # gold a, predicts other: wrong
+        choice([0.1, 0.2, 0.7], 2, labels),  # gold b, predicts b: correct
+        choice([0.5, 0.5], 0, ("x", "y")),  # no other option offered: excluded
+    ]
+    split = choice_by_gold_other(results)
+    assert split["gold_other"] == {"n": 2, "accuracy": 0.5, "predicted_other_rate": 0.5}
+    assert split["gold_named"] == {"n": 2, "accuracy": 0.5, "predicted_other_rate": 0.5}
+    assert split["predicted_other_rate"] == 0.5 and split["n_offering_other"] == 4
+
+
+def test_choice_by_gold_other_absent_without_other_option():
+    metrics = split_metrics([choice([0.7, 0.3], 0, ("a", "b"))])
+    assert "by_gold_other" not in metrics["choice"]
+
+
+def test_letter_bias_by_k_and_position_by_hand():
+    results = [
+        choice([0.6, 0.4], 0),  # K2 pos0 correct p 0.6
+        choice([0.3, 0.7], 0),  # K2 pos0 wrong p 0.3
+        choice([0.4, 0.6], 1),  # K2 pos1 correct p 0.6
+        choice([0.2, 0.3, 0.5], 2),  # K3 pos2 correct p 0.5
+    ]
+    joint = letter_bias(results)["by_k_position"]
+    assert joint["2"]["0"] == {"n": 2, "accuracy": 0.5, "mean_gold_probability": pytest.approx(0.45)}
+    assert joint["2"]["1"] == {"n": 1, "accuracy": 1.0, "mean_gold_probability": 0.6}
+    assert joint["3"] == {"2": {"n": 1, "accuracy": 1.0, "mean_gold_probability": 0.5}}

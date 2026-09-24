@@ -150,23 +150,82 @@ def coverage_curve(results: Sequence[QuestionResult], thresholds: Sequence[float
     return rows
 
 
-def letter_bias(results: Sequence[QuestionResult]) -> dict[str, dict[str, dict[str, Any]]]:
-    """Choice questions: accuracy and mean probability on the gold option, by gold position and by K."""
-    groups: dict[str, dict[str, list[QuestionResult]]] = {"by_position": defaultdict(list), "by_k": defaultdict(list)}
-    for r in results:
-        groups["by_position"][str(r.gold)].append(r)
-        groups["by_k"][str(r.k)].append(r)
+def _gold_stats(members: Sequence[QuestionResult]) -> dict[str, Any]:
     return {
-        name: {
-            key: {
-                "n": len(members),
-                "accuracy": _mean([float(r.correct) for r in members]),
-                "mean_gold_probability": _mean([r.probs[r.gold] for r in members]),
-            }
-            for key, members in sorted(by.items(), key=lambda item: int(item[0]))
-        }
-        for name, by in groups.items()
+        "n": len(members),
+        "accuracy": _mean([float(r.correct) for r in members]),
+        "mean_gold_probability": _mean([r.probs[r.gold] for r in members]),
     }
+
+
+def _by_int_key(groups: Mapping[str, Sequence[QuestionResult]]) -> dict[str, dict[str, Any]]:
+    return {key: _gold_stats(members) for key, members in sorted(groups.items(), key=lambda item: int(item[0]))}
+
+
+def letter_bias(results: Sequence[QuestionResult]) -> dict[str, Any]:
+    """Choice questions: accuracy and mean probability on the gold option by gold position, by K, and by K then position.
+
+    Positions beyond 2 exist only for larger K, where accuracy is lower anyway, so
+    by_k_position is the table that separates position bias from the effect of K.
+    """
+    by_position: dict[str, list[QuestionResult]] = defaultdict(list)
+    by_k: dict[str, list[QuestionResult]] = defaultdict(list)
+    joint: dict[str, dict[str, list[QuestionResult]]] = defaultdict(lambda: defaultdict(list))
+    for r in results:
+        by_position[str(r.gold)].append(r)
+        by_k[str(r.k)].append(r)
+        joint[str(r.k)][str(r.gold)].append(r)
+    return {
+        "by_position": _by_int_key(by_position),
+        "by_k": _by_int_key(by_k),
+        "by_k_position": {k: _by_int_key(joint[k]) for k in sorted(joint, key=int)},
+    }
+
+
+def noul_by_kind(results: Sequence[QuestionResult]) -> dict[str, dict[str, Any]]:
+    """Noul questions by kind (meta.noul_kind): accuracy, ECE on top-1 and the share of yes predictions."""
+    groups: dict[str, list[QuestionResult]] = defaultdict(list)
+    for r in results:
+        groups[r.kind or "unknown"].append(r)
+    return {
+        kind: {
+            "n": len(members),
+            "accuracy": _mean([float(r.correct) for r in members]),
+            "ece": ece([r.top1 for r in members], [r.correct for r in members]),
+            "yes_rate": _mean([float(r.prediction == 0) for r in members]),
+        }
+        for kind, members in sorted(groups.items())
+    }
+
+
+def choice_by_gold_other(results: Sequence[QuestionResult], other: str = "other") -> dict[str, Any] | None:
+    """Choice questions that offer `other`, split by whether the gold answer is `other` or a named label.
+
+    Reports accuracy and the rate of predicting `other` in each group and overall.
+    None when no question offers `other`.
+    """
+    offering = [r for r in results if other in r.labels]
+    if not offering:
+        return None
+
+    def stats(members: Sequence[QuestionResult]) -> dict[str, Any]:
+        return {
+            "n": len(members),
+            "accuracy": _mean([float(r.correct) for r in members]),
+            "predicted_other_rate": _mean([float(r.labels[r.prediction] == other) for r in members]),
+        }
+
+    split = {
+        "n_offering_other": len(offering),
+        "predicted_other_rate": _mean([float(r.labels[r.prediction] == other) for r in offering]),
+    }
+    gold_other = [r for r in offering if r.labels[r.gold] == other]
+    gold_named = [r for r in offering if r.labels[r.gold] != other]
+    if gold_other:
+        split["gold_other"] = stats(gold_other)
+    if gold_named:
+        split["gold_named"] = stats(gold_named)
+    return split
 
 
 def symmetry(pairs: Sequence[tuple[float, float]]) -> dict[str, Any]:
@@ -276,8 +335,14 @@ def split_metrics(results: Sequence[QuestionResult]) -> dict[str, Any]:
         if not of_type:
             continue
         block = summarize(of_type, with_coverage=True)
+        if qtype == "noul":
+            block["yes_rate"] = _mean([float(r.prediction == 0) for r in of_type])
+            block["by_kind"] = noul_by_kind(of_type)
         if qtype == "choice":
             block["macro_f1"] = macro_f1(of_type)
+            by_gold_other = choice_by_gold_other(of_type)
+            if by_gold_other is not None:
+                block["by_gold_other"] = by_gold_other
             metrics["letter_bias"] = letter_bias(of_type)
         if qtype == "score":
             block["mae"] = mean_absolute_error(of_type)
