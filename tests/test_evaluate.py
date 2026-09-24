@@ -203,3 +203,38 @@ def test_new_breakdowns_reach_metrics_json(run):
     assert {"n_offering_other", "predicted_other_rate"} <= set(indomain["choice"]["by_gold_other"])
     assert "by_k_position" in indomain["letter_bias"]
     assert "by_gold_other" not in metrics["splits"]["test_agnews"]["choice"]  # AG News offers no "other"
+
+
+# Git state (fix after the base_06b re-run)
+
+
+def test_git_state_ignores_runs_and_sees_code(tmp_path):
+    import subprocess
+
+    def git(*args):
+        subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
+
+    git("init", "-q")
+    git("config", "user.email", "test@example.com")
+    git("config", "user.name", "test")
+    (tmp_path / "code.py").write_text("x = 1\n")
+    (tmp_path / "runs" / "old").mkdir(parents=True)
+    (tmp_path / "runs" / "old" / "metrics.json").write_text("{}\n")
+    git("add", ".")
+    git("commit", "-q", "-m", "init")
+    assert evaluate.git_state(tmp_path)["dirty"] is False
+    (tmp_path / "runs" / "old" / "metrics.json").write_text('{"rerun": true}\n')
+    state = evaluate.git_state(tmp_path)
+    assert state["dirty"] is False and len(state["commit"]) == 40
+    (tmp_path / "code.py").write_text("x = 2\n")
+    assert evaluate.git_state(tmp_path)["dirty"] is True
+
+
+def test_git_state_is_recorded_before_outputs(eval_inputs, monkeypatch, tmp_path):
+    root, config_path, data_dir = eval_inputs
+    runs_dir = tmp_path / "runs"
+    seen = []
+    real = evaluate.git_state
+    monkeypatch.setattr(evaluate, "git_state", lambda: seen.append(runs_dir.exists()) or real())
+    assert evaluate.main(["--ckpt", "base", "--config", str(config_path), "--limit", "2", "--splits", "test_agnews", "--data-dir", str(data_dir), "--runs-dir", str(runs_dir), "--device", "cpu"]) == 0
+    assert seen == [False]

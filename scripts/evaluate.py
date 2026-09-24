@@ -238,15 +238,21 @@ def plot_reliability(split: str, metrics: dict[str, Any], path: Path) -> None:
     plt.close(fig)
 
 
-def git_state() -> dict[str, Any]:
+def git_state(repo: Path = REPO) -> dict[str, Any]:
+    """Commit and whether tracked code or docs differ from it, ignoring runs/.
+
+    Called before any output is written: a run that overwrites the tracked files
+    of an earlier run (for example a B0 re-run) must not report itself dirty.
+    """
+
     def run(*args: str) -> str | None:
         try:
-            return subprocess.run(["git", *args], cwd=REPO, capture_output=True, text=True, check=True).stdout.strip()
+            return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=True).stdout.strip()
         except (OSError, subprocess.CalledProcessError):
             return None
 
     commit = run("rev-parse", "HEAD")
-    status = run("status", "--porcelain", "--untracked-files=no")
+    status = run("status", "--porcelain", "--untracked-files=no", "--", ".", ":(exclude)runs")
     return {"commit": commit, "dirty": bool(status) if status is not None else None}
 
 
@@ -287,6 +293,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     log(f"model {jev.model_id} on {jev.device}, autocast {jev.autocast_dtype}, max_tokens {jev.max_tokens}")
 
     started = time.perf_counter()
+    git = git_state()  # before any output exists (decision 35)
     fallback_used = None
     split_results: dict[str, Any] = {}
     all_results: list[QuestionResult] = []
@@ -321,7 +328,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "model_id": jev.model_id,
         "ckpt": args.ckpt,
         "config": str(config_path),
-        "git": git_state(),
+        "git": git,
         "created": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         "limit": args.limit,
         "device": str(jev.device),
