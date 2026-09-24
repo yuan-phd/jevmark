@@ -130,7 +130,10 @@ Training uses exactly this encoding function. The only training-time differences
 ## 5. Model readout
 
 - Backbone: causal LM from config, fp16 autocast on GPU with a NaN/inf check on the first batch and automatic fp32 fallback, fp32 on CPU. LoRA on attention projections (q, k, v, o) and, if enabled, MLP projections.
-- Forward once over the sequence. Gather logits at `slot_positions`. For each question select the columns in `letter_ids`, apply softmax over those columns only. That vector is the answer distribution.
+- Forward once over the sequence. For each question, the letter logits are the logits at its slot position restricted to the columns in `letter_ids`; softmax over those columns only is the answer distribution.
+- Full-vocabulary logits are never materialised. The decoder (the inner model, so LoRA layers are active) returns final hidden states after the final norm; the hidden states at `slot_positions` are gathered and multiplied by the `lm_head` weight rows for that question's `letter_ids`. The product runs in fp32 with autocast disabled. Qwen3 has no `lm_head` bias (a bias, if present, is added for the same rows); with tied embeddings the rows are the input embedding rows. The result equals the letter columns of the full logits within float tolerance.
+- Two entry points. `slot_logits(encoded_batch)` returns per-question letter logits with gradients enabled, for training. `forward_distributions(encoded_batch)` divides by the temperature and applies softmax under `no_grad`, for inference. Both return a flat list aligned with (request index, question index): request 0's questions in order, then request 1's, and so on, since requests have different numbers of questions and questions have different K.
+- Batches are right-padded with an attention mask. Slot positions index real tokens, so padding does not change them.
 - Optional calibration: a scalar temperature per model (fit in `calibrate.py`) divides the selected logits before softmax. Stored in the checkpoint's `calibration.json`; default 1.0.
 
 ## 6. Checkpoint layout
