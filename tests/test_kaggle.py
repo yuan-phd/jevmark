@@ -75,3 +75,9 @@ def test_train_notebook_runs_one_size_smoke_first_then_train_evaluate_and_copy()
     assert smoke < full < evaluate_sft < evaluate_base
     assert joined.rindex('shutil.copytree(WORK / "runs", "/kaggle/working/runs"') > evaluate_base
     assert "make data PY=python" in joined and "requirements-kaggle.txt" in joined
+
+
+@pytest.mark.parametrize("name", ["kaggle_eval.ipynb", "kaggle_train.ipynb"])
+def test_notebooks_uninstall_torchao_before_installing(name):
+    install = next(c for c in code_cells(name) if "requirements-kaggle.txt" in c)
+    assert install.index("pip uninstall -y -q torchao") < install.index("pip install -q -r requirements-kaggle.txt")

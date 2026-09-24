@@ -42,14 +42,14 @@ Run the cells top to bottom:
 |---|---|---|
 | Parameters | `REPO`, `COMMIT`, `LIMIT` | |
 | Clone | fetches exactly `COMMIT` into `/tmp/jevmark` and checks the sha | seconds |
-| Install | `pip install -r requirements-kaggle.txt` (the seven Hugging Face packages), then jevmark with `--no-deps`; prints versions and GPU count | 1 to 2 min |
+| Install | uninstalls Kaggle's `torchao`, then `pip install -r requirements-kaggle.txt` (the seven Hugging Face packages) and jevmark with `--no-deps`; prints versions and GPU count | 1 to 2 min |
 | Data | `make data PY=python`; fails loudly if any data check fails | under 1 min |
 | Smoke | 30 records per split on 0.6B, writes `runs/base_06b_limit30/` | a few min, mostly downloads |
 | B0 0.6B | all eight splits, writes `runs/base_06b/` | about 0.5 GPU hours (measured 28 min) |
 | B0 1.7B | all eight splits, writes `runs/base_17b/` | about 1.0 GPU hours (measured 56 min) |
 | Copy | copies `runs/` to `/kaggle/working/runs` and prints each run's commit, dirty flag, fp32 fallback and wall clock | seconds |
 
-Check the smoke run before the full ones: it should end with `wrote .../metrics.json`. `requirements-kaggle.txt` pins only transformers, tokenizers, peft, datasets, accelerate, huggingface-hub and safetensors, at the versions in `uv.lock`; the image keeps its own torch, numpy, pandas, pyarrow and scipy (decision 23). If the install cell reports a dependency conflict that names one of the pinned packages, or torch or numpy, stop there and report it; the pinned versions may need a lock change.
+Check the smoke run before the full ones: it should end with `wrote .../metrics.json`. `requirements-kaggle.txt` pins only transformers, tokenizers, peft, datasets, accelerate, huggingface-hub and safetensors, at the versions in `uv.lock`; the image keeps its own torch, numpy, pandas, pyarrow and scipy (decision 23). The install cell first runs `pip uninstall -y torchao`: the Kaggle image ships torchao 0.10, and with it installed peft 0.21 raises an error when it injects LoRA adapters; jevmark does not use torchao. If the install cell reports a dependency conflict that names one of the pinned packages, or torch or numpy, stop there and report it; the pinned versions may need a lock change.
 
 Each evaluation logs a warning and records `"fp32_fallback_used": true` in `metrics.json` if the first batch has NaN or inf slot logits under fp16 (decision 28).
 
