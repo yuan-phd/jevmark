@@ -28,7 +28,8 @@ packages = ["jevmark"]
 
 # Local development is CPU only. macOS wheels on PyPI are already CPU builds;
 # on Linux, pull torch from the CPU index so a local sync never fetches CUDA.
-# Kaggle keeps its preinstalled torch and does not use this lock.
+# Kaggle keeps its preinstalled torch but installs transformers, peft and
+# datasets at the exact versions in uv.lock (decision 23).
 [tool.uv.sources]
 torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
 
