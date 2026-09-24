@@ -1,6 +1,7 @@
 .PHONY: setup test data train-sft eval
 
 CONFIG ?= configs/base.yaml
+DATA_CONFIG ?= configs/data.yaml
 CKPT ?=
 SPLITS ?=
 
@@ -11,7 +12,7 @@ test:
 	uv run pytest -q
 
 data:
-	uv run python scripts/build_data.py --config $(CONFIG)
+	uv run python scripts/build_data.py --config $(DATA_CONFIG)
 
 train-sft:
 	uv run python scripts/train_sft.py --config $(CONFIG)

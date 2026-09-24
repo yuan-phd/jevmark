@@ -39,6 +39,7 @@ jevmark/
     encode.py         state + questions -> text with answer slots, slot positions
     model.py          backbone + LoRA, readout of letter logits at slots
     systemone.py      public function systemone(state, questions)
+    config.py         YAML config loading with key=value overrides
     metrics.py        accuracy, ECE, Brier, NLL, coverage curves
     data/
       clinc.py        CLINC150 -> choice and noul records
@@ -46,6 +47,9 @@ jevmark/
       sources.py      pinned dataset ids and revisions
       description_loader.py  generated descriptions + overrides.json, normalised
       unseen.py       AG News, emotion, Banking77 -> unseen-schema eval sets
+      build.py        record helpers and dataset checks
+      assemble.py     builds every split in memory
+      clinc_domains.json  CLINC intent-to-domain map, original release
       descriptions/   option descriptions (JSON, generated once, checked in)
   scripts/
     check_datasets.py

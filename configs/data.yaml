@@ -1,0 +1,18 @@
+# Data build (docs/DATA.md section 2). All randomness derives from seed: every split
+# uses random.Random(f"{seed}:{split}"), and the held-out intents use "{seed}:held_out".
+seed: 0
+out_dir: data
+base_config: configs/base.yaml   # tokenizer_reference for the encoding check
+max_tokens: 1024                 # every record must encode within the training max_tokens
+
+clinc:
+  k_min: 3                       # options per choice question, including "other"
+  k_max: 10
+  p_gold_in_options: 0.8
+  held_out_per_domain: 2
+
+unseen:
+  n_per_set: 1000
+  banking77_options: 10          # gold, 8 distractors and "other"
+
+noul_balance: [0.4, 0.6]         # build fails if a noul kind's yes share is outside this range
