@@ -149,6 +149,15 @@ runs/<run_name>/
 
 ## 7. Errors
 
-- Unknown type, missing instructions, wrong criteria shape, fewer than 2 or more than 26 choice options, fewer than 2 or more than 10 score levels, duplicate option labels, a line break (`\n` or `\r`) or leading or trailing whitespace in instructions, an option label, an option description or a score level text, an empty option description or score level text, state over 8000 characters: `ValueError("<question_id>.<field>: <reason>")`.
-- Encoded length over `max_tokens`: `ValueError("max_tokens: <reason>")`. The length belongs to no single question, so the path is the argument name.
-- Model not loaded or checkpoint missing: `RuntimeError`.
+Every invalid input raises `ValueError("<path>: <reason>")`. The path is one of:
+
+| Path | Raised for |
+|---|---|
+| `request` | the request itself is not an object |
+| `state` | state missing, not a string, object or array, not JSON-serialisable, or over 8000 characters after rendering |
+| `questions` | questions missing, not an object, empty, a question id not matching `[a-z0-9_]+`, a duplicate question id |
+| `<question_id>` | the question definition is not an object |
+| `<question_id>.<field>` | `type` missing or unknown; `instructions` missing, empty, containing `\n` or `\r`, or with leading or trailing whitespace; `criteria` of the wrong shape, fewer than 2 or more than 26 choice options, fewer than 2 or more than 10 score levels, duplicate option labels, or an option label, option description or score level text that is empty, contains a line break or has edge whitespace; an unknown field, reported under its own name (for example `q.criterion`) |
+| `max_tokens` | encoded length over `max_tokens`; the length belongs to no single question, so the path is the argument name |
+
+Model not loaded or checkpoint missing: `RuntimeError`. A tokenizer that breaks an encoding assumption (letter tokens, tokenizer parity, a slot not ending in `:`) raises `TokenizerError`, a subclass of `RuntimeError`.
