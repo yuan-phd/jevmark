@@ -65,7 +65,7 @@ Datasets are referenced by Hugging Face id. Ids move; the first step of any data
 - [x] encode.py: cache letter ids per tokenizer object. Proof: `tests/test_encode.py::test_letter_ids_are_computed_once_per_tokenizer`, `::test_letter_id_cache_is_per_tokenizer_object`, `::test_cached_letter_ids_equal_a_fresh_computation`.
 - [x] evaluate.py writes `runs/<run_name>/results.jsonl.gz` (one line per question, gitignored); `scripts/recompute_metrics.py` rebuilds `metrics.json` from it. Proof: `tests/test_evaluate.py::test_results_file_has_one_line_per_question`, `::test_recompute_rebuilds_metrics_exactly`, `tests/test_metrics.py::test_result_line_round_trip`; size 29.7 KiB on the tiny `--limit 30` smoke run (decision 37).
 - [x] metrics.py: noul by kind with yes rate; choice by gold `other` versus gold named label with the rate of predicting `other`; letter bias by position and K jointly. Proof: `tests/test_metrics.py::test_noul_by_kind_by_hand`, `::test_noul_block_reports_overall_yes_rate`, `::test_choice_by_gold_other_by_hand`, `::test_choice_by_gold_other_absent_without_other_option`, `::test_letter_bias_by_k_and_position_by_hand`; `tests/test_evaluate.py::test_new_breakdowns_reach_metrics_json`.
-- [ ] API_SPEC section 1 and decision 30 carry the measured batched versus single differences.
+- [x] API_SPEC section 1 and decision 30 carry the measured batched versus single differences. Proof: API_SPEC section 1; decision 30; values from `runs/base_06b/metrics.json`, `runs/base_17b/metrics.json` (`batching_precision`).
 - [ ] Decision: B0 is re-evaluated in the task 1.7 Kaggle session with the extended evaluate.py.
 
 ### 1.7 train_sft.py
