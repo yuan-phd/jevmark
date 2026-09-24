@@ -16,7 +16,7 @@ response = systemone(state, questions, model=None, max_tokens=None)
 - `max_tokens`: encoded length limit. If None, the model's `max_tokens` is used, which `JevMark.load` reads from the config (2048 in `configs/base.yaml`); an explicit argument overrides it. Training configs carry their own `max_tokens` (1024 in v1), which only governs which records are kept for training.
 - Returns a response dict (section 3). Raises `ValueError` with the offending field path on invalid input.
 
-A batch variant `systemone_batch(requests, model=None, max_tokens=None, batch_size=16)` takes a list of `{"state": ..., "questions": ...}` dicts, runs them through the model `batch_size` requests per forward pass, and returns a list of responses with numbers identical to calling `systemone` one at a time.
+A batch variant `systemone_batch(requests, model=None, max_tokens=None, batch_size=16)` takes a list of `{"state": ..., "questions": ...}` dicts, runs them through the model `batch_size` requests per forward pass, and returns a list of responses. Batching has no semantic effect: each request's answers depend only on its own state and questions. Batched and single calls can differ numerically, because padded batches change the order of floating-point operations; the difference is bounded by the arithmetic precision of the run (fp32 on CPU, fp16 autocast on GPU) and is measured in evaluation (`metrics.json`, task 1.6).
 
 ## 2. Question definitions
 

@@ -184,17 +184,31 @@ def test_confidence_is_never_negative_zero_or_out_of_range():
 # Batch against single calls, at the response level
 
 
-def test_batch_responses_identical_to_single_calls(jev):
-    # Exact at the response level for these requests. Batched and single forward
-    # passes are not bitwise equal (letter logits differ by about 1e-8 on CPU),
-    # so a value within that distance of a 4-decimal rounding boundary could
-    # still differ in its last digit; see the open question in the task 1.4 report.
-    spec ={"state": STATE, "questions": copy.deepcopy(QUESTIONS)}
+def assert_responses_close(x, y, tol=1e-4, path="response"):
+    """Same structure, keys and non-float values; floats within tol."""
+    if isinstance(x, float) or isinstance(y, float):
+        assert isinstance(x, float) and isinstance(y, float), path
+        assert abs(x - y) <= tol, f"{path}: {x} vs {y}"
+    elif isinstance(x, dict):
+        assert isinstance(y, dict) and list(x) == list(y), path
+        for key in x:
+            assert_responses_close(x[key], y[key], tol, f"{path}.{key}")
+    elif isinstance(x, list):
+        assert isinstance(y, list) and len(x) == len(y), path
+        for i, (a, b) in enumerate(zip(x, y)):
+            assert_responses_close(a, b, tol, f"{path}[{i}]")
+    else:
+        assert x == y, f"{path}: {x!r} vs {y!r}"
+
+
+def test_batch_responses_match_single_calls(jev):
+    # Batching has no semantic effect; numerically, padded batches change the order
+    # of floating-point operations, so floats are compared within 1e-4 (decision 30).
+    spec = {"state": STATE, "questions": copy.deepcopy(QUESTIONS)}
     requests = [spec, OTHER_REQUEST, {"state": "Short.", "questions": {"q": {"type": "noul", "instructions": "Is it?"}}}]
-    batched = systemone_batch(requests, model=jev)
     singles = [systemone(r["state"], r["questions"], model=jev) for r in requests]
-    assert batched == singles
-    assert systemone_batch(requests, model=jev, batch_size=2) == singles
+    assert_responses_close(systemone_batch(requests, model=jev), singles)
+    assert_responses_close(systemone_batch(requests, model=jev, batch_size=2), singles)
 
 
 def test_batch_of_nothing_is_empty(jev):
