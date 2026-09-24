@@ -226,4 +226,16 @@ After normalisation every text must still be a valid option description under AP
 
 | Dataset / label | Reason |
 |---|---|
-| (no overrides yet) | |
+| `clinc/reminder` | Generated text said create or manage; the data is reading existing reminders, and creating belongs to reminder_update |
+| `clinc/reminder_update` | Generated text covered only changing; the data is mostly setting new reminders |
+| `clinc/todo_list` | Generated text said managing or creating, which overlaps todo_list_update; the data is checking the list |
+| `clinc/shopping_list` | Generated text said create or manage, which overlaps shopping_list_update; the data is reading the list |
+| `clinc/calendar` | Generated text said managing, which overlaps calendar_update; the data is checking events |
+| `clinc/meeting_schedule` | Generated text described arranging a meeting, which duplicates schedule_meeting; the data asks about existing meetings |
+| `clinc/schedule_meeting` | The data includes room availability questions the generated text did not cover |
+| `clinc/travel_notification` | Generated text described updating itineraries; the data is informing the bank about travel |
+| `clinc/user_name` | Generated text included providing the name, which overlaps change_user_name; the data asks what name is on file |
+| `clinc/transactions` | Generated paraphrase mentioned money transfers, which overlaps transfer; the data is listing past transactions |
+| `clinc/insurance_change` | Generated text covered only modifying existing cover; the data also includes getting new insurance |
+| `clinc/new_card` | Generated text drifted toward activation; the data is applying for a card |
+| `clinc/time` | Generated text said time-related information, which is broad enough to cover timezone; the data asks the current time |
