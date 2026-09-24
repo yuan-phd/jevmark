@@ -1,5 +1,6 @@
 # Data build (docs/DATA.md section 2). All randomness derives from seed: every split
 # uses random.Random(f"{seed}:{split}"), and the held-out intents use "{seed}:held_out".
+version: v1.1                    # v1.1: negated noul questions, more out_of_scope questions (decision 40)
 seed: 0
 out_dir: data
 base_config: configs/base.yaml   # tokenizer_reference for the encoding check
@@ -10,6 +11,8 @@ clinc:
   k_max: 10
   p_gold_in_options: 0.8
   held_out_per_domain: 2
+  out_of_scope_questions_train: 1750   # target size of the out_of_scope kind in train; sets the in-scope rate p for every split
+  p_negated: 0.5                  # share of noul questions stored in the negated phrasing, gold flipped
 
 unseen:
   n_per_set: 1000

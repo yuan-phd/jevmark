@@ -103,3 +103,42 @@ def held_out_leaks(records: Iterable[Mapping[str, Any]], held_out: Iterable[str]
         if record["meta"].get("gold_intent") in held or labels & held:
             leaks.append(record["id"])
     return leaks
+
+
+def noul_phrasing(records: Iterable[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Per noul kind: negated share, and gold "true" / "false" counts in each phrasing (data v1.1).
+
+    A kind whose answer is predictable from its phrasing alone is a shortcut a model
+    can learn without reading the message; this table makes that visible.
+    """
+    table: dict[str, dict[str, Counter]] = defaultdict(lambda: {"positive": Counter(), "negated": Counter()})
+    for record in records:
+        for qid, question in record["questions"].items():
+            if question["type"] == "noul":
+                phrasing = "negated" if record["meta"].get("negated") else "positive"
+                table[qid][phrasing][record["gold"][qid]] += 1
+    result = {}
+    for kind, by in table.items():
+        n_pos, n_neg = sum(by["positive"].values()), sum(by["negated"].values())
+        result[kind] = {
+            "n": n_pos + n_neg,
+            "negated_share": n_neg / (n_pos + n_neg),
+            "positive": {"true": by["positive"]["true"], "false": by["positive"]["false"]},
+            "negated": {"true": by["negated"]["true"], "false": by["negated"]["false"]},
+        }
+    return result
+
+
+def phrasing_only_accuracy(train_table: Mapping[str, Any], table: Mapping[str, Any]) -> dict[str, float]:
+    """Accuracy per kind of answering each phrasing with its majority answer in train, without reading the message."""
+    accuracy = {}
+    for kind, row in table.items():
+        if kind not in train_table:
+            continue
+        correct = 0
+        for phrasing in ("positive", "negated"):
+            train_counts = train_table[kind][phrasing]
+            majority = "true" if train_counts["true"] >= train_counts["false"] else "false"
+            correct += row[phrasing][majority]
+        accuracy[kind] = correct / row["n"]
+    return accuracy

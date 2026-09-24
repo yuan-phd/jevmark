@@ -12,6 +12,7 @@ from jevmark.data.assemble import build_all
 from jevmark.data.build import SPLITS, gold_positions, held_out_leaks, noul_balance, position_deviations
 from jevmark.data.clinc import DOMAIN_PHRASES, DOMAINS_FILE, DOMAINS_SHA256, choose_held_out, intent_domains, load_domains
 from jevmark.data.description_loader import load_descriptions, load_overrides
+from jevmark.data.negation import is_negated, negate
 from jevmark.data.sources import CLINC, CLINC_OUT_OF_SCOPE, label_names
 from jevmark.data.sst5 import LEVELS
 from jevmark.encode import encode
@@ -116,7 +117,7 @@ def test_noul_yes_share_within_40_60(built, split):
 def test_noul_kinds_present_where_expected(built):
     assert set(noul_balance(built.splits["train"])) == {"about_domain", "out_of_scope"}
     assert set(noul_balance(built.splits["test_indomain"])) == {"about_domain", "out_of_scope"}
-    assert set(noul_balance(built.splits["test_unseen_intents"])) == {"about_domain"}
+    assert set(noul_balance(built.splits["test_unseen_intents"])) == {"about_domain", "out_of_scope"}  # v1.1: in-scope rate p applies here too
 
 
 @pytest.mark.parametrize("split", SPLITS)
@@ -147,11 +148,15 @@ def test_clinc_gold_answers_follow_the_rules(built):
                 assert gold["intent"] == "other"
             else:
                 assert gold["intent"] == (meta["gold_intent"] if meta["gold_in_options"] else "other")
-            if meta["noul_kind"] == "out_of_scope":
-                assert gold["out_of_scope"] == ("true" if meta["gold_intent"] == CLINC_OUT_OF_SCOPE else "false")
+            kind = meta["noul_kind"]
+            if kind == "out_of_scope":
+                positive_gold = "true" if meta["gold_intent"] == CLINC_OUT_OF_SCOPE else "false"
             else:
-                assert gold["about_domain"] == ("true" if meta["asked_domain"] == meta["domain"] else "false")
+                positive_gold = "true" if meta["asked_domain"] == meta["domain"] else "false"
                 assert DOMAIN_PHRASES[meta["asked_domain"]] in questions["about_domain"]["instructions"]
+            flipped = {"true": "false", "false": "true"}[positive_gold]
+            assert gold[kind] == (flipped if meta["negated"] else positive_gold)
+            assert is_negated(kind, questions[kind]["instructions"]) == meta["negated"]
 
 
 def test_out_of_scope_utterances_yield_two_records(built):
@@ -213,3 +218,35 @@ def test_config_overrides():
     for bad in (["seed"], ["nope=1"], ["seed.x=1"]):
         with pytest.raises(ValueError):
             load_config(REPO / "configs" / "data.yaml", bad)
+
+
+# Data v1.1: negated noul questions (decision 40)
+
+
+@pytest.mark.parametrize("kind, positive", [("about_domain", "Is this message about travel, such as flights, hotels or trip preparation?"), ("out_of_scope", None)])
+def test_negation_is_bidirectional(kind, positive):
+    from jevmark.data.clinc import OUT_OF_SCOPE_INSTRUCTIONS
+
+    positive = positive or OUT_OF_SCOPE_INSTRUCTIONS
+    negated = negate(kind, positive)
+    assert negated != positive and is_negated(kind, negated) and not is_negated(kind, positive)
+    assert negate(kind, negated) == positive and negate(kind, negate(kind, negated)) == negated
+
+
+def test_every_clinc_record_records_its_phrasing(built):
+    for split in ("train", "valid", "test_indomain", "test_unseen_intents"):
+        for record in clinc_records(built.splits[split]):
+            assert isinstance(record["meta"]["negated"], bool)
+
+
+@pytest.mark.parametrize("split", ["train", "valid", "test_indomain", "test_unseen_intents"])
+def test_about_half_of_each_noul_kind_is_negated(built, split):
+    from jevmark.data.build import noul_phrasing
+
+    for kind, row in noul_phrasing(built.splits[split]).items():
+        assert 0.4 <= row["negated_share"] <= 0.6, (split, kind, row)
+
+
+def test_out_of_scope_kind_has_about_1750_questions_in_train(built):
+    counts = noul_balance(built.splits["train"])["out_of_scope"]
+    assert abs(counts["true"] + counts["false"] - 1750) <= 100

@@ -101,6 +101,30 @@ class ClincBuilder:
         self.held_out = choose_held_out(load_domains(), int(self.params["held_out_per_domain"]), self.seed)
         self.seen = [i for i in self.intents if i not in set(self.held_out)]
         self.descriptions: dict[str, LabelDescription] = load_descriptions("clinc")
+        self.p_negated = float(self.params["p_negated"])
+        self.p_out_of_scope = self._out_of_scope_rate(int(self.params["out_of_scope_questions_train"]))
+
+    def _pool(self, split: str) -> tuple[list[Utterance], list[str]]:
+        """Utterances of a split and the intents allowed as options there."""
+        held = set(self.held_out)
+        if split == "test_unseen_intents":
+            pool = [u for hf in ("train", "validation", "test") for u in self.utterances[hf] if u.intent in held]
+            return pool, self.held_out
+        return [u for u in self.utterances[HF_SPLITS[split]] if u.intent not in held], self.seen
+
+    def _out_of_scope_rate(self, target_train: int) -> float:
+        """In-scope rate p of out_of_scope questions, set so train has about target_train of them (decision 40).
+
+        Each out-of-scope utterance contributes one out_of_scope question, so p =
+        (target - N_oos) / N_in on train; the same p is used in every split.
+        """
+        pool, _ = self._pool("train")
+        n_oos = sum(u.intent == CLINC_OUT_OF_SCOPE for u in pool)
+        n_in = len(pool) - n_oos
+        p = (target_train - n_oos) / n_in
+        if not 0.0 <= p < 1.0:
+            raise RuntimeError(f"out_of_scope target {target_train} needs in-scope rate {p:.4f}, outside [0, 1)")
+        return p
 
     def _choice(self, rng: random.Random, gold_intent: str | None, allowed: Sequence[str]) -> tuple[dict[str, Any], str, bool]:
         k = rng.randint(int(self.params["k_min"]), int(self.params["k_max"]))
@@ -119,10 +143,16 @@ class ClincBuilder:
         choice: tuple[dict[str, Any], str, bool],
         noul: tuple[str, dict[str, Any], str],
         noul_first: bool,
+        negated: bool,
         meta: dict[str, Any],
     ) -> dict[str, Any]:
+        from jevmark.data.negation import negate  # negation.py imports this module's instruction texts
+
         question, choice_gold, gold_in_options = choice
         noul_id, noul_question, noul_gold = noul
+        if negated:
+            noul_question = {**noul_question, "instructions": negate(noul_id, noul_question["instructions"])}
+            noul_gold = {"true": "false", "false": "true"}[noul_gold]
         pairs = [("intent", question, choice_gold), (noul_id, noul_question, noul_gold)]
         if noul_first:
             pairs.reverse()
@@ -140,37 +170,39 @@ class ClincBuilder:
                 "domain": self.domain_of.get(u.intent),
                 "gold_in_options": gold_in_options if u.intent != CLINC_OUT_OF_SCOPE else None,
                 "noul_kind": noul_id,
+                "negated": negated,
                 **meta,
             },
         )
 
     def build_split(self, split: str) -> list[dict[str, Any]]:
         rng = split_rng(self.seed, split)
-        held = set(self.held_out)
-        if split == "test_unseen_intents":
-            pool = [u for hf in ("train", "validation", "test") for u in self.utterances[hf] if u.intent in held]
-            allowed = self.held_out
-        else:
-            pool = [u for u in self.utterances[HF_SPLITS[split]] if u.intent not in held]
-            allowed = self.seen
+        negation_rng = split_rng(self.seed, f"{split}:negation")  # its own stream, so negation shifts no other draw
+        pool, allowed = self._pool(split)
         n_oos = sum(u.intent == CLINC_OUT_OF_SCOPE for u in pool)
         n_in = len(pool) - n_oos
-        if n_in <= n_oos:
-            raise RuntimeError(f"{split}: {n_in} in-scope against {n_oos} out-of-scope utterances; balance rule undefined")
-        p = n_oos / n_in
-        q = n_in / (2 * (n_in - n_oos))
+        p = self.p_out_of_scope
+        # q balances about_domain's underlying answers: about A = N_in (1 - p) in-scope records ask it,
+        # and every out-of-scope utterance adds one "false"; q A = (1 - q) A + N_oos.
+        in_scope_about_domain = n_in * (1 - p)
+        if in_scope_about_domain < n_oos:
+            raise RuntimeError(f"{split}: {n_oos} out-of-scope utterances exceed {in_scope_about_domain:.0f} in-scope about_domain questions")
+        q = (in_scope_about_domain + n_oos) / (2 * in_scope_about_domain)
         domains = sorted(DOMAIN_PHRASES)
+
+        def negated() -> bool:
+            return negation_rng.random() < self.p_negated
 
         records: list[dict[str, Any]] = []
         for u in pool:
             if u.intent == CLINC_OUT_OF_SCOPE:
                 # Two records: out_of_scope (true), then about_domain for a uniform domain (false).
                 choice = self._choice(rng, None, allowed)
-                records.append(self._record(split, len(records), u, choice, out_of_scope_question("true"), rng.random() < 0.5, {}))
+                records.append(self._record(split, len(records), u, choice, out_of_scope_question("true"), rng.random() < 0.5, negated(), {}))
                 asked = rng.choice(domains)
                 choice = self._choice(rng, None, allowed)
                 noul = domain_question(asked, "false")
-                records.append(self._record(split, len(records), u, choice, noul, rng.random() < 0.5, {"asked_domain": asked}))
+                records.append(self._record(split, len(records), u, choice, noul, rng.random() < 0.5, negated(), {"asked_domain": asked}))
                 continue
             choice = self._choice(rng, u.intent, allowed)
             if rng.random() < p:
@@ -179,7 +211,7 @@ class ClincBuilder:
                 gold_domain = self.domain_of[u.intent]
                 asked = gold_domain if rng.random() < q else rng.choice([d for d in domains if d != gold_domain])
                 noul, meta = domain_question(asked, "true" if asked == gold_domain else "false"), {"asked_domain": asked}
-            records.append(self._record(split, len(records), u, choice, noul, rng.random() < 0.5, meta))
+            records.append(self._record(split, len(records), u, choice, noul, rng.random() < 0.5, negated(), meta))
         return records
 
 

@@ -6,7 +6,7 @@ Data files are JSONL under `data/` (gitignored, rebuilt by `make data`). Option 
 
 One record is one `systemone` request plus its gold answers. Every record passes `Request.from_dict({"state": ..., "questions": ...})` unchanged.
 
-A real record from `data/train.jsonl` (seed 0):
+A real record from `data/train.jsonl` (data v1.1, seed 0):
 
 ```json
 {
@@ -15,26 +15,25 @@ A real record from `data/train.jsonl` (seed 0):
   "split": "train",
   "state": "transfer 200 dollars from paypal to savings",
   "questions": {
-    "about_domain": {
-      "type": "noul",
-      "instructions": "Is this message about banking, such as accounts, balances, bills or transfers?"
-    },
     "intent": {
       "type": "choice",
       "instructions": "Which intent does this message express?",
       "criteria": {
-        "meal_suggestion": "Seeking recommendations on what to have for a meal",
-        "bill_due": "Messages asking about when a bill payment is due or needs to be made",
-        "other": "None of the listed intents",
-        "mpg": "Ask about the miles per gallon fuel efficiency of a vehicle",
+        "oil_change_when": "Ask when the next oil change is needed for a vehicle",
+        "transactions": "Asks to show recent transactions or purchases on an account",
+        "alarm": "Requests related to creating or modifying alarms",
         "transfer": "Asking to transfer money from one account to another",
-        "restaurant_suggestion": "A request for recommendations on places to eat or restaurants nearby"
+        "other": "None of the listed intents"
       }
+    },
+    "about_domain": {
+      "type": "noul",
+      "instructions": "Is this message about something other than banking, such as accounts, balances, bills or transfers?"
     }
   },
   "gold": {
-    "about_domain": "true",
-    "intent": "transfer"
+    "intent": "transfer",
+    "about_domain": "false"
   },
   "meta": {
     "source_split": "train",
@@ -43,6 +42,7 @@ A real record from `data/train.jsonl` (seed 0):
     "domain": "banking",
     "gold_in_options": true,
     "noul_kind": "about_domain",
+    "negated": true,
     "asked_domain": "banking"
   }
 }
@@ -62,7 +62,7 @@ A real record from `data/train.jsonl` (seed 0):
 
 | Source | Keys |
 |---|---|
-| CLINC | `source_split`, `source_index`, `gold_intent` (intent name, or `oos`), `domain` (null for `oos`), `gold_in_options` (null for `oos`), `noul_kind` (`about_domain` or `out_of_scope`), `asked_domain` (for `about_domain` only) |
+| CLINC | `source_split`, `source_index`, `gold_intent` (intent name, or `oos`), `domain` (null for `oos`), `gold_in_options` (null for `oos`), `noul_kind` (`about_domain` or `out_of_scope`), `negated` (the noul question is stored in its negated phrasing, gold flipped), `asked_domain` (for `about_domain` only) |
 | SST-5 | `source_split`, `source_index`, `label_text` |
 | AG News, emotion, Banking77 | `source_split`, `source_index` |
 
@@ -74,6 +74,8 @@ Rules:
 - Records whose encoding exceeds the training `max_tokens` are dropped by the training loader, never truncated (API_SPEC section 4); the builder does not drop anything.
 
 ## 2. Splits and how each is built
+
+Current data version: **v1.1** (`version` in `configs/data.yaml`, decision 40). v1 had no negated noul questions and an out_of_scope rate tied to each split's out-of-scope count; the v1 runs (`runs/sft_06b`, `runs/base_06b` at commit 3fe318d, and the first B0 runs) were evaluated on v1.
 
 All randomness comes from one build seed in `configs/data.yaml`: **seed 0**. Each split uses its own generator, `random.Random(f"{seed}:{split}")`, and the held-out intents use `random.Random(f"{seed}:held_out")`, so rebuilding one split never changes another. The other build parameters (K range, gold inclusion probability, set sizes, noul balance bounds) are in the same file.
 
@@ -93,12 +95,13 @@ Noul question, one of two kinds:
 - `about_domain`: `Is this message about <domain phrase>?` The 10 domain phrases are written by hand in `jevmark/data/clinc.py` (`DOMAIN_PHRASES`); the intent-to-domain map is the original CLINC release's `domains.json`, checked in as `jevmark/data/clinc_domains.json` (section 3). For an in-scope utterance, the asked domain is the gold domain with probability q and a uniformly drawn other domain otherwise (q is set per split below). For an out-of-scope utterance the asked domain is uniform over the 10 domains and the answer is `false`.
 - `out_of_scope`: `Is this request outside what a banking, travel, home, work or everyday assistant can help with?` The answer is `true` for an out-of-scope utterance and `false` for an in-scope one.
 
-Kind assignment (decision 32), per split:
-- Every out-of-scope utterance yields two records: one with the `out_of_scope` question (answer `true`) and one with the `about_domain` question (answer `false`). Each record draws its own choice options; the choice answer is `other` in both.
-- Every in-scope utterance yields one record. It gets the `out_of_scope` question (answer `false`) with probability p = (number of out-of-scope utterances in the split) / (number of in-scope utterances in the split), so the expected number of `false` answers equals the number of `true` answers, and the `about_domain` question otherwise.
-- Resulting p: `train` 250 / 13000 = 0.0192; `valid` 100 / 2600 = 0.0385; `test_indomain` 1000 / 3900 = 0.2564; `test_unseen_intents` has no out-of-scope utterances, so p = 0 and it has no `out_of_scope` records.
-- `about_domain` gets extra `false` answers from the out-of-scope records, so q is raised to cancel them: with N_in in-scope and N_oos out-of-scope utterances, about N_in - N_oos in-scope records ask `about_domain`, and q = N_in / (2 (N_in - N_oos)) makes the expected `true` and `false` counts equal. Resulting q: `train` 13000 / 25500 = 0.5098; `valid` 2600 / 5000 = 0.52; `test_indomain` 3900 / 5800 = 0.6724; `test_unseen_intents` 0.5. With q = 0.5, `test_indomain` would have about 1450 `true` against 2450 `false` (37 percent yes) and fail the check below.
-- `build_data.py` prints the yes/no ratio of each noul kind in each split and fails if either answer is outside 40 to 60 percent. A kind with no records in a split is reported as absent and not checked.
+Kind assignment (decisions 32 and 40), per split:
+- Every out-of-scope utterance yields two records: one with the `out_of_scope` question (answer `true` before negation) and one with the `about_domain` question (answer `false` before negation). Each record draws its own choice options; the choice answer is `other` in both.
+- Every in-scope utterance yields one record. It gets the `out_of_scope` question (answer `false` before negation) with probability p, and the `about_domain` question otherwise. p is set once from train so that the out_of_scope kind has about `clinc.out_of_scope_questions_train` = 1750 questions there: p = (1750 - N_oos,train) / N_in,train = (1750 - 250) / 13000 = 0.1154, and the same p is used in every split.
+- about_domain asks the gold domain with probability q = (A + N_oos) / (2A), where A = N_in (1 - p) is the expected number of in-scope about_domain questions; this cancels the `false` answers from out-of-scope utterances, so about_domain's answers are balanced before negation. Resulting q: `train` 0.5109, `valid` 0.5217, `test_indomain` 0.6449, `test_unseen_intents` 0.5.
+- Negation (data v1.1): every noul question, of either kind and in every split, is stored in its negated phrasing with probability `clinc.p_negated` = 0.5, drawn from its own seeded stream (`"{seed}:{split}:negation"`), and its gold answer is flipped; `meta.negated` records which. The phrasings are in `jevmark/data/negation.py`: `Is this message about <phrase>?` and `Is this message about something other than <phrase>?`; `Is this request outside what a banking, travel, home, work or everyday assistant can help with?` and `Is this request something a banking, travel, home, work or everyday assistant can help with?`. The symmetry evaluation negates whichever phrasing a record holds.
+- Negation makes each kind's yes share 50 percent in expectation whatever its underlying balance. It does not balance each phrasing: out_of_scope has about 6 in-scope (`false`) utterances per out-of-scope (`true`) one in train, so its positive phrasing is mostly `false` and its negated phrasing mostly `true`, and the phrasing alone predicts the answer (section 5, phrasing-only accuracy). about_domain has no such shortcut.
+- `build_data.py` prints, per kind and split, the yes/no ratio (and fails if either answer is outside 40 to 60 percent), the negated share, the yes/no counts in each phrasing, and the accuracy of answering each phrasing with its train majority. A kind with no records in a split is reported as absent and not checked.
 
 Held-out intents: 20 intents, 2 per domain, chosen with the build seed. None of their utterances appear in `train` or `valid`, and none of them appear as a distractor option in `train` or `valid`. The list is recorded in section 4 when it is drawn.
 
@@ -154,7 +157,7 @@ Notes on the two ids that differ from the originally named ones (both substituti
 
 ## 4. Held-out intents
 
-Drawn with seed 0, two per domain (`random.Random("0:held_out")`, domains and intents in sorted order). None of them appears in `train` or `valid`, as an utterance or as an option; `test_unseen_intents` offers only these intents plus `other`.
+Unchanged in data v1.1 (the held-out stream does not depend on the other build parameters). Drawn with seed 0, two per domain (`random.Random("0:held_out")`, domains and intents in sorted order). None of them appears in `train` or `valid`, as an utterance or as an option; `test_unseen_intents` offers only these intents plus `other`.
 
 | Domain | Held-out intents |
 |---|---|
@@ -171,22 +174,35 @@ Drawn with seed 0, two per domain (`random.Random("0:held_out")`, domains and in
 
 ## 5. Split sizes
 
-From `make data` with seed 0 (`scripts/build_data.py`). Max tokens is the longest encoded record with the pinned reference tokenizer; every record must fit within 1024.
+From `make data` with data v1.1, seed 0 (`scripts/build_data.py`). Max tokens is the longest encoded record with the pinned reference tokenizer; every record must fit within 1024.
 
 | Split | Records | By source | Max tokens | about_domain yes / no | out_of_scope yes / no |
 |---|---|---|---|---|---|
-| `train` | 22044 | CLINC 13500, SST-5 8544 | 256 | 6374 / 6628 (49.0%) | 250 / 248 (50.2%) |
-| `valid` | 3901 | CLINC 2800, SST-5 1101 | 245 | 1311 / 1304 (50.1%) | 100 / 85 (54.1%) |
-| `test_indomain` | 5900 | CLINC 5900 | 244 | 1963 / 1958 (50.1%) | 1000 / 979 (50.5%) |
-| `test_unseen_intents` | 3000 | CLINC 3000 | 242 | 1463 / 1537 (48.8%) | absent |
+| `train` | 22044 | CLINC 13500, SST-5 8544 | 257 | 5866 / 5873 (50.0%) | 887 / 874 (50.4%) |
+| `valid` | 3901 | CLINC 2800, SST-5 1101 | 246 | 1247 / 1166 (51.7%) | 190 / 197 (49.1%) |
+| `test_indomain` | 5900 | CLINC 5900 | 244 | 2213 / 2264 (49.4%) | 696 / 727 (48.9%) |
+| `test_unseen_intents` | 3000 | CLINC 3000 | 242 | 1374 / 1294 (51.5%) | 176 / 156 (53.0%) |
 | `test_sst5` | 2210 | SST-5 2210 | 159 | | |
 | `test_agnews` | 1000 | AG News 1000 | 256 | | |
 | `test_emotion` | 1000 | emotion 1000 | 174 | | |
 | `test_banking77` | 1000 | Banking77 1000 | 273 | | |
 
+Noul phrasing (data v1.1). "Positive" and "negated" give gold yes / no in each phrasing; phrasing-only accuracy answers each phrasing with its majority answer in train, without reading the message.
+
+| Split | Kind | n | Negated share | Positive yes / no | Negated yes / no | Phrasing-only accuracy |
+|---|---|---|---|---|---|---|
+| `train` | about_domain | 11739 | 50.0% | 2901 / 2971 | 2965 / 2902 | 50.6% |
+| `train` | out_of_scope | 1761 | 49.5% | 133 / 757 | 754 / 117 | 85.8% |
+| `valid` | about_domain | 2413 | 51.4% | 604 / 569 | 643 / 597 | 50.2% |
+| `valid` | out_of_scope | 387 | 50.6% | 47 / 144 | 143 / 53 | 74.2% |
+| `test_indomain` | about_domain | 4477 | 50.1% | 1106 / 1130 | 1107 / 1134 | 50.0% |
+| `test_indomain` | out_of_scope | 1423 | 49.8% | 494 / 221 | 202 / 506 | 29.7% |
+| `test_unseen_intents` | about_domain | 2668 | 49.9% | 679 / 658 | 695 / 636 | 50.7% |
+| `test_unseen_intents` | out_of_scope | 332 | 53.0% | 0 / 156 | 176 / 0 | 100.0% |
+
 CLINC record counts are in-scope utterances plus twice the out-of-scope utterances (for example `train`: 13000 + 2 x 250).
 
-Gold option position is checked conditional on K, the number of options: for every split and every K with at least 100 choice questions, no position's share may deviate from 1/K by more than 4 binomial standard deviations (largest observed: 3.12, `valid` K=3). The unconditional answer-letter histogram is not uniform and cannot be: every question has options A and B (noul questions have exactly two) while J exists only when K = 10, and SST-5 levels follow the dataset's label distribution. `build_data.py` prints it for reference.
+Gold option position is checked conditional on K, the number of options: for every split and every K with at least 100 choice questions, no position's share may deviate from 1/K by more than 4 binomial standard deviations (largest observed in v1.1: 2.85, `test_banking77` K=10). The unconditional answer-letter histogram is not uniform and cannot be: every question has options A and B (noul questions have exactly two) while J exists only when K = 10, and SST-5 levels follow the dataset's label distribution. `build_data.py` prints it for reference.
 
 ## 6. Description generation
 

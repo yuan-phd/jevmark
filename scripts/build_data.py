@@ -24,7 +24,7 @@ from transformers import AutoTokenizer
 
 from jevmark.config import load_config
 from jevmark.data.assemble import build_all
-from jevmark.data.build import SPLITS, gold_positions, held_out_leaks, noul_balance, position_deviations
+from jevmark.data.build import SPLITS, gold_positions, held_out_leaks, noul_balance, noul_phrasing, phrasing_only_accuracy, position_deviations
 from jevmark.encode import LETTERS, encode, letter_token_ids
 from jevmark.schema import Request
 
@@ -74,6 +74,22 @@ def check_and_report(built: Any, config: dict[str, Any], tokenizer: Any) -> None
             if not low <= share <= high:
                 failures.append(f"{split}/{kind}: yes share {share:.1%} outside {low:.0%}-{high:.0%}")
         print(f"{split:20} " + "; ".join(parts))
+
+    print("\n== noul phrasing (data v1.1): negated share, gold yes/no per phrasing, phrasing-only accuracy (train majority per phrasing)")
+    train_table = noul_phrasing(built.splits.get("train", []))
+    for split, records in built.splits.items():
+        table = noul_phrasing(records)
+        if not table:
+            continue
+        shortcut = phrasing_only_accuracy(train_table, table)
+        for kind in ("about_domain", "out_of_scope"):
+            if kind in table:
+                row = table[kind]
+                print(
+                    f"{split:20} {kind:13} n {row['n']:5}  negated {row['negated_share']:.1%}  "
+                    f"positive {row['positive']['true']}/{row['positive']['false']}  negated {row['negated']['true']}/{row['negated']['false']}  "
+                    f"phrasing-only acc {shortcut.get(kind, float('nan')):.1%}"
+                )
 
     print("\n== options per choice question (K: count)")
     for split, records in built.splits.items():

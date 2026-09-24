@@ -37,8 +37,16 @@ def test_negation_templates_cover_both_noul_kinds():
 def test_negation_rejects_unknown_kind_or_unfit_instruction():
     with pytest.raises(ValueError, match="no negation template"):
         negate("sentiment", "How positive?")
-    with pytest.raises(ValueError, match="does not start with"):
+    with pytest.raises(ValueError, match="fits neither phrasing"):
         negate("about_domain", "Is this about travel?")
+
+
+def test_negated_record_works_for_either_stored_phrasing():
+    phrase = DOMAIN_PHRASES["work"]
+    record = {"questions": {"about_domain": {"type": "noul", "instructions": DOMAIN_INSTRUCTIONS.format(phrase=phrase)}}, "meta": {"noul_kind": "about_domain"}}
+    flipped = evaluate.negated_record(record)
+    assert flipped["questions"]["about_domain"]["instructions"] == f"Is this message about something other than {phrase}?"
+    assert evaluate.negated_record(flipped)["questions"] == record["questions"]
 
 
 # B0 configs
