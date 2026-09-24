@@ -63,6 +63,7 @@ Datasets are referenced by Hugging Face id. Ids move; the first step of any data
 ### 1.7 train_sft.py
 - [ ] LoRA SFT: cross-entropy at each slot over the selected letter columns only. Starting hyperparameters: r 16, alpha 32, dropout 0.05, targets q k v o, lr 2e-4, effective batch 32, 2 epochs, max_tokens 1024, fp16 autocast with GradScaler, fp32 LoRA weights, first-batch NaN check with fp32 fallback. Option shuffling on every epoch. Gradient checkpointing on for 1.7B.
 - [ ] Checkpoint every N steps and on session end; `--resume` flag.
+- [ ] Training scripts write a complete merged `config.yaml` into the run directory (backbone, tokenizer_reference, run_name, max_tokens, precision, LoRA and training settings), never only the overrides, because `default_model()` loads a run with its own `config.yaml` (API_SPEC section 1).
 - [ ] If 1.7B training runs out of memory on a T4 with fp32 frozen weights, switch the frozen backbone to fp16 with LoRA parameters in fp32, and make the fp32 fallback reload the model in fp32 instead of only disabling autocast (`JevMark.use_fp32`, decision 28).
 - [ ] Cache letter ids per tokenizer instead of recomputing them on every `encode` call, once the data loader exists (decision 26 records the current per-call cost).
 - [ ] Validation every N steps: accuracy and ECE on `valid`; keep best by validation NLL.
