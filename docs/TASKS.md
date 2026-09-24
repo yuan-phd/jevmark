@@ -24,6 +24,7 @@ Datasets are referenced by Hugging Face id. Ids move; the first step of any data
 ### 1.2 encode.py
 - [ ] `encode(request, tokenizer, max_tokens) -> Encoded(input_ids, slot_positions, letter_ids, question_ids)` producing the exact text in API_SPEC section 4, tokenized per segment as section 4 specifies, with the assertion that every slot id decodes to a string ending in `:`.
 - [ ] Assertion at load time that `" A"` to `" Z"` are single tokens.
+- [ ] Load-time check that the pinned Qwen3-0.6B-Base tokenizer and the Qwen3-1.7B-Base tokenizer produce identical ids for a fixed probe string; fail loudly if not.
 - [ ] Option shuffling helper for training that returns the permutation so labels can be remapped.
 - Acceptance: `tests/test_encode.py` checks that decoding `input_ids` reproduces a golden string for a three-question request, checks that every slot id decodes to a string ending in `:` and that the next id begins a `\n\n` separator or is the end of the sequence, checks that whole-text tokenization would have moved at least one slot (documenting why per-segment is required), and checks that changing option order changes letter assignment but not the set of letter ids.
 
