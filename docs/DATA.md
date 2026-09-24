@@ -73,17 +73,23 @@ Choice question `intent`:
 - Option labels are the CLINC intent names as given by the dataset (for example `freeze_account`).
 
 Noul question, one of two kinds:
-- `about_domain`: `Is this message about <domain phrase>?` The 10 CLINC domains and their phrases are written by hand in `jevmark/data/clinc.py`. For an in-scope utterance, the asked domain is the gold domain with probability 0.5 and a uniformly drawn other domain otherwise, so yes and no are balanced. For an out-of-scope utterance the answer is always `false`.
-- `out_of_scope`: `Is this request outside what a banking, travel, home, work or everyday assistant can help with?` The answer is `true` for an out-of-scope utterance.
-- Kind choice: an out-of-scope utterance gets `out_of_scope` with probability 0.5 and `about_domain` otherwise; an in-scope utterance gets `out_of_scope` with probability 0.1 and `about_domain` otherwise. `build_data.py` prints the resulting yes/no balance per kind.
+- `about_domain`: `Is this message about <domain phrase>?` The 10 CLINC domains and their phrases are written by hand in `jevmark/data/clinc.py`; the intent-to-domain map comes from the original CLINC release (section 3). For an in-scope utterance, the asked domain is the gold domain with probability q and a uniformly drawn other domain otherwise (q is set per split below). For an out-of-scope utterance the asked domain is uniform over the 10 domains and the answer is `false`.
+- `out_of_scope`: `Is this request outside what a banking, travel, home, work or everyday assistant can help with?` The answer is `true` for an out-of-scope utterance and `false` for an in-scope one.
+
+Kind assignment (decision 32), per split:
+- Every out-of-scope utterance yields two records: one with the `out_of_scope` question (answer `true`) and one with the `about_domain` question (answer `false`). Each record draws its own choice options; the choice answer is `other` in both.
+- Every in-scope utterance yields one record. It gets the `out_of_scope` question (answer `false`) with probability p = (number of out-of-scope utterances in the split) / (number of in-scope utterances in the split), so the expected number of `false` answers equals the number of `true` answers, and the `about_domain` question otherwise.
+- Resulting p: `train` 250 / 13000 = 0.0192; `valid` 100 / 2600 = 0.0385; `test_indomain` 1000 / 3900 = 0.2564; `test_unseen_intents` has no out-of-scope utterances, so p = 0 and it has no `out_of_scope` records.
+- `about_domain` gets extra `false` answers from the out-of-scope records, so q is raised to cancel them: with N_in in-scope and N_oos out-of-scope utterances, about N_in - N_oos in-scope records ask `about_domain`, and q = N_in / (2 (N_in - N_oos)) makes the expected `true` and `false` counts equal. Resulting q: `train` 13000 / 25500 = 0.5098; `valid` 2600 / 5000 = 0.52; `test_indomain` 3900 / 5800 = 0.6724; `test_unseen_intents` 0.5. With q = 0.5, `test_indomain` would have about 1450 `true` against 2450 `false` (37 percent yes) and fail the check below.
+- `build_data.py` prints the yes/no ratio of each noul kind in each split and fails if either answer is outside 40 to 60 percent. A kind with no records in a split is reported as absent and not checked.
 
 Held-out intents: 20 intents, 2 per domain, chosen with the build seed. None of their utterances appear in `train` or `valid`, and none of them appear as a distractor option in `train` or `valid`. The list is recorded in section 4 when it is drawn.
 
 | Split | Built from | Intents allowed as options |
 |---|---|---|
-| `train` | CLINC `train` minus held-out intents (in scope and out of scope) | the 130 seen intents |
-| `valid` | CLINC `validation` minus held-out intents | the 130 seen intents |
-| `test_indomain` | CLINC `test` minus held-out intents | the 130 seen intents |
+| `train` | CLINC `train` minus held-out intents (in scope and out of scope; each out-of-scope utterance yields two records) | the 130 seen intents |
+| `valid` | CLINC `validation` minus held-out intents (out-of-scope utterances yield two records) | the 130 seen intents |
+| `test_indomain` | CLINC `test` minus held-out intents (out-of-scope utterances yield two records) | the 130 seen intents |
 | `test_unseen_intents` | every utterance of the 20 held-out intents from all three CLINC splits (20 x 150 = 3000); the gold answer is `other` whenever the gold intent is not among the options | the 20 held-out intents only, so every non-`other` option is a label the model never trained on |
 
 ### SST-5 (`SetFit/sst5`)
@@ -108,13 +114,15 @@ One choice question per record. 1000 records per set, sampled from the dataset's
 | `test_emotion` | emotion `test` | all 6 emotion labels |
 | `test_banking77` | Banking77 `test` | the gold label, 8 distinct distractor labels and `other`: 10 options, gold always present |
 
+Labels are used exactly as the datasets give them, never normalised. This includes two irregular Banking77 names, `Refund_not_showing_up` (capital R) and `reverted_card_payment?` (trailing question mark); both are valid option labels under API_SPEC section 2.
+
 Instructions: AG News `Which topic is this news article about?`; emotion `Which emotion does this message express most strongly?`; Banking77 `Which banking request does this message make?`.
 
 ## 3. Dataset ids and revisions
 
 Verified with `scripts/check_datasets.py` (datasets 5.0.1, huggingface_hub 1.33.0). Every loader passes the revision below, so a moved or edited dataset cannot change a build silently.
 
-| Role | Id named in TASKS.md | Id used | Config | Revision (commit sha) | Splits and rows | Labels |
+| Role | Id originally named in TASKS.md | Id used | Config | Revision (commit sha) | Splits and rows | Labels |
 |---|---|---|---|---|---|---|
 | CLINC150 | `clinc_oos` | `clinc/clinc_oos` | `plus` | `155b9c710419136e17307b80d0a13e68cd46b4ec` | train 15250, validation 3100, test 5500 | `intent`: 151 classes (150 intents plus `oos`) |
 | SST-5 | `SetFit/sst5` | `SetFit/sst5` | none | `e51bdcd8cd3a30da231967c1a249ba59361279a3` | train 8544, validation 1101, test 2210 | `label` integer 0 to 4, `label_text` |
@@ -122,7 +130,7 @@ Verified with `scripts/check_datasets.py` (datasets 5.0.1, huggingface_hub 1.33.
 | emotion | `dair-ai/emotion` | `dair-ai/emotion` | none | `cab853a1dbdf4c42c2b3ef2173804746df8825fe` | train 16000, validation 2000, test 2000 | `label`: sadness, joy, love, anger, fear, surprise |
 | Banking77 | `PolyAI/banking77` | `legacy-datasets/banking77` | none | `f54121560de48f2852f90be299010d1d6dc612ec` | train 10003, test 3080 | `label`: 77 classes |
 
-Notes on the two ids that differ from TASKS.md:
+Notes on the two ids that differ from the originally named ones (both substitutions approved by the human; TASKS.md now uses the new ids):
 
 - `clinc_oos`: datasets 5 accepts only `namespace/name` ids, and the Hub redirects `clinc_oos` to `clinc/clinc_oos`, which holds parquet files for `plus` on `main`. Same repository, current name. It has no domain column, so the intent-to-domain mapping for the noul questions comes from the original CLINC release (`domains.json` in github.com/clinc/oos-eval); it is fetched and checked in, with its source commit, in the second half of task 1.5.
 - `PolyAI/banking77`: the repository holds only a loading script (`banking77.py`) that downloads CSVs from github.com/PolyAI-LDN/task-specific-datasets. datasets 5 no longer runs loading scripts, and the repository has no `refs/convert/parquet`. The parquet mirror `legacy-datasets/banking77` was compared row by row with the original `train.csv` and `test.csv` the script downloads: identical text and category for all 10003 train and 3080 test rows, in the same order, and the same 77 label names in the same order as the script's `dataset_infos.json`. `mteb/banking77` was rejected: it has 9993 train and 3076 test rows, so it is not a faithful copy.

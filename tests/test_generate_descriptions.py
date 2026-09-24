@@ -14,8 +14,8 @@ gen = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = gen  # dataclasses look up their module while the file executes
 spec.loader.exec_module(gen)
 
-CLINC = gen.LabelSet("clinc", "CLINC150 intent classification", "a request", ("transfer", "freeze_account", "balance"), 2, "clinc_intents.json", "clinc/clinc_oos/plus@sha")
-EMOTION = gen.LabelSet("emotion", "Emotion classification", "a tweet", ("joy", "anger"), 0, "emotion_labels.json", "dair-ai/emotion@sha")
+CLINC = gen.LabelSet("clinc", "CLINC150 intent classification", "a request", ("transfer", "freeze_account", "balance"), 2, "clinc_intents.json", "clinc/clinc_oos/plus@sha", 3)
+EMOTION = gen.LabelSet("emotion", "Emotion classification", "a tweet", ("joy", "anger"), 0, "emotion_labels.json", "dair-ai/emotion@sha", 2)
 
 REAL_ARGS = ["--model", "test-model", "--usd-per-million-input", "0.15", "--usd-per-million-output", "0.6"]
 
@@ -152,3 +152,17 @@ def test_spend_cap_stops_the_run(tmp_path):
     with pytest.raises(gen.BudgetExceeded):
         gen.generate([CLINC, EMOTION], client, args, tmp_path, log=lambda _: None)
     assert len(client.calls) == 3
+
+
+def test_expected_label_counts_match_the_real_datasets():
+    assert {key: spec[4] for key, spec in gen.DATASETS.items()} == {"clinc": 150, "banking77": 77, "ag_news": 4, "emotion": 6}
+
+
+@pytest.mark.parametrize(
+    "labels, expected",
+    [(("joy", "anger", "joy"), 3), (("joy", "anger"), 3), (("joy", "anger", "fear"), 2)],
+)
+def test_label_list_with_duplicates_or_wrong_count_fails(labels, expected):
+    broken = gen.LabelSet("emotion", "Emotion classification", "a tweet", labels, 0, "emotion_labels.json", "src", expected)
+    with pytest.raises(RuntimeError, match="expected exactly"):
+        gen.build_messages(broken, "joy")

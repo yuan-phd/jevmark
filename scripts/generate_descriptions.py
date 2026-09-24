@@ -68,14 +68,15 @@ class LabelSet:
     paraphrases: int
     filename: str
     source: str
+    expected_labels: int
 
 
-# key -> (title, subject, paraphrases per label, output file)
-DATASETS: dict[str, tuple[str, str, int, str]] = {
-    "clinc": ("CLINC150 intent classification", "a request or message sent to a virtual assistant", 2, "clinc_intents.json"),
-    "banking77": ("Banking77 intent classification", "a customer message sent to a bank's support chat", 0, "banking77_labels.json"),
-    "ag_news": ("AG News topic classification", "a news article headline and summary", 0, "ag_news_labels.json"),
-    "emotion": ("Emotion classification", "a short personal message, such as a tweet", 0, "emotion_labels.json"),
+# key -> (title, subject, paraphrases per label, output file, expected label count)
+DATASETS: dict[str, tuple[str, str, int, str, int]] = {
+    "clinc": ("CLINC150 intent classification", "a request or message sent to a virtual assistant", 2, "clinc_intents.json", 150),
+    "banking77": ("Banking77 intent classification", "a customer message sent to a bank's support chat", 0, "banking77_labels.json", 77),
+    "ag_news": ("AG News topic classification", "a news article headline and summary", 0, "ag_news_labels.json", 4),
+    "emotion": ("Emotion classification", "a short personal message, such as a tweet", 0, "emotion_labels.json", 6),
 }
 
 
@@ -85,14 +86,25 @@ def load_label_sets(keys: Sequence[str]) -> list[LabelSet]:
 
     label_sets = []
     for key in keys:
-        title, subject, paraphrases, filename = DATASETS[key]
+        title, subject, paraphrases, filename, expected = DATASETS[key]
         source = SOURCES[key]
         labels = tuple(name for name in label_names(source) if not (key == "clinc" and name == CLINC_OUT_OF_SCOPE))
-        label_sets.append(LabelSet(key, title, subject, labels, paraphrases, filename, source.pinned))
+        label_sets.append(LabelSet(key, title, subject, labels, paraphrases, filename, source.pinned, expected))
     return label_sets
 
 
+def check_label_list(label_set: LabelSet) -> None:
+    """Raises RuntimeError unless the label list has exactly the expected count and no duplicates."""
+    labels = label_set.labels
+    if len(labels) != label_set.expected_labels or len(set(labels)) != len(labels):
+        raise RuntimeError(
+            f"{label_set.key}: label list has {len(labels)} entries, {len(set(labels))} distinct; "
+            f"expected exactly {label_set.expected_labels} distinct labels"
+        )
+
+
 def build_messages(label_set: LabelSet, label: str) -> list[dict[str, str]]:
+    check_label_list(label_set)
     task = TASK_WITH_PARAPHRASES if label_set.paraphrases else TASK_CANONICAL
     user = USER_TEMPLATE.format(
         title=label_set.title,
@@ -236,6 +248,9 @@ def dry_run(label_sets: Sequence[LabelSet], args: argparse.Namespace, log: Calla
             log(f"--- {message['role']} ---")
             log(message["content"])
         log("")
+    for label_set in label_sets:
+        check_label_list(label_set)
+        log(f"labels: {label_set.key}: {len(label_set.labels)} listed, {len(set(label_set.labels))} distinct, expected {label_set.expected_labels}")
     for label_set in label_sets:
         n = len(label_set.labels[: args.limit])
         log(f"planned: {label_set.key}: {n} labels -> {label_set.filename} ({label_set.paraphrases} paraphrases each)")
