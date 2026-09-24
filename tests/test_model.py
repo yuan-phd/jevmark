@@ -284,3 +284,37 @@ def test_use_fp32_without_a_source_casts_in_place(tiny_config, tokenizer):
     jev = JevMark(model, tokenizer, max_tokens=2048, autocast_dtype=torch.float16)
     jev.use_fp32()
     assert {p.dtype for p in jev.model.parameters()} == {torch.float32} and jev.autocast_dtype is None
+
+
+# Merged LoRA for inference (task 1.7)
+
+
+def test_merged_and_unmerged_distributions_agree(saved_run, encoded_pair):
+    from peft import PeftModel
+
+    config, run_dir = saved_run
+    unmerged = JevMark.load(config, checkpoint=run_dir, device="cpu")
+    merged = JevMark.load(config, checkpoint=run_dir, device="cpu")
+    assert merged.merge_lora() is True and merged.merged
+    assert not isinstance(merged.model, PeftModel) and isinstance(unmerged.model, PeftModel)
+    for x, y in zip(merged.forward_distributions(list(encoded_pair)), unmerged.forward_distributions(list(encoded_pair))):
+        torch.testing.assert_close(x, y, atol=1e-3, rtol=0)
+
+
+def test_merge_without_adapter_is_a_no_op(tiny_model, tokenizer):
+    jev = JevMark(tiny_model, tokenizer, max_tokens=2048)
+    assert jev.merge_lora() is False and not jev.merged
+
+
+def test_fp32_fallback_keeps_a_merged_model_merged(saved_run, encoded_pair):
+    from peft import PeftModel
+
+    config, run_dir = saved_run
+    jev = JevMark.load(config, checkpoint=run_dir, device="cpu", half=True)
+    jev.merge_lora()
+    jev.use_fp32()
+    assert jev.merged and not isinstance(jev.model, PeftModel)
+    assert {p.dtype for p in jev.model.parameters()} == {torch.float32}
+    reference = JevMark.load(config, checkpoint=run_dir, device="cpu")
+    for x, y in zip(jev.forward_distributions(list(encoded_pair)), reference.forward_distributions(list(encoded_pair))):
+        torch.testing.assert_close(x, y, atol=1e-3, rtol=0)

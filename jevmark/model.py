@@ -90,6 +90,7 @@ class JevMark:
     ) -> None:
         self.model = model
         self.source = source
+        self.merged = False
         self.tokenizer = tokenizer
         self.max_tokens = max_tokens
         self.temperature = temperature
@@ -163,9 +164,24 @@ class JevMark:
         if self.source is not None:
             reloaded = JevMark.load(self.source.config, self.source.checkpoint, self.source.device, half=False)
             self.model = reloaded.model
+            if self.merged:
+                self.merged = False
+                self.merge_lora()
         else:
             self.model.float()
         self.autocast_dtype = None
+
+    def merge_lora(self) -> bool:
+        """Merge a LoRA adapter into the backbone weights for inference; True if there was one to merge.
+
+        A merged model runs as fast as the plain backbone. It cannot be trained further.
+        """
+        if not isinstance(self.model, PeftModel):
+            return False
+        self.model = self.model.merge_and_unload()
+        self.model.eval()
+        self.merged = True
+        return True
 
     def _autocast(self) -> contextlib.AbstractContextManager:
         if self.autocast_dtype is None:

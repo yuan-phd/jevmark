@@ -238,3 +238,41 @@ def test_git_state_is_recorded_before_outputs(eval_inputs, monkeypatch, tmp_path
     monkeypatch.setattr(evaluate, "git_state", lambda: seen.append(runs_dir.exists()) or real())
     assert evaluate.main(["--ckpt", "base", "--config", str(config_path), "--limit", "2", "--splits", "test_agnews", "--data-dir", str(data_dir), "--runs-dir", str(runs_dir), "--device", "cpu"]) == 0
     assert seen == [False]
+
+
+# Merged LoRA path recorded in metrics.json (task 1.7)
+
+
+@pytest.fixture(scope="module")
+def lora_checkpoint(eval_inputs, tiny_model):
+    import torch
+    from peft import LoraConfig, get_peft_model
+
+    root, config_path, _ = eval_inputs
+    run_dir = root / "checkpoints" / "tiny_lora"
+    model = get_peft_model(copy.deepcopy(tiny_model), LoraConfig(r=4, lora_alpha=8, target_modules=["q_proj", "v_proj"]))
+    generator = torch.Generator().manual_seed(0)
+    with torch.no_grad():
+        for name, param in model.named_parameters():
+            if "lora_B" in name:
+                param.copy_(torch.randn(param.shape, generator=generator) * 0.5)
+    model.save_pretrained(run_dir / "adapter")
+    config = yaml.safe_load(config_path.read_text())
+    config["run_name"] = "tiny_lora"
+    (run_dir / "config.yaml").write_text(yaml.safe_dump(config))
+    (run_dir / "model_id.txt").write_text("jevmark-tiny_lora\n")
+    return run_dir
+
+
+@pytest.mark.parametrize("extra, merged", [([], True), (["--no-merge"], False)])
+def test_metrics_record_whether_lora_was_merged(eval_inputs, lora_checkpoint, tmp_path, extra, merged):
+    _, _, data_dir = eval_inputs
+    runs_dir = tmp_path / "runs"
+    args = ["--ckpt", str(lora_checkpoint), "--limit", "3", "--splits", "test_agnews", "--data-dir", str(data_dir), "--runs-dir", str(runs_dir), "--device", "cpu", *extra]
+    assert evaluate.main(args) == 0
+    metrics = json.loads((runs_dir / "tiny_lora_limit3" / "metrics.json").read_text())
+    assert metrics["lora_merged"] is merged and metrics["model_id"] == "jevmark-tiny_lora"
+
+
+def test_base_run_records_no_lora(run):
+    assert json.loads((run / "metrics.json").read_text())["lora_merged"] is None

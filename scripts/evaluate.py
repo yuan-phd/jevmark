@@ -7,6 +7,8 @@ Reads the unrounded distributions from JevMark.forward_distributions (through
 encode), never the rounded systemone responses. Writes runs/<run_name>/metrics.json,
 config.yaml, model_id.txt, plots/<split>.png and results.jsonl.gz (one line per
 question, gitignored; scripts/recompute_metrics.py rebuilds metrics.json from it).
+A trained adapter is merged into the backbone
+before evaluation unless --no-merge is given; metrics.json records which path ran.
 With --ckpt base the run name is
 the config's run_name (base_06b or base_17b); a --limit run writes to
 runs/<run_name>_limit<N>/ so smoke runs never overwrite real results.
@@ -264,6 +266,7 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=None, help="first N records per split, for smoke runs")
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--device", default=None, help="cpu, cuda or cuda:N; default cuda when available")
+    parser.add_argument("--no-merge", action="store_true", help="keep the LoRA adapter unmerged (default: merge it into the backbone for speed)")
     parser.add_argument("--data-dir", default=str(REPO / "data"))
     parser.add_argument("--runs-dir", default=str(REPO / "runs"))
     args = parser.parse_args(argv)
@@ -290,7 +293,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     log(f"run {run_name}: ckpt {args.ckpt}, config {config_path}, backbone {config['backbone']['id']}")
     jev = JevMark.load(config, checkpoint=checkpoint, device=args.device)
-    log(f"model {jev.model_id} on {jev.device}, autocast {jev.autocast_dtype}, max_tokens {jev.max_tokens}")
+    lora_merged = None if checkpoint is None else (False if args.no_merge else jev.merge_lora())
+    log(f"model {jev.model_id} on {jev.device}, autocast {jev.autocast_dtype}, max_tokens {jev.max_tokens}, lora merged {lora_merged}")
 
     started = time.perf_counter()
     git = git_state()  # before any output exists (decision 35)
@@ -334,6 +338,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "device": str(jev.device),
         "precision": {"autocast": str(jev.autocast_dtype) if jev.autocast_dtype else None, "fp32_fallback_used": fallback_used},
         "temperature": jev.temperature,
+        "lora_merged": lora_merged,
         "data_files_sha256": data_files,
         "confidence_note": "ECE and reliability use the top-1 probability; coverage uses the response confidence field (1 - H/ln K for choice and score, max(p, 1 - p) for noul).",
         "splits": split_results,
