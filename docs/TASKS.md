@@ -17,8 +17,8 @@ Datasets are referenced by Hugging Face id. Ids move; the first step of any data
 ## Phase 1: v1 supervised decision model
 
 ### 1.1 schema.py
-- [ ] Dataclasses for NoulQuestion, ChoiceQuestion, ScoreQuestion, Request, Answer variants, Response, with `from_dict` and `to_dict`.
-- [ ] Validation exactly as docs/API_SPEC.md section 2 and 7.
+- [x] Dataclasses for NoulQuestion, ChoiceQuestion, ScoreQuestion, Request, Answer variants, Response, with `from_dict` and `to_dict`. Proof: `tests/test_schema.py::test_valid_three_question_request_keeps_order_and_round_trips`, `::test_response_round_trips_spec_example`.
+- [x] Validation exactly as docs/API_SPEC.md section 2 and 7. Proof: `tests/test_schema.py` (67 tests pass); the encoded-length case is deferred to `tests/test_encode.py` in task 1.2 because it needs the tokenizer.
 - Acceptance: `tests/test_schema.py` covers every error case in section 7 and one valid request per type.
 
 ### 1.2 encode.py
