@@ -62,7 +62,7 @@ Datasets are referenced by Hugging Face id. Ids move; the first step of any data
 
 ### 1.6b Evaluation follow-up (after B0)
 - [x] model.py: on CUDA, frozen backbone weights in fp16, LoRA parameters and the letter readout in fp32; the fp32 fallback reloads the model in fp32. CPU stays fp32. Proof: `tests/test_model.py::test_half_backbone_policy`, `::test_load_on_cpu_keeps_everything_fp32`, `::test_half_load_keeps_lora_and_readout_fp32`, `::test_use_fp32_reloads_the_model_in_fp32`, `::test_use_fp32_without_a_source_casts_in_place`.
-- [ ] encode.py: cache letter ids per tokenizer object.
+- [x] encode.py: cache letter ids per tokenizer object. Proof: `tests/test_encode.py::test_letter_ids_are_computed_once_per_tokenizer`, `::test_letter_id_cache_is_per_tokenizer_object`, `::test_cached_letter_ids_equal_a_fresh_computation`.
 - [ ] evaluate.py writes `runs/<run_name>/results.jsonl.gz` (one line per question, gitignored); `scripts/recompute_metrics.py` rebuilds `metrics.json` from it.
 - [ ] metrics.py: noul by kind with yes rate; choice by gold `other` versus gold named label with the rate of predicting `other`; letter bias by position and K jointly.
 - [ ] API_SPEC section 1 and decision 30 carry the measured batched versus single differences.
@@ -73,7 +73,7 @@ Datasets are referenced by Hugging Face id. Ids move; the first step of any data
 - [ ] Checkpoint every N steps and on session end; `--resume` flag.
 - [ ] Training scripts write a complete merged `config.yaml` into the run directory (backbone, tokenizer_reference, run_name, max_tokens, precision, LoRA and training settings), never only the overrides, because `default_model()` loads a run with its own `config.yaml` (API_SPEC section 1).
 - [x] If 1.7B training runs out of memory on a T4 with fp32 frozen weights, switch the frozen backbone to fp16 with LoRA parameters in fp32, and make the fp32 fallback reload the model in fp32 instead of only disabling autocast (`JevMark.use_fp32`, decision 28). Done ahead of need in task 1.6b (fp16 frozen backbone on CUDA for inference and training; fallback reloads).
-- [ ] Cache letter ids per tokenizer instead of recomputing them on every `encode` call, once the data loader exists (decision 26 records the current per-call cost).
+- [x] Cache letter ids per tokenizer instead of recomputing them on every `encode` call, once the data loader exists (decision 26 records the current per-call cost). Done in task 1.6b (decision 36).
 - [ ] Validation every N steps: accuracy and ECE on `valid`; keep best by validation NLL.
 - [ ] `notebooks/kaggle_train.ipynb` thin wrapper: clone repo, pip install, run the script, upload `runs/<run_name>` as a Kaggle dataset or to the HF Hub.
 - Acceptance: runs `sft_clinc_v1_06b` and `sft_clinc_v1_17b` complete on Kaggle, metrics on all test splits written for both. About 0.5 GPU hours for 0.6B and 1.5 to 2 GPU hours for 1.7B; measure and update.

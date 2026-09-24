@@ -288,3 +288,40 @@ def test_shuffle_request_touches_choice_questions_only():
     assert shuffled.questions[0] == request.questions[0]
     assert shuffled.questions[2] == request.questions[2]
     assert sorted(shuffled.questions[1].options) == sorted(request.questions[1].options)
+
+
+# Letter id cache (task 1.6b)
+
+
+class CountingTokenizer(FakeTokenizer):
+    """Counts encode calls for the 26 letter strings " A" to " Z"."""
+
+    def __init__(self, inner):
+        super().__init__(inner, {})
+        self.letter_calls = 0
+
+    def encode(self, text, add_special_tokens=False):
+        if text in {f" {letter}" for letter in LETTERS}:
+            self.letter_calls += 1
+        return super().encode(text, add_special_tokens=add_special_tokens)
+
+
+def test_letter_ids_are_computed_once_per_tokenizer(tokenizer):
+    counting = CountingTokenizer(tokenizer)
+    first = encode(spec_request(), counting, max_tokens=2048)
+    assert counting.letter_calls == 26
+    second = encode(spec_request(), counting, max_tokens=2048)
+    assert counting.letter_calls == 26  # no letter lookups after the first call
+    assert first == second
+
+
+def test_letter_id_cache_is_per_tokenizer_object(tokenizer):
+    a, b = CountingTokenizer(tokenizer), CountingTokenizer(tokenizer)
+    encode(spec_request(), a, max_tokens=2048)
+    encode(spec_request(), b, max_tokens=2048)
+    assert a.letter_calls == 26 and b.letter_calls == 26
+
+
+def test_cached_letter_ids_equal_a_fresh_computation(tokenizer):
+    counting = CountingTokenizer(tokenizer)
+    assert letter_token_ids(counting) == letter_token_ids(counting) == letter_token_ids(CountingTokenizer(tokenizer))

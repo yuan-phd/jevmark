@@ -9,6 +9,7 @@ token boundary (decision 17). Training and inference both use `encode`.
 from __future__ import annotations
 
 import random
+import weakref
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import Any, Protocol
@@ -19,6 +20,10 @@ from jevmark.schema import ChoiceQuestion, NoulQuestion, Question, Request, Scor
 
 LETTERS = tuple("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 SEPARATOR = "\n\n"
+
+# Letter ids per tokenizer object, computed and checked on first use (decision 36).
+# Weak keys: an entry goes away with its tokenizer, so ids never outlive the object they came from.
+_LETTER_IDS: weakref.WeakKeyDictionary[Any, tuple[int, ...]] = weakref.WeakKeyDictionary()
 
 # Covers the encoding format, digits, JSON punctuation, non-ASCII text and every
 # letter token read at a slot. Two tokenizers that agree here agree on encode().
@@ -91,7 +96,20 @@ def _ids(tokenizer: Tokenizer, text: str) -> list[int]:
 
 
 def letter_token_ids(tokenizer: Tokenizer) -> tuple[int, ...]:
-    """Ids of " A" to " Z". Raises TokenizerError unless each is exactly one token."""
+    """Ids of " A" to " Z", cached per tokenizer object. Raises TokenizerError unless each is exactly one token."""
+    try:
+        return _LETTER_IDS[tokenizer]
+    except (KeyError, TypeError):
+        pass
+    ids = _compute_letter_ids(tokenizer)
+    try:
+        _LETTER_IDS[tokenizer] = ids
+    except TypeError:
+        pass  # not weak-referenceable: works, just uncached
+    return ids
+
+
+def _compute_letter_ids(tokenizer: Tokenizer) -> tuple[int, ...]:
     ids = []
     for letter in LETTERS:
         pieces = _ids(tokenizer, f" {letter}")
