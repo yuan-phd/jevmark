@@ -22,10 +22,10 @@ Datasets are referenced by Hugging Face id. Ids move; the first step of any data
 - Acceptance: `tests/test_schema.py` covers every error case in section 7 and one valid request per type.
 
 ### 1.2 encode.py
-- [ ] `encode(request, tokenizer, max_tokens) -> Encoded(input_ids, slot_positions, letter_ids, question_ids)` producing the exact text in API_SPEC section 4, tokenized per segment as section 4 specifies, with the assertion that every slot id decodes to a string ending in `:`.
-- [ ] Assertion at load time that `" A"` to `" Z"` are single tokens.
-- [ ] Load-time check that the pinned Qwen3-0.6B-Base tokenizer and the Qwen3-1.7B-Base tokenizer produce identical ids for a fixed probe string; fail loudly if not.
-- [ ] Option shuffling helper for training that returns the permutation so labels can be remapped.
+- [x] `encode(request, tokenizer, max_tokens) -> Encoded(input_ids, slot_positions, letter_ids, question_ids)` producing the exact text in API_SPEC section 4, tokenized per segment as section 4 specifies, with the assertion that every slot id decodes to a string ending in `:`. Proof: `tests/test_encode.py::test_decoding_input_ids_reproduces_golden`, `::test_slot_ids_end_in_colon_and_next_id_is_separator_or_end`, `::test_whole_text_tokenization_would_move_a_slot`, `::test_slot_not_ending_in_colon_fails_loudly`, `::test_encoded_length_over_max_tokens`.
+- [x] Assertion at load time that `" A"` to `" Z"` are single tokens. Proof: `tests/test_encode.py::test_letter_tokens_are_single_and_distinct`, `::test_letter_token_that_splits_fails_loudly`.
+- [x] Load-time check that the pinned Qwen3-0.6B-Base tokenizer and the Qwen3-1.7B-Base tokenizer produce identical ids for a fixed probe string; fail loudly if not. Proof: `tests/test_encode.py::test_pinned_06b_and_17b_tokenizers_agree`, `::test_parity_mismatch_fails_loudly`.
+- [x] Option shuffling helper for training that returns the permutation so labels can be remapped. Proof: `tests/test_encode.py::test_shuffle_options_returns_permutation_for_label_remap`, `::test_shuffle_is_seeded_and_covers_all_positions`, `::test_shuffle_request_touches_choice_questions_only`; option order acceptance: `::test_option_order_changes_letter_assignment_not_letter_ids`.
 - Acceptance: `tests/test_encode.py` checks that decoding `input_ids` reproduces a golden string for a three-question request, checks that every slot id decodes to a string ending in `:` and that the next id begins a `\n\n` separator or is the end of the sequence, checks that whole-text tokenization would have moved at least one slot (documenting why per-segment is required), and checks that changing option order changes letter assignment but not the set of letter ids.
 
 ### 1.3 model.py

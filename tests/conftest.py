@@ -1,21 +1,31 @@
-"""Shared CPU fixtures: the real Qwen3 tokenizer and a tiny randomly initialised Qwen3.
+"""Shared CPU fixtures: the base config, the real Qwen3 tokenizer and a tiny randomly initialised Qwen3.
 
-The tokenizer is fetched once from the HF Hub at a pinned revision and cached by
-huggingface_hub. No real weights are ever loaded in tests.
+The tokenizer is fetched once from the HF Hub at the revision pinned in
+configs/base.yaml (tokenizer_reference) and cached by huggingface_hub. No real
+weights are ever loaded in tests.
 """
+
+from pathlib import Path
+from typing import Any
 
 import pytest
 import torch
+import yaml
 from transformers import AutoTokenizer, PreTrainedTokenizerBase, Qwen3Config, Qwen3ForCausalLM
 
-# Qwen3-0.6B-Base and Qwen3-1.7B-Base share one tokenizer.
-TOKENIZER_ID = "Qwen/Qwen3-0.6B-Base"
-TOKENIZER_REVISION = "da87bfb608c14b7cf20ba1ce41287e8de496c0cd"
+BASE_CONFIG_PATH = Path(__file__).resolve().parents[1] / "configs" / "base.yaml"
 
 
 @pytest.fixture(scope="session")
-def tokenizer() -> PreTrainedTokenizerBase:
-    return AutoTokenizer.from_pretrained(TOKENIZER_ID, revision=TOKENIZER_REVISION)
+def base_config() -> dict[str, Any]:
+    return yaml.safe_load(BASE_CONFIG_PATH.read_text())
+
+
+@pytest.fixture(scope="session")
+def tokenizer(base_config: dict[str, Any]) -> PreTrainedTokenizerBase:
+    # Qwen3-0.6B-Base and Qwen3-1.7B-Base share one tokenizer; tests/test_encode.py checks it.
+    reference = base_config["tokenizer_reference"]
+    return AutoTokenizer.from_pretrained(reference["id"], revision=reference["revision"])
 
 
 @pytest.fixture(scope="session")
