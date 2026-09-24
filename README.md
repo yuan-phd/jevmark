@@ -4,4 +4,4 @@ A small System One decision model: text state and typed questions in, probabilit
 
 Start with `docs/PLAN.md`. The API contract is `docs/API_SPEC.md`. The ordered task list is `docs/TASKS.md`. Rules for working in this repo are in `CLAUDE.md`.
 
-Status: planning complete, no code yet.
+Status: task 0.1 (repository skeleton) done; see docs/TASKS.md for progress.

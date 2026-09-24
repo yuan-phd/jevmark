@@ -2,7 +2,7 @@
 
 ## What this project is
 
-jevmark is a small System One decision model. A text state and a set of typed questions go in; a probability distribution and a confidence score per question come out, from one forward pass, with no text generation. It is an independent re-implementation of the concept behind TypeSafe AI's Jev model, built for learning and for a portfolio. Phase 3 plugs it into an existing LangGraph agent (delta-filing) as the decision backend, replacing LLM calls that only decide and never write.
+jevmark is a small System One decision model. A text state and a set of typed questions go in; a probability distribution per question comes out, plus a confidence score for choice and score questions, from one forward pass, with no text generation. It is an independent re-implementation of the concept behind TypeSafe AI's Jev model, built for learning and for a portfolio. Phase 3 plugs it into an existing LangGraph agent (delta-filing) as the decision backend, replacing LLM calls that only decide and never write.
 
 Read docs/PLAN.md first, then docs/API_SPEC.md, then docs/TASKS.md. Work on exactly one task at a time, in order, unless the human says otherwise.
 
@@ -23,7 +23,7 @@ Read docs/PLAN.md first, then docs/API_SPEC.md, then docs/TASKS.md. Work on exac
 - Precision: fp16 autocast with GradScaler and fp32 LoRA weights. Every training and evaluation script checks the first batch for NaN or inf in the slot logits and, on failure, restarts in fp32 automatically and logs that it did. fp32 fits both 0.6B and 1.7B on a T4; it does not fit 4B, which is one reason 4B is not the default.
 - Where work happens: tasks 0.1 through 1.5 run locally on CPU (tests use the tiny model; data building and description generation need only the API key and dataset downloads). Tasks 1.6 onward run on Kaggle through the thin notebooks. Run every GPU stage on 0.6B first, then repeat on 1.7B.
 - Post-training only, via LoRA (peft). No from-scratch pretraining. No full fine-tune.
-- Python 3.10 or newer. Core deps: torch, transformers, peft, datasets, numpy, pyyaml, matplotlib, pytest. Optional: fastapi, uvicorn, openai (baseline only).
+- Python 3.11, managed with uv (pyproject plus uv.lock). Core deps: torch (CPU wheels locally; Kaggle's preinstalled torch on Kaggle), transformers>=4.51 (Qwen3 support), peft, datasets, numpy, pyyaml, matplotlib, pytest. Optional extras: serve (fastapi, uvicorn), baselines (openai).
 
 ## Repository layout
 
@@ -56,7 +56,8 @@ jevmark/
     serve.py          optional FastAPI wrapper
   notebooks/          thin Kaggle wrappers only: clone, install, run a script
   tests/
-  runs/               gitignored; metrics.json + config.yaml per run
+  runs/               adapters and weights gitignored; metrics.json, config.yaml,
+                      calibration.json and model_id.txt are committed so reports can link to them
   docs/
     PLAN.md
     API_SPEC.md
@@ -80,7 +81,10 @@ jevmark/
 ## Conventions
 
 - Type hints and dataclasses; no global mutable state.
-- Configs are YAML under configs/. Scripts take `--config` plus optional `key=value` overrides. Every run has a seed and a run_name.
+- Configs are YAML under configs/. Training scripts take `--config` plus optional `key=value` overrides. Evaluation and baseline scripts take `--ckpt` (a run directory, or `base`) and `--splits`, plus `--config` to choose the backbone when `--ckpt` is `base`; the run name is then `base_06b` or `base_17b`. Every run has a seed and a run_name.
+- `.gitignore`: `/data/`, `/runs/*/adapter/`, weight files (`*.safetensors`, `*.bin`, `*.pt`), `.env`, caches. Never a bare `data/` pattern, which would also match `jevmark/data/`.
+- Git: commit on `main` at least once per task, with the task id at the start of the message (`task 1.2: encode.py`). Tag `v1`, `v2`, `v3` at the end of each phase. No branches for a solo project unless the human asks.
+- The tiny test model uses the real Qwen3 tokenizer, fetched once from the HF Hub at a pinned revision and cached. Do not vendor tokenizer files into the repo.
 - Data files are JSONL, one record per line. Record schema is documented in docs/DATA.md.
 - Prose in docs, comments and commit messages: plain English, no emojis, no em dashes.
 - Any demo or integration keeps its question definitions and thresholds in one file so a reviewer can read them in one place.

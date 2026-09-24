@@ -7,12 +7,13 @@ This file is the contract between data building, training, evaluation and infere
 ```python
 from jevmark import systemone
 
-response = systemone(state, questions, model=None, max_tokens=2048)
+response = systemone(state, questions, model=None, max_tokens=None)
 ```
 
 - `state`: a string, or a JSON-serialisable dict or list. Dicts and lists are rendered as pretty-printed JSON.
 - `questions`: dict mapping a question id (str, `[a-z0-9_]+`) to a question definition (section 2).
 - `model`: a loaded `JevMark` instance; if None, the default checkpoint from config is used.
+- `max_tokens`: encoded length limit. If None, the value from the loaded model's config is used (2048 in `configs/base.yaml`); an explicit argument overrides it. Training configs carry their own `max_tokens` (1024 in v1), which only governs which records are kept for training.
 - Returns a response dict (section 3). Raises `ValueError` with the offending field path on invalid input.
 
 A batch variant `systemone_batch(list_of_requests)` returns a list of responses and must produce identical numbers to calling `systemone` one at a time.
@@ -60,7 +61,7 @@ Limits (v1): state at most 8000 characters; state plus all questions at most `ma
 
 ```json
 {
-  "model": "jevmark-sft_clinc_v1",
+  "model": "jevmark-sft_clinc_v1_17b",
   "answers": {
     "refund_requested": {"type": "noul", "noul": 0.93},
     "department": {
@@ -83,15 +84,16 @@ Limits (v1): state at most 8000 characters; state plus all questions at most `ma
 
 Definitions:
 
-- `noul`: probability of true. No confidence field.
+- `noul`: probability of true. No confidence field in the response, matching Jev. For metrics and coverage curves only, noul confidence is defined as `max(noul, 1 - noul)`; this never appears in the response.
 - `choice`: `choice` is the argmax label; `probabilities` sums to 1 over the request's options.
 - `score`: `score` is the probability-weighted mean of level indices; `probabilities` keyed by level index as a string.
 - `confidence` for choice and score: `1 - H(p) / ln(K)` where H is the entropy in nats and K the number of options. Equals 1 when all mass is on one option, 0 when uniform. Rounded to 4 decimals.
-- Probabilities rounded to 4 decimals after normalisation; `choice` is computed before rounding.
+- Probabilities rounded to 4 decimals after normalisation; `choice` and `score` are computed before rounding. After rounding, probabilities sum to 1 within 1e-3; tests use that tolerance.
+- `model` is `jevmark-<run_name>`, read from `model_id.txt`; for an untrained backbone it is `jevmark-base_<size>`.
 
 ## 4. Encoding
 
-One request becomes one token sequence. Questions are appended in the order given. Every question ends with an answer slot. The model reads the next-token logits at the last token of the `Answer:` line and restricts them to the letter tokens of that question's options.
+One request becomes one token sequence. Questions are appended in the order given. Every question ends with an answer slot. The model reads the next-token logits at the token that ends `Answer:` and restricts them to the letter tokens of that question's options.
 
 Text format (exact, including blank lines):
 
@@ -116,11 +118,13 @@ Answer:
 - Noul: exactly two options, `true` then `false`.
 - Score: one line per level in order, label is the level index, description is the level text: `A. 0: Cosmetic; no impact on functionality`.
 - Letters are `A` through `Z`. The letter tokens read at the slot are the tokenizer ids of `" A"` through `" Z"` (leading space). `encode.py` must assert at load time that each of these is a single token for the configured tokenizer; if not, fail loudly.
-- Slot position: index of the last token of the string `Answer:` for that question. `encode.py` returns `input_ids`, `slot_positions` (one per question, in request order) and `letter_ids` (list of allowed letter token ids per question).
+- Tokenization is per segment, never over the whole text. Segments, in order: the state block (`### State\n{state_text}`); then for each question, a separator segment `\n\n` followed by the question block from `### Question:` through the final `Answer:` inclusive. Each segment is tokenized with `add_special_tokens=False` and the ids are concatenated. Reason: Qwen's pre-tokenizer can merge `:` with the newlines that follow when the whole text is tokenized at once, which would move the slot to a token that also contains the blank line. Per-segment tokenization guarantees that `Answer:` ends on a token boundary.
+- Slot position: the index of the last id of each question segment. `encode.py` asserts that this id decodes to a string ending in `:`. `encode.py` returns `input_ids`, `slot_positions` (one per question, in request order) and `letter_ids` (list of allowed letter token ids per question). Decoding `input_ids` must reproduce the text format above exactly.
+- Option lines are written as `A. label` with no leading space, while the slot reads the tokens `" A"` to `" Z"` with a leading space, because the natural next token after `Answer:` is a space plus a letter. This is the MMLU convention and is kept deliberately; letter bias is measured in evaluation.
 - Because attention is causal and the answer is never written into the sequence, later questions see earlier questions but never earlier answers. Answers are therefore independent given the state, matching the Jev contract.
 - A JSON state is rendered with `json.dumps(state, indent=2, ensure_ascii=False)`.
 
-Training uses exactly this encoding. The only training-time differences are option shuffling for choice questions and truncation policy (records over `max_tokens` are dropped, never truncated).
+Training uses exactly this encoding function. The only training-time differences are option reshuffling for choice questions on every epoch and the record filter (records over the training `max_tokens` are dropped, never truncated). Option order in stored data records, for every split, is a seeded random order fixed at build time; the API preserves whatever order the caller sends.
 
 ## 5. Model readout
 

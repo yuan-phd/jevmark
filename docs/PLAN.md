@@ -2,7 +2,7 @@
 
 ## What we are building
 
-A small decision model that does not generate text. Given a piece of text (the state) and a set of typed questions, it returns, in one forward pass, a probability distribution and a confidence score for every question. Three question types:
+A small decision model that does not generate text. Given a piece of text (the state) and a set of typed questions, it returns, in one forward pass, a probability distribution for every question, plus a confidence score for choice and score questions. Three question types:
 
 - Noul: a yes/no question, returns the probability of yes.
 - Choice: pick one of N options defined in the request, returns a probability per option.
@@ -63,9 +63,9 @@ Learning level: this project covers a training objective the author has not done
 |---|---|---|
 | Is it accurate | accuracy, macro-F1 | in-domain test, unseen intents, unseen schemas |
 | Does it read the options | accuracy on unseen intents and unseen schemas vs in-domain | v1 report |
-| Are the probabilities honest | ECE (15 bins), Brier, NLL, reliability diagram | every checkpoint |
+| Are the probabilities honest | ECE (15 bins on top-1 probability), Brier, NLL, reliability diagram | every checkpoint |
 | Is it symmetric | P(yes) under a question and under its negation sum to about 1 | v1 report |
-| Is it usable | coverage vs accuracy at confidence thresholds | v2 report, the cascade figure |
+| Is it usable | coverage vs accuracy at confidence thresholds (the response confidence field; max(p, 1-p) for noul) | v2 report, the cascade figure |
 | Is it worth it | latency per call (batch 1, T4), cost per 1000 calls, parse failure rate for the JSON baseline | v1 report |
 | Does RLCD add value | ECE on unseen schemas: SFT vs SFT+temperature vs RLCD arms | v2 report |
 | Does it help the agent | end-to-end latency, cost, accuracy in three configurations | v3 report |
