@@ -23,7 +23,7 @@ Read docs/PLAN.md first, then docs/API_SPEC.md, then docs/TASKS.md. Work on exac
 - Precision: fp16 autocast with GradScaler and fp32 LoRA weights. Every training and evaluation script checks the first batch for NaN or inf in the slot logits and, on failure, restarts in fp32 automatically and logs that it did. fp32 fits both 0.6B and 1.7B on a T4; it does not fit 4B, which is one reason 4B is not the default.
 - Where work happens: tasks 0.1 through 1.5 run locally on CPU (tests use the tiny model; data building and description generation need only the API key and dataset downloads). Tasks 1.6 onward run on Kaggle through the thin notebooks. Run every GPU stage on 0.6B first, then repeat on 1.7B.
 - Post-training only, via LoRA (peft). No from-scratch pretraining. No full fine-tune.
-- Python 3.11, managed with uv (pyproject plus uv.lock). Core deps: torch (CPU wheels locally; Kaggle's preinstalled torch on Kaggle), transformers>=4.51 (Qwen3 support), peft, datasets, numpy, pyyaml, matplotlib, pytest. Optional extras: serve (fastapi, uvicorn), baselines (openai).
+- Python 3.11, managed with uv (pyproject plus uv.lock). Core deps: torch (CPU wheels locally; Kaggle's preinstalled torch on Kaggle), transformers>=4.56 (Qwen3 support since 4.51; the `dtype` keyword of from_pretrained since 4.56), peft, datasets, numpy, pyyaml, matplotlib, pytest. Optional extras: serve (fastapi, uvicorn), baselines (openai).
 
 ## Repository layout
 
