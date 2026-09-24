@@ -1,0 +1,333 @@
+"""Evaluate a checkpoint, or the frozen base model, on the JSONL splits (docs/TASKS.md 1.6).
+
+    python scripts/evaluate.py --ckpt base --config configs/base_06b.yaml
+    python scripts/evaluate.py --ckpt runs/sft_clinc_v1_06b
+
+Reads the unrounded distributions from JevMark.forward_distributions (through
+encode), never the rounded systemone responses. Writes runs/<run_name>/metrics.json,
+config.yaml, model_id.txt and plots/<split>.png. With --ckpt base the run name is
+the config's run_name (base_06b or base_17b); a --limit run writes to
+runs/<run_name>_limit<N>/ so smoke runs never overwrite real results.
+
+The first batch's slot logits are checked for NaN or inf; on failure autocast is
+switched off (JevMark.use_fp32, decision 28), the switch is logged and recorded in
+metrics.json, and evaluation continues in fp32.
+"""
+
+from __future__ import annotations
+
+import argparse
+import copy
+import datetime
+import hashlib
+import json
+import subprocess
+import sys
+import time
+from collections.abc import Sequence
+from pathlib import Path
+from typing import Any
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+import torch  # noqa: E402
+import yaml  # noqa: E402
+
+from jevmark.config import load_config  # noqa: E402
+from jevmark.data.build import SPLITS  # noqa: E402
+from jevmark.data.negation import negate  # noqa: E402
+from jevmark.encode import Encoded, encode  # noqa: E402
+from jevmark.metrics import QuestionResult, max_abs_difference, split_metrics, symmetry, timing_summary  # noqa: E402
+from jevmark.model import JevMark  # noqa: E402
+from jevmark.schema import Request  # noqa: E402
+
+REPO = Path(__file__).resolve().parents[1]
+PROBE_REQUESTS = 200
+THROUGHPUT_BATCH = 16
+# Reference palette slots 1 to 3, fixed per question type; text and surface tokens.
+TYPE_COLORS = {"noul": "#2a78d6", "choice": "#eb6834", "score": "#1baf7a"}
+SURFACE, TEXT_PRIMARY, TEXT_SECONDARY, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3dd"
+
+
+def log(message: str) -> None:
+    print(message, flush=True)
+
+
+# Data
+
+
+def read_split(data_dir: Path, split: str, limit: int | None) -> tuple[list[dict[str, Any]], str]:
+    path = data_dir / f"{split}.jsonl"
+    raw = path.read_bytes()
+    records = [json.loads(line) for line in raw.decode("utf-8").splitlines() if line.strip()]
+    return (records[:limit] if limit else records), hashlib.sha256(raw).hexdigest()
+
+
+def request_of(record: dict[str, Any]) -> Request:
+    return Request.from_dict({"state": record["state"], "questions": record["questions"]})
+
+
+def gold_index(question: dict[str, Any], gold: Any) -> int:
+    if question["type"] == "noul":
+        return {"true": 0, "false": 1}[gold]
+    if question["type"] == "choice":
+        return list(question["criteria"]).index(gold)
+    return int(gold)
+
+
+def option_labels(question: dict[str, Any]) -> tuple[str, ...]:
+    if question["type"] == "noul":
+        return ("true", "false")
+    if question["type"] == "choice":
+        return tuple(question["criteria"])
+    return tuple(str(i) for i in range(len(question["criteria"])))
+
+
+def negated_record(record: dict[str, Any]) -> dict[str, Any]:
+    """The same record with its noul instruction negated by the template for meta.noul_kind."""
+    negated = copy.deepcopy(record)
+    for question in negated["questions"].values():
+        if question["type"] == "noul":
+            question["instructions"] = negate(record["meta"]["noul_kind"], question["instructions"])
+    return negated
+
+
+# Model calls
+
+
+def distributions(jev: JevMark, encoded: Sequence[Encoded], batch_size: int) -> list[list[float]]:
+    out: list[list[float]] = []
+    for start in range(0, len(encoded), batch_size):
+        out += [d.double().cpu().tolist() for d in jev.forward_distributions(encoded[start : start + batch_size])]
+    return out
+
+
+def first_batch_check(jev: JevMark, batch: Sequence[Encoded]) -> bool:
+    """True if the fp32 fallback was needed. Raises if the logits are not finite even in fp32."""
+    with torch.no_grad():
+        finite = all(torch.isfinite(x).all() for x in jev.slot_logits(batch))
+    if finite:
+        return False
+    if jev.autocast_dtype is None:
+        raise RuntimeError("slot logits contain NaN or inf in fp32; this is not a precision problem")
+    log("WARNING: NaN or inf in first-batch slot logits under fp16 autocast; switching to fp32 (decision 28)")
+    jev.use_fp32()
+    with torch.no_grad():
+        if not all(torch.isfinite(x).all() for x in jev.slot_logits(batch)):
+            raise RuntimeError("slot logits still contain NaN or inf after the fp32 fallback")
+    return True
+
+
+def _sync(jev: JevMark) -> None:
+    if jev.device.type == "cuda":
+        torch.cuda.synchronize(jev.device)
+
+
+def latency(jev: JevMark, requests: Sequence[Request], n: int) -> dict[str, Any]:
+    """Batch-1 wall clock per request (encode plus forward), median over n; throughput at batch 16."""
+    pool = [requests[i % len(requests)] for i in range(n)]
+    for request in pool[:3]:  # warm-up
+        jev.forward_distributions([encode(request, jev.tokenizer, jev.max_tokens)])
+    times = []
+    for request in pool:
+        _sync(jev)
+        start = time.perf_counter()
+        jev.forward_distributions([encode(request, jev.tokenizer, jev.max_tokens)])
+        _sync(jev)
+        times.append(time.perf_counter() - start)
+    _sync(jev)
+    start = time.perf_counter()
+    for i in range(0, n, THROUGHPUT_BATCH):
+        jev.forward_distributions([encode(r, jev.tokenizer, jev.max_tokens) for r in pool[i : i + THROUGHPUT_BATCH]])
+    _sync(jev)
+    elapsed = time.perf_counter() - start
+    return {"batch_1": timing_summary(times), f"batch_{THROUGHPUT_BATCH}_requests_per_second": n / elapsed, "device": str(jev.device)}
+
+
+def batching_precision(jev: JevMark, encoded: Sequence[Encoded], batch_size: int) -> dict[str, Any]:
+    """Max absolute difference between batched and single-call probabilities (decision 30)."""
+    batched = distributions(jev, encoded, batch_size)
+    single = [d for e in encoded for d in distributions(jev, [e], 1)]
+    return {"n_requests": len(encoded), "batch_size": batch_size, "max_abs_difference": max_abs_difference(batched, single)}
+
+
+# Evaluation of one split
+
+
+def evaluate_split(jev: JevMark, records: list[dict[str, Any]], batch_size: int) -> tuple[dict[str, Any], list[Encoded]]:
+    encoded = [encode(request_of(r), jev.tokenizer, jev.max_tokens) for r in records]
+    flat = iter(distributions(jev, encoded, batch_size))
+    results: list[QuestionResult] = []
+    for record in records:
+        for qid, question in record["questions"].items():
+            results.append(
+                QuestionResult(
+                    record["id"], qid, question["type"], tuple(next(flat)), gold_index(question, record["gold"][qid]), option_labels(question)
+                )
+            )
+    metrics = split_metrics(results)
+    metrics["n_records"] = len(records)
+
+    with_noul = [r for r in records if any(q["type"] == "noul" for q in r["questions"].values())]
+    if with_noul:
+        by_record = {(r.record_id, r.question_id): r.probs[0] for r in results if r.qtype == "noul"}
+        negated = [negated_record(r) for r in with_noul]
+        negated_flat = iter(distributions(jev, [encode(request_of(r), jev.tokenizer, jev.max_tokens) for r in negated], batch_size))
+        pairs = []
+        for record in negated:
+            for qid, question in record["questions"].items():
+                probs = next(negated_flat)
+                if question["type"] == "noul":
+                    pairs.append((by_record[(record["id"], qid)], probs[0]))
+        metrics["symmetry"] = symmetry(pairs)
+    return metrics, encoded
+
+
+# Output
+
+
+def plot_reliability(split: str, metrics: dict[str, Any], path: Path) -> None:
+    types = [t for t in ("noul", "choice", "score") if t in metrics]
+    fig, (top, bottom) = plt.subplots(2, 1, figsize=(6, 7), sharex=True, gridspec_kw={"height_ratios": [3, 1]}, facecolor=SURFACE)
+    for ax in (top, bottom):
+        ax.set_facecolor(SURFACE)
+        ax.grid(color=GRID, linewidth=0.8)
+        ax.tick_params(colors=TEXT_SECONDARY, labelsize=9)
+        for spine in ax.spines.values():
+            spine.set_color(GRID)
+    top.plot([0, 1], [0, 1], color=TEXT_SECONDARY, linewidth=1, linestyle="--", label="perfect calibration")
+    for qtype in types:
+        bins = [b for b in metrics[qtype]["reliability"] if b["count"]]
+        n = metrics[qtype]["n"]
+        top.plot(
+            [b["mean_confidence"] for b in bins],
+            [b["mean_accuracy"] for b in bins],
+            color=TYPE_COLORS[qtype],
+            linewidth=2,
+            marker="o",
+            markersize=6,
+            markeredgecolor=SURFACE,
+            markeredgewidth=1.5,
+            label=f"{qtype} (n={n}, ECE {metrics[qtype]['ece']:.3f})",
+        )
+        centers = [(b["lower"] + b["upper"]) / 2 for b in metrics[qtype]["reliability"]]
+        bottom.plot(centers, [b["count"] for b in metrics[qtype]["reliability"]], color=TYPE_COLORS[qtype], linewidth=2, drawstyle="steps-mid")
+    top.set_xlim(0, 1)
+    top.set_ylim(0, 1)
+    top.set_ylabel("accuracy in bin", color=TEXT_PRIMARY)
+    top.set_title(f"Reliability, {split} (top-1 probability, 15 bins)", color=TEXT_PRIMARY, fontsize=11)
+    top.legend(frameon=False, fontsize=9, labelcolor=TEXT_PRIMARY, loc="upper left")
+    bottom.set_xlabel("top-1 probability", color=TEXT_PRIMARY)
+    bottom.set_ylabel("questions", color=TEXT_PRIMARY)
+    fig.tight_layout()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=120, facecolor=SURFACE)
+    plt.close(fig)
+
+
+def git_state() -> dict[str, Any]:
+    def run(*args: str) -> str | None:
+        try:
+            return subprocess.run(["git", *args], cwd=REPO, capture_output=True, text=True, check=True).stdout.strip()
+        except (OSError, subprocess.CalledProcessError):
+            return None
+
+    commit = run("rev-parse", "HEAD")
+    status = run("status", "--porcelain", "--untracked-files=no")
+    return {"commit": commit, "dirty": bool(status) if status is not None else None}
+
+
+def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--ckpt", required=True, help="a run directory, or 'base' for the frozen backbone of --config")
+    parser.add_argument("--config", default=None, help="config file; default configs/base.yaml for base, the run's config.yaml otherwise")
+    parser.add_argument("--splits", nargs="+", choices=SPLITS, default=list(SPLITS), help="default: all eight")
+    parser.add_argument("--limit", type=int, default=None, help="first N records per split, for smoke runs")
+    parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument("--device", default=None, help="cpu, cuda or cuda:N; default cuda when available")
+    parser.add_argument("--data-dir", default=str(REPO / "data"))
+    parser.add_argument("--runs-dir", default=str(REPO / "runs"))
+    args = parser.parse_args(argv)
+    if args.limit is not None and args.limit < 1:
+        parser.error("--limit must be at least 1")
+    return args
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = parse_args(argv)
+    if args.ckpt == "base":
+        checkpoint = None
+        config_path = Path(args.config or REPO / "configs" / "base.yaml")
+        config = load_config(config_path)
+        run_name = config["run_name"]
+    else:
+        checkpoint = Path(args.ckpt)
+        config_path = Path(args.config) if args.config else checkpoint / "config.yaml"
+        config = load_config(config_path)
+        run_name = checkpoint.name
+    if args.limit:
+        run_name = f"{run_name}_limit{args.limit}"
+    out_dir = Path(args.runs_dir) / run_name
+
+    log(f"run {run_name}: ckpt {args.ckpt}, config {config_path}, backbone {config['backbone']['id']}")
+    jev = JevMark.load(config, checkpoint=checkpoint, device=args.device)
+    log(f"model {jev.model_id} on {jev.device}, autocast {jev.autocast_dtype}, max_tokens {jev.max_tokens}")
+
+    started = time.perf_counter()
+    fallback_used = None
+    split_results: dict[str, Any] = {}
+    data_files: dict[str, str] = {}
+    probe: list[Encoded] = []
+    probe_requests: list[Request] = []
+    for split in args.splits:
+        records, digest = read_split(Path(args.data_dir), split, args.limit)
+        data_files[f"{split}.jsonl"] = digest
+        if fallback_used is None:
+            fallback_used = first_batch_check(jev, [encode(request_of(r), jev.tokenizer, jev.max_tokens) for r in records[: args.batch_size]])
+        split_start = time.perf_counter()
+        metrics, encoded = evaluate_split(jev, records, args.batch_size)
+        split_results[split] = metrics
+        if len(probe) < PROBE_REQUESTS:
+            take = PROBE_REQUESTS - len(probe)
+            probe += encoded[:take]
+            probe_requests += [request_of(r) for r in records[:take]]
+        overall = metrics["overall"]
+        log(f"{split:20} {len(records):6} records  acc {overall['accuracy']:.4f}  ece {overall['ece']:.4f}  nll {overall['nll']:.4f}  ({time.perf_counter() - split_start:.1f}s)")
+        plot_reliability(split, metrics, out_dir / "plots" / f"{split}.png")
+
+    batching = batching_precision(jev, probe, args.batch_size)
+    log(f"batched vs single on {batching['n_requests']} requests: max abs difference {batching['max_abs_difference']:.3g}")
+    timing = latency(jev, probe_requests, PROBE_REQUESTS)
+    log(f"latency batch 1: median {timing['batch_1']['median_ms']:.2f} ms; batch {THROUGHPUT_BATCH}: {timing[f'batch_{THROUGHPUT_BATCH}_requests_per_second']:.1f} requests/s")
+
+    metrics_json = {
+        "run_name": run_name,
+        "model_id": jev.model_id,
+        "ckpt": args.ckpt,
+        "config": str(config_path),
+        "git": git_state(),
+        "created": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+        "limit": args.limit,
+        "device": str(jev.device),
+        "precision": {"autocast": str(jev.autocast_dtype) if jev.autocast_dtype else None, "fp32_fallback_used": fallback_used},
+        "temperature": jev.temperature,
+        "data_files_sha256": data_files,
+        "confidence_note": "ECE and reliability use the top-1 probability; coverage uses the response confidence field (1 - H/ln K for choice and score, max(p, 1 - p) for noul).",
+        "splits": split_results,
+        "batching_precision": batching,
+        "latency": timing,
+        "wall_clock_seconds": time.perf_counter() - started,
+    }
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "metrics.json").write_text(json.dumps(metrics_json, indent=2) + "\n")
+    if checkpoint is None or checkpoint.resolve() != out_dir.resolve():
+        (out_dir / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
+        (out_dir / "model_id.txt").write_text(jev.model_id + "\n")
+    log(f"wrote {out_dir}/metrics.json, config.yaml, model_id.txt and {len(args.splits)} plots")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

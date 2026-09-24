@@ -1,0 +1,32 @@
+# Frozen Qwen3-1.7B-Base baseline B0 (task 1.6). Identical to base.yaml.
+
+run_name: base_17b
+seed: 0
+
+backbone:
+  # Main backbone. Switch to Qwen/Qwen3-0.6B-Base for pipeline debugging and RLCD sweeps.
+  id: Qwen/Qwen3-1.7B-Base
+  revision: ea980cb0a6c2ae4b936e82123acc929f1cec04c1
+
+# Pinned reference tokenizer. The tiny test model uses it, and every backbone's
+# tokenizer must produce the same ids on a probe string (encode.load_tokenizer).
+tokenizer_reference:
+  id: Qwen/Qwen3-0.6B-Base
+  revision: da87bfb608c14b7cf20ba1ce41287e8de496c0cd
+
+# Encoded length limit at inference (API_SPEC section 1). Training configs set their own.
+max_tokens: 2048
+
+precision:
+  autocast: fp16          # T4 has no bf16; fp32 is used on CPU
+  fp32_fallback: true     # first-batch NaN or inf check in slot logits
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj]
+  mlp: false              # when true, also adds gate_proj, up_proj, down_proj
+
+calibration:
+  temperature: 1.0
