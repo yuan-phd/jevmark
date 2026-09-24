@@ -77,6 +77,8 @@ jevmark/
 - Record any design decision not already in docs/DECISIONS.md there, with one line of reasoning.
 - Ask the human before: changing the backbone, changing datasets or splits, changing the API contract, or spending API credits beyond what a task specifies.
 - Do not fake confidence. If a dataset id does not resolve, a tokenizer assumption fails, or a number looks wrong, stop and report instead of working around it silently.
+- Never install or remove system packages (brew, apt, global pip), never modify shell startup files, and never touch anything outside the repository without asking first. Project dependencies go through uv only. If a required tool is missing on the machine, stop and ask.
+- Human edits to docs are committed separately from task work, with a message starting `docs:`. Do not fold them into a task commit.
 
 ## Conventions
 
