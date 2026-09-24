@@ -68,3 +68,41 @@ The smoke directory `runs/base_06b_limit30/` is for checking only; do not commit
 1. Put the two directories at `runs/base_06b/` and `runs/base_17b/` in the local checkout, replacing anything there.
 2. Check that each `metrics.json` has `"git": {"commit": "<COMMIT>", "dirty": false}` with the sha you evaluated.
 3. Commit them together, for example `task 1.6: B0 metrics for base_06b and base_17b`, and only then tick the B0 acceptance in `docs/TASKS.md` with those paths.
+
+## 7. Training: `notebooks/kaggle_train.ipynb` (task 1.7)
+
+One session trains one backbone size, then evaluates it and re-evaluates the frozen base of the same size with the same code version (decision 38). Token, secret, import and notebook settings are the same as in sections 1 to 3.
+
+### Two-session plan
+
+| Session | `SIZE` | Training (estimate; measure and update) | Evaluations | Writes |
+|---|---|---|---|---|
+| 1 | `06b` | about 0.5 GPU hours | sft 0.5 h, base 0.5 h | `runs/sft_06b/`, `runs/base_06b/` |
+| 2 | `17b` | about 1.5 to 2 GPU hours (gradient checkpointing on) | sft 1.0 h, base 1.0 h | `runs/sft_17b/`, `runs/base_17b/` |
+
+Both sessions use the same `COMMIT`, so the four runs share one code version. Set `REPO`, `COMMIT`, `SIZE`, `SMOKE_STEPS` (default 20) and `MAX_HOURS` (default 6.0, which leaves room for the two evaluations inside a 9 hour session) in the first code cell, then run the cells top to bottom:
+
+1. Clone, install and data: as in the evaluation notebook.
+2. Smoke training: `SMOKE_STEPS` steps into `runs/sft_<size>_smoke/`, including one validation, the final valid pass and a `train_summary.json`. Check that it ends with `done at step ...` before going on.
+3. Full training into `runs/sft_<size>/`: logs every step to `training_log.jsonl`, validates every 200 steps on 1000 fixed valid records, keeps the best adapter by validation NLL in `adapter/`, and the resumable state in `last/`. The cell copies `runs/` to `/kaggle/working/runs` as soon as training returns, so the state survives a later failure.
+4. Evaluate the trained adapter: `evaluate.py --ckpt runs/sft_<size>`.
+5. Re-evaluate the frozen base: `evaluate.py --ckpt base --config configs/base_<size>.yaml`, replacing the committed B0 run from commit 79fc74b.
+6. Copy `runs/` to `/kaggle/working/runs` and print each run's commit, dirty flag, fp32 fallback and test_indomain accuracy and ECE.
+
+If training logs `WARNING: NaN or inf in first-batch slot logits`, it reloaded the model in fp32 and continued; `train_summary.json` records `"fp32_fallback_used": true`.
+
+### If training stops at MAX_HOURS
+
+The training cell then fails its final assertion on purpose, and `runs/sft_<size>/last/` holds the adapter, optimizer, scheduler, scaler, RNG state and step. To continue in a new session: download `runs/sft_<size>/` from the output, add it to the new session as a Kaggle dataset, copy it to `/tmp/jevmark/runs/sft_<size>/` after the data cell, and run `python scripts/train_sft.py --config configs/sft_<size>.yaml --resume --max-hours <hours> --device cuda` in place of the full training cell. The resumed run continues at the saved step with the same data order and gives the same result as an uninterrupted run (tested on CPU).
+
+### What to download and where it goes
+
+From `/kaggle/working/runs/`:
+
+| Directory | Commit to git | Keep outside git |
+|---|---|---|
+| `sft_<size>/` | `config.yaml`, `model_id.txt`, `calibration.json`, `training_log.jsonl`, `train_summary.json`, `metrics.json`, `plots/` | `adapter/` (the trained weights; keep a copy, or upload to the HF Hub later), `last/`, `results.jsonl.gz` |
+| `base_<size>/` | `config.yaml`, `model_id.txt`, `metrics.json`, `plots/`, replacing the committed B0 files | `results.jsonl.gz` |
+| `sft_<size>_smoke/` | nothing | discard |
+
+Put the directories at `runs/sft_<size>/` and `runs/base_<size>/` in the local checkout. `.gitignore` already excludes `adapter/`, `last/`, `results.jsonl.gz` and smoke runs, so `git add runs/sft_<size> runs/base_<size>` picks up exactly the files in the commit column. Check that every `metrics.json` has the session's `COMMIT` and `"dirty": false` before committing.

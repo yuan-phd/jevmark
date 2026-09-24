@@ -92,7 +92,7 @@ jevmark/
 
 - Type hints and dataclasses; no global mutable state.
 - Configs are YAML under configs/. Training scripts take `--config` plus optional `key=value` overrides. Evaluation and baseline scripts take `--ckpt` (a run directory, or `base`) and `--splits`, plus `--config` to choose the backbone when `--ckpt` is `base`; the run name is then `base_06b` or `base_17b`. Every run has a seed and a run_name.
-- `.gitignore`: `/data/`, `/runs/*/adapter/`, `/runs/*_limit*/` (smoke runs), `/runs/*/results.jsonl.gz` (per-question results), weight files (`*.safetensors`, `*.bin`, `*.pt`), `.env`, caches. Never a bare `data/` pattern, which would also match `jevmark/data/`.
+- `.gitignore`: `/data/`, `/runs/*/adapter/`, `/runs/*_limit*/` (smoke runs), `/runs/*/results.jsonl.gz` (per-question results), `/runs/*/last/` (resume state), `/runs/*_smoke/` (smoke training runs), weight files (`*.safetensors`, `*.bin`, `*.pt`), `.env`, caches. Never a bare `data/` pattern, which would also match `jevmark/data/`.
 - Git: commit on `main` at least once per task, with the task id at the start of the message (`task 1.2: encode.py`). Tag `v1`, `v2`, `v3` at the end of each phase. No branches for a solo project unless the human asks.
 - The tiny test model uses the real Qwen3 tokenizer, fetched once from the HF Hub at a pinned revision and cached. Do not vendor tokenizer files into the repo.
 - Data files are JSONL, one record per line. Record schema is documented in docs/DATA.md.
@@ -106,7 +106,7 @@ Created in task 0.1; keep this list in sync with the Makefile.
 - `make setup` install the package in editable mode with dev deps
 - `make test` run pytest on CPU
 - `make data` build all JSONL datasets into data/
-- `make train-sft CONFIG=configs/sft_clinc.yaml`
+- `make train-sft CONFIG=configs/sft_06b.yaml` (or `configs/sft_17b.yaml`)
 - `make eval CKPT=runs/<run_name>` (or `CKPT=base EVAL_CONFIG=configs/base_06b.yaml`)
 - `make kaggle-requirements` regenerate requirements-kaggle.txt from uv.lock
 

@@ -1,0 +1,46 @@
+# LoRA SFT on Qwen3-0.6B-Base (task 1.7). Complete config: base.yaml plus the training section.
+
+run_name: sft_06b
+seed: 0
+
+backbone:
+  id: Qwen/Qwen3-0.6B-Base
+  revision: da87bfb608c14b7cf20ba1ce41287e8de496c0cd
+
+# Pinned reference tokenizer. The tiny test model uses it, and every backbone's
+# tokenizer must produce the same ids on a probe string (encode.load_tokenizer).
+tokenizer_reference:
+  id: Qwen/Qwen3-0.6B-Base
+  revision: da87bfb608c14b7cf20ba1ce41287e8de496c0cd
+
+# Encoded length limit at inference (API_SPEC section 1). Training configs set their own.
+max_tokens: 2048
+
+precision:
+  autocast: fp16          # T4 has no bf16; fp32 is used on CPU
+  fp32_fallback: true     # first-batch NaN or inf check in slot logits
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj]
+  mlp: false              # when true, also adds gate_proj, up_proj, down_proj
+
+calibration:
+  temperature: 1.0
+
+# LoRA SFT (task 1.7, scripts/train_sft.py). Effective batch = micro_batch x accumulation.
+training:
+  data_dir: data                  # train.jsonl and valid.jsonl
+  max_tokens: 1024                # records encoding longer are dropped, never truncated
+  epochs: 2
+  lr: 2.0e-4
+  weight_decay: 0.0
+  warmup_ratio: 0.03              # linear warmup, then linear decay to 0
+  effective_batch: 32
+  micro_batch: 16
+  grad_clip: 1.0
+  eval_every: 200                 # optimizer steps between validations
+  valid_subset: 1000              # fixed seeded subset of valid.jsonl
+  gradient_checkpointing: false
