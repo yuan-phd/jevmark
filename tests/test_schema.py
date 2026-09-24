@@ -266,6 +266,20 @@ def test_noul_description_rejects_line_breaks_and_edge_whitespace(bad, key):
     expect_error(one_question("q", definition), "q.criteria")
 
 
+@pytest.mark.parametrize(
+    "definition",
+    [
+        {"type": "choice", "instructions": "x", "criteria": {"a": "", "b": None}},
+        {"type": "noul", "instructions": "x", "criteria": {"true": ""}},
+        {"type": "noul", "instructions": "x", "criteria": {"false": ""}},
+        {"type": "score", "instructions": "x", "criteria": ["low", ""]},
+    ],
+)
+def test_empty_descriptions_are_rejected(definition):
+    # A description is null where null is allowed, or a non-empty string (decision 25).
+    expect_error(one_question("q", definition), "q.criteria")
+
+
 def test_inner_spaces_and_punctuation_are_allowed():
     definition = {"type": "choice", "instructions": "Which team: A or B?", "criteria": {"team a": "x: y; z", "b": None}}
     Request.from_dict(one_question("q", definition))
