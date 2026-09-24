@@ -54,6 +54,7 @@ Rules:
 - noul: `criteria` optional. Answer order is fixed: true first, false second.
 - choice: `criteria` is a dict of option label to description or null. 2 to 26 options in v1 (one letter each). Option order in the request is preserved at inference; it is shuffled during training only.
 - score: `criteria` is a list of 2 to 10 level descriptions, ordered from low to high. Level index starts at 0.
+- Every text that is rendered onto a line of the encoding (`instructions`, choice labels, choice descriptions, score level texts, and noul `criteria.true` / `criteria.false` descriptions) must not contain `\n` or `\r` and must not have leading or trailing whitespace. The state is free text and may contain both.
 
 Limits (v1): state at most 8000 characters; state plus all questions at most `max_tokens` tokens after encoding, else `ValueError`.
 
@@ -145,5 +146,5 @@ runs/<run_name>/
 
 ## 7. Errors
 
-- Unknown type, missing instructions, wrong criteria shape, fewer than 2 or more than 26 choice options, fewer than 2 or more than 10 score levels, duplicate option labels, state over 8000 characters, encoded length over `max_tokens`: `ValueError("<question_id>.<field>: <reason>")`.
+- Unknown type, missing instructions, wrong criteria shape, fewer than 2 or more than 26 choice options, fewer than 2 or more than 10 score levels, duplicate option labels, a line break (`\n` or `\r`) or leading or trailing whitespace in instructions, an option label, an option description or a score level text, state over 8000 characters, encoded length over `max_tokens`: `ValueError("<question_id>.<field>: <reason>")`.
 - Model not loaded or checkpoint missing: `RuntimeError`.

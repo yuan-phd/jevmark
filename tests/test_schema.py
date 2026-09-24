@@ -223,16 +223,57 @@ def test_score_level_count_out_of_range(n):
     expect_error(one_question("q", definition), "q.criteria")
 
 
-def test_duplicate_labels_after_whitespace_strip():
-    # A JSON object cannot hold the same key twice, but labels that differ only in
-    # surrounding whitespace render as the same option line.
-    definition = {"type": "choice", "instructions": "x", "criteria": {"billing": None, "billing ": "dup"}}
+def test_duplicate_labels_on_direct_construction():
+    # A parsed JSON object cannot repeat a key and edge whitespace is rejected, so
+    # direct construction is the remaining way to pass a duplicate label.
+    with pytest.raises(ValueError, match=r"^q\.criteria: "):
+        ChoiceQuestion(id="q", instructions="x", options=(("billing", None), ("billing", "again")))
+
+
+# Line breaks and edge whitespace (decision 25). Every text that becomes part of
+# a rendered line must be a single line with no leading or trailing whitespace.
+
+BAD_LINE_TEXT = ["two\nlines", "carriage\rreturn", "windows\r\nbreak", "trailing\n", " leading", "trailing ", "\ttab"]
+
+
+@pytest.mark.parametrize("bad", BAD_LINE_TEXT)
+def test_instructions_reject_line_breaks_and_edge_whitespace(bad):
+    expect_error(one_question("q", {"type": "noul", "instructions": bad}), "q.instructions")
+
+
+@pytest.mark.parametrize("bad", BAD_LINE_TEXT)
+def test_choice_label_rejects_line_breaks_and_edge_whitespace(bad):
+    definition = {"type": "choice", "instructions": "x", "criteria": {bad: None, "b": None}}
     expect_error(one_question("q", definition), "q.criteria")
 
 
-def test_duplicate_labels_on_direct_construction():
-    with pytest.raises(ValueError, match=r"^q\.criteria: "):
-        ChoiceQuestion(id="q", instructions="x", options=(("billing", None), ("billing", "again")))
+@pytest.mark.parametrize("bad", BAD_LINE_TEXT)
+def test_choice_description_rejects_line_breaks_and_edge_whitespace(bad):
+    definition = {"type": "choice", "instructions": "x", "criteria": {"a": bad, "b": None}}
+    expect_error(one_question("q", definition), "q.criteria")
+
+
+@pytest.mark.parametrize("bad", BAD_LINE_TEXT)
+def test_score_level_rejects_line_breaks_and_edge_whitespace(bad):
+    definition = {"type": "score", "instructions": "x", "criteria": ["low", bad]}
+    expect_error(one_question("q", definition), "q.criteria")
+
+
+@pytest.mark.parametrize("bad", BAD_LINE_TEXT)
+@pytest.mark.parametrize("key", ["true", "false"])
+def test_noul_description_rejects_line_breaks_and_edge_whitespace(bad, key):
+    definition = {"type": "noul", "instructions": "x", "criteria": {key: bad}}
+    expect_error(one_question("q", definition), "q.criteria")
+
+
+def test_inner_spaces_and_punctuation_are_allowed():
+    definition = {"type": "choice", "instructions": "Which team: A or B?", "criteria": {"team a": "x: y; z", "b": None}}
+    Request.from_dict(one_question("q", definition))
+
+
+@pytest.mark.parametrize("state", ["line one\nline two\r\n", "  padded state  ", {"note": "a\nb"}])
+def test_state_may_contain_newlines_and_edge_whitespace(state):
+    Request.from_dict(make_request(state=state))
 
 
 def test_state_over_8000_chars():

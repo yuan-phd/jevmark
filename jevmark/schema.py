@@ -7,6 +7,10 @@ checked in encode.py.
 
 Dataclasses are frozen and validate in __post_init__, so a question built directly
 in Python is held to the same rules as one parsed with from_dict.
+
+Every text that becomes part of a rendered line (instructions, option labels and
+descriptions, score levels) must be a single line with no leading or trailing
+whitespace (decision 25). The state is free text and may contain newlines.
 """
 
 from __future__ import annotations
@@ -42,14 +46,26 @@ def render_state(state: State) -> str:
         raise _fail("state", f"not JSON-serialisable ({err})") from None
 
 
+def _check_line(path: str, what: str, text: str) -> None:
+    if "\n" in text or "\r" in text:
+        raise _fail(path, f"{what} must not contain line breaks, got {text!r}")
+    if text != text.strip():
+        raise _fail(path, f"{what} must not have leading or trailing whitespace, got {text!r}")
+
+
 def _check_instructions(qid: str, instructions: Any) -> None:
+    path = f"{qid}.instructions"
     if not isinstance(instructions, str) or not instructions.strip():
-        raise _fail(f"{qid}.instructions", "must be a non-empty string")
+        raise _fail(path, "must be a non-empty string")
+    _check_line(path, "instructions", instructions)
 
 
 def _check_description(path: str, description: Any) -> None:
-    if description is not None and not isinstance(description, str):
+    if description is None:
+        return
+    if not isinstance(description, str):
         raise _fail(path, f"descriptions must be a string or null, got {type(description).__name__}")
+    _check_line(path, "descriptions", description)
 
 
 # Questions
@@ -115,11 +131,11 @@ class ChoiceQuestion:
         for label, description in options:
             if not isinstance(label, str) or not label.strip():
                 raise _fail(path, f"option labels must be non-empty strings, got {label!r}")
+            _check_line(path, "option labels", label)
             _check_description(path, description)
-            key = label.strip()
-            if key in seen:
-                raise _fail(path, f"duplicate option label {key!r}")
-            seen.add(key)
+            if label in seen:
+                raise _fail(path, f"duplicate option label {label!r}")
+            seen.add(label)
 
     @property
     def labels(self) -> tuple[str, ...]:
@@ -153,6 +169,7 @@ class ScoreQuestion:
         for level in levels:
             if not isinstance(level, str):
                 raise _fail(path, f"level descriptions must be strings, got {type(level).__name__}")
+            _check_line(path, "level descriptions", level)
 
     @classmethod
     def from_dict(cls, qid: str, d: dict[str, Any]) -> ScoreQuestion:
