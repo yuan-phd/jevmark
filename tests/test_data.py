@@ -12,9 +12,10 @@ from jevmark.data.assemble import build_all
 from jevmark.data.build import SPLITS, gold_positions, held_out_leaks, noul_balance, position_deviations
 from jevmark.data.clinc import DOMAIN_PHRASES, DOMAINS_FILE, DOMAINS_SHA256, choose_held_out, intent_domains, load_domains
 from jevmark.data.description_loader import load_descriptions, load_overrides
-from jevmark.data.negation import is_negated, negate
+from jevmark.data.negation import parse
+from jevmark.data.build import noul_phrasing
 from jevmark.data.sources import CLINC, CLINC_OUT_OF_SCOPE, label_names
-from jevmark.data.sst5 import LEVELS
+from jevmark.data.sst5 import LABEL_TEXTS, LEVELS, LEVELS_3, TO_3_LEVELS
 from jevmark.encode import encode
 from jevmark.schema import Request
 
@@ -29,6 +30,7 @@ EXPECTED_SIZES = {
     "test_agnews": 1000,
     "test_emotion": 1000,
     "test_banking77": 1000,
+    "test_yelp": 1000,
 }
 
 
@@ -114,10 +116,38 @@ def test_noul_yes_share_within_40_60(built, split):
         assert 0.4 <= share <= 0.6, (split, kind, counts)
 
 
+NOUL_KINDS = {
+    "train": {"about_domain", "out_of_scope", "about_intent", "is_positive", "is_negative"},
+    "valid": {"about_domain", "out_of_scope", "about_intent", "is_positive", "is_negative"},
+    "test_indomain": {"about_domain", "out_of_scope", "about_intent"},
+    "test_unseen_intents": {"about_domain", "about_intent"},
+    "test_sst5": {"is_positive", "is_negative"},
+    "test_emotion": {"expresses_emotion"},
+    "test_agnews": set(),
+    "test_banking77": set(),
+    "test_yelp": set(),
+}
+
+
 def test_noul_kinds_present_where_expected(built):
-    assert set(noul_balance(built.splits["train"])) == {"about_domain", "out_of_scope"}
-    assert set(noul_balance(built.splits["test_indomain"])) == {"about_domain", "out_of_scope"}
-    assert set(noul_balance(built.splits["test_unseen_intents"])) == {"about_domain", "out_of_scope"}  # v1.1: in-scope rate p applies here too
+    assert {split: set(noul_balance(records)) for split, records in built.splits.items()} == NOUL_KINDS
+
+
+@pytest.mark.parametrize("split", SPLITS)
+def test_no_noul_kind_is_answerable_from_its_phrasing(built, split):
+    for kind, row in noul_phrasing(built.splits[split]).items():
+        assert row["phrasing_only_accuracy"] <= CONFIG["max_phrasing_only_accuracy"], (split, kind, row)
+        assert 0.45 <= row["negated_share"] <= 0.55, (split, kind, row)
+
+
+@pytest.mark.parametrize("split", SPLITS)
+def test_every_noul_instruction_parses_to_its_recorded_phrasing(built, split):
+    for record in built.splits[split]:
+        nouls = record["meta"]["nouls"]
+        assert set(nouls) == {qid for qid, q in record["questions"].items() if q["type"] == "noul"}
+        for qid, info in nouls.items():
+            phrasing = parse(qid, record["questions"][qid]["instructions"])
+            assert (phrasing.template, phrasing.negated, phrasing.slot) == (info["template"], info["negated"], info["slot"])
 
 
 @pytest.mark.parametrize("split", SPLITS)
@@ -129,17 +159,29 @@ def test_gold_position_close_to_uniform_given_k(built, split):
 # CLINC record structure
 
 
-def test_clinc_records_have_one_choice_and_one_noul_in_both_orders(built):
-    orders = Counter()
+def test_clinc_records_have_three_questions_in_varied_orders(built):
+    intent_position = Counter()
     for record in clinc_records(built.splits["train"]):
-        types = [q["type"] for q in record["questions"].values()]
-        assert sorted(types) == ["choice", "noul"]
-        orders[types[0]] += 1
-    assert 0.45 < orders["choice"] / sum(orders.values()) < 0.55
+        assert sorted(q["type"] for q in record["questions"].values()) == ["choice", "noul", "noul"]
+        assert "about_intent" in record["questions"]
+        intent_position[list(record["questions"]).index("intent")] += 1
+    total = sum(intent_position.values())
+    assert all(0.28 < intent_position[p] / total < 0.39 for p in range(3)), intent_position
+
+
+def underlying_answer(record, kind):
+    meta, info = record["meta"], record["meta"]["nouls"][kind]
+    if kind == "out_of_scope":
+        return meta["gold_intent"] == CLINC_OUT_OF_SCOPE
+    if kind == "about_domain":
+        return info["asked_domain"] == meta["domain"]
+    return info["asked_intent"] == meta["gold_intent"]
 
 
 def test_clinc_gold_answers_follow_the_rules(built):
+    clinc = load_descriptions("clinc")
     for split in ("train", "valid", "test_indomain", "test_unseen_intents"):
+        allowed = set(built.held_out) if split == "test_unseen_intents" else set(built.seen)
         for record in clinc_records(built.splits[split]):
             meta, gold, questions = record["meta"], record["gold"], record["questions"]
             k = len(questions["intent"]["criteria"])
@@ -148,22 +190,27 @@ def test_clinc_gold_answers_follow_the_rules(built):
                 assert gold["intent"] == "other"
             else:
                 assert gold["intent"] == (meta["gold_intent"] if meta["gold_in_options"] else "other")
-            kind = meta["noul_kind"]
-            if kind == "out_of_scope":
-                positive_gold = "true" if meta["gold_intent"] == CLINC_OUT_OF_SCOPE else "false"
-            else:
-                positive_gold = "true" if meta["asked_domain"] == meta["domain"] else "false"
-                assert DOMAIN_PHRASES[meta["asked_domain"]] in questions["about_domain"]["instructions"]
-            flipped = {"true": "false", "false": "true"}[positive_gold]
-            assert gold[kind] == (flipped if meta["negated"] else positive_gold)
-            assert is_negated(kind, questions[kind]["instructions"]) == meta["negated"]
+            for kind, info in meta["nouls"].items():
+                answer = underlying_answer(record, kind) != info["negated"]
+                assert gold[kind] == ("true" if answer else "false")
+                if kind == "about_domain":
+                    assert info["slot"] == DOMAIN_PHRASES[info["asked_domain"]]
+                if kind == "about_intent":
+                    assert info["asked_intent"] in allowed and info["slot"] in clinc[info["asked_intent"]].variants
 
 
 def test_out_of_scope_utterances_yield_two_records(built):
     oos = [r for r in clinc_records(built.splits["train"]) if r["meta"]["gold_intent"] == CLINC_OUT_OF_SCOPE]
     per_utterance = Counter((r["meta"]["source_split"], r["meta"]["source_index"]) for r in oos)
     assert len(per_utterance) == 250 and set(per_utterance.values()) == {2}
-    assert Counter(r["meta"]["noul_kind"] for r in oos) == {"out_of_scope": 250, "about_domain": 250}
+    assert Counter(next(k for k in r["meta"]["nouls"] if k != "about_intent") for r in oos) == {"out_of_scope": 250, "about_domain": 250}
+
+
+@pytest.mark.parametrize("split, n_oos", [("train", 250), ("valid", 100), ("test_indomain", 1000)])
+def test_out_of_scope_underlying_answers_are_balanced(built, split, n_oos):
+    # Option 1 of the v1.1 review: exactly as many in-scope out_of_scope questions as out-of-scope utterances.
+    records = [r for r in clinc_records(built.splits[split]) if "out_of_scope" in r["meta"]["nouls"]]
+    assert Counter(underlying_answer(r, "out_of_scope") for r in records) == {True: n_oos, False: n_oos}
 
 
 def test_descriptions_come_from_the_loader_with_overrides(built):
@@ -182,12 +229,49 @@ def test_descriptions_come_from_the_loader_with_overrides(built):
 # SST-5 and unseen sets
 
 
-def test_sst5_records(built):
-    records = [r for r in built.splits["train"] if r["source"] == "SetFit/sst5"]
-    assert len(records) == 8544
-    for record in records[:200]:
-        assert record["questions"] == {"sentiment": {"type": "score", "instructions": "How positive is the sentiment of this text?", "criteria": list(LEVELS)}}
-        assert record["gold"]["sentiment"] in range(5)
+@pytest.mark.parametrize("split", ["train", "valid", "test_sst5"])
+def test_sst5_scales_and_sentiment_nouls(built, split):
+    records = [r for r in built.splits[split] if r["source"] == "SetFit/sst5"]
+    three = [r for r in records if r["meta"]["scale"] == "sst5_3_levels"]
+    assert len(three) == round(0.3 * len(records))
+    for record in records:
+        label = LABEL_TEXTS.index(record["meta"]["label_text"])
+        score = record["questions"]["sentiment"]
+        if record["meta"]["scale"] == "sst5_3_levels":
+            assert score["criteria"] == list(LEVELS_3) and record["gold"]["sentiment"] == TO_3_LEVELS[label]
+        else:
+            assert score["criteria"] == list(LEVELS) and record["gold"]["sentiment"] == label
+        nouls = record["meta"]["nouls"]
+        if label == 2:
+            assert nouls == {} and list(record["questions"]) == ["sentiment"]
+            continue
+        (kind,) = nouls
+        answer = label > 2 if kind == "is_positive" else label < 2
+        assert record["gold"][kind] == ("true" if answer != nouls[kind]["negated"] else "false")
+
+
+def test_emotion_nouls(built):
+    names = {"sadness", "joy", "love", "anger", "fear", "surprise"}
+    asks_gold = 0
+    for record in built.splits["test_emotion"]:
+        info = record["meta"]["nouls"]["expresses_emotion"]
+        assert info["asked_emotion"] in names and info["slot"] == info["asked_emotion"]
+        answer = info["asked_emotion"] == record["gold"]["label"]
+        asks_gold += answer
+        assert record["gold"]["expresses_emotion"] == ("true" if answer != info["negated"] else "false")
+    assert asks_gold == 500
+
+
+def test_yelp_is_stratified_short_and_scored_on_five_levels(built):
+    from jevmark.data.unseen import YELP_LEVELS
+
+    records = built.splits["test_yelp"]
+    assert Counter(r["gold"]["stars"] for r in records) == {star: 200 for star in range(5)}
+    for record in records:
+        assert len(record["state"]) <= CONFIG["unseen"]["yelp_max_chars"]
+        assert record["questions"] == {"stars": {"type": "score", "instructions": "How many stars does this review give the business?", "criteria": list(YELP_LEVELS)}}
+        assert record["meta"]["scale"] == "yelp_5_stars" and record["meta"]["nouls"] == {}
+    assert len({r["meta"]["source_index"] for r in records}) == 1000
 
 
 def test_unseen_sets_options(built):
@@ -218,35 +302,3 @@ def test_config_overrides():
     for bad in (["seed"], ["nope=1"], ["seed.x=1"]):
         with pytest.raises(ValueError):
             load_config(REPO / "configs" / "data.yaml", bad)
-
-
-# Data v1.1: negated noul questions (decision 40)
-
-
-@pytest.mark.parametrize("kind, positive", [("about_domain", "Is this message about travel, such as flights, hotels or trip preparation?"), ("out_of_scope", None)])
-def test_negation_is_bidirectional(kind, positive):
-    from jevmark.data.clinc import OUT_OF_SCOPE_INSTRUCTIONS
-
-    positive = positive or OUT_OF_SCOPE_INSTRUCTIONS
-    negated = negate(kind, positive)
-    assert negated != positive and is_negated(kind, negated) and not is_negated(kind, positive)
-    assert negate(kind, negated) == positive and negate(kind, negate(kind, negated)) == negated
-
-
-def test_every_clinc_record_records_its_phrasing(built):
-    for split in ("train", "valid", "test_indomain", "test_unseen_intents"):
-        for record in clinc_records(built.splits[split]):
-            assert isinstance(record["meta"]["negated"], bool)
-
-
-@pytest.mark.parametrize("split", ["train", "valid", "test_indomain", "test_unseen_intents"])
-def test_about_half_of_each_noul_kind_is_negated(built, split):
-    from jevmark.data.build import noul_phrasing
-
-    for kind, row in noul_phrasing(built.splits[split]).items():
-        assert 0.4 <= row["negated_share"] <= 0.6, (split, kind, row)
-
-
-def test_out_of_scope_kind_has_about_1750_questions_in_train(built):
-    counts = noul_balance(built.splits["train"])["out_of_scope"]
-    assert abs(counts["true"] + counts["false"] - 1750) <= 100

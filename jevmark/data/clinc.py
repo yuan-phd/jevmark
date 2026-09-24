@@ -1,8 +1,13 @@
-"""CLINC150 -> records with one choice and one noul question each (docs/DATA.md section 2).
+"""CLINC150 -> records with one choice and two noul questions each (docs/DATA.md section 2, data v1.2).
+
+Every record asks the intent (choice), either about_domain or out_of_scope (noul),
+and about_intent (noul), in a seeded random order. The builder fixes each noul
+question's underlying answer with exact counts so every kind is balanced before
+negation, then build.assign_phrasings picks the final template and polarity.
 
 The intent-to-domain map is the original CLINC release's domains.json, checked in
 unmodified as clinc_domains.json. The domain phrases below are written by hand and
-live only here.
+live only here; the noul phrasings live in negation.py.
 """
 
 from __future__ import annotations
@@ -17,7 +22,7 @@ from typing import Any
 
 from datasets import load_dataset
 
-from jevmark.data.build import choice_question, make_record, split_rng
+from jevmark.data.build import assign_phrasings, choice_question, make_record, noul_question, split_rng
 from jevmark.data.description_loader import LabelDescription, load_descriptions
 from jevmark.data.sources import CLINC, CLINC_OUT_OF_SCOPE
 
@@ -25,7 +30,7 @@ DOMAINS_FILE = Path(__file__).resolve().parent / "clinc_domains.json"
 DOMAINS_SOURCE = "https://github.com/clinc/oos-eval/blob/976178879e5afa9952f60a1f8d3c834f47a25cee/data/domains.json"
 DOMAINS_SHA256 = "b947b579d3b8e74b06f93b01083d8efaff2888b43a3e362533bd88a6e1211b3a"
 
-# Hand-written; "Is this message about <phrase>?"
+# Hand-written; the slot of the about_domain templates in negation.py.
 DOMAIN_PHRASES = {
     "banking": "banking, such as accounts, balances, bills or transfers",
     "credit_cards": "credit cards, such as card limits, rewards or credit scores",
@@ -40,8 +45,6 @@ DOMAIN_PHRASES = {
 }
 
 INTENT_INSTRUCTIONS = "Which intent does this message express?"
-DOMAIN_INSTRUCTIONS = "Is this message about {phrase}?"
-OUT_OF_SCOPE_INSTRUCTIONS = "Is this request outside what a banking, travel, home, work or everyday assistant can help with?"
 OTHER_LABEL = "other"
 OTHER_DESCRIPTION = "None of the listed intents"
 SOURCE = f"{CLINC.id}/{CLINC.config}"
@@ -101,30 +104,14 @@ class ClincBuilder:
         self.held_out = choose_held_out(load_domains(), int(self.params["held_out_per_domain"]), self.seed)
         self.seen = [i for i in self.intents if i not in set(self.held_out)]
         self.descriptions: dict[str, LabelDescription] = load_descriptions("clinc")
-        self.p_negated = float(self.params["p_negated"])
-        self.p_out_of_scope = self._out_of_scope_rate(int(self.params["out_of_scope_questions_train"]))
 
     def _pool(self, split: str) -> tuple[list[Utterance], list[str]]:
-        """Utterances of a split and the intents allowed as options there."""
+        """Utterances of a split and the intents allowed as options and asked intents there."""
         held = set(self.held_out)
         if split == "test_unseen_intents":
             pool = [u for hf in ("train", "validation", "test") for u in self.utterances[hf] if u.intent in held]
             return pool, self.held_out
         return [u for u in self.utterances[HF_SPLITS[split]] if u.intent not in held], self.seen
-
-    def _out_of_scope_rate(self, target_train: int) -> float:
-        """In-scope rate p of out_of_scope questions, set so train has about target_train of them (decision 40).
-
-        Each out-of-scope utterance contributes one out_of_scope question, so p =
-        (target - N_oos) / N_in on train; the same p is used in every split.
-        """
-        pool, _ = self._pool("train")
-        n_oos = sum(u.intent == CLINC_OUT_OF_SCOPE for u in pool)
-        n_in = len(pool) - n_oos
-        p = (target_train - n_oos) / n_in
-        if not 0.0 <= p < 1.0:
-            raise RuntimeError(f"out_of_scope target {target_train} needs in-scope rate {p:.4f}, outside [0, 1)")
-        return p
 
     def _choice(self, rng: random.Random, gold_intent: str | None, allowed: Sequence[str]) -> tuple[dict[str, Any], str, bool]:
         k = rng.randint(int(self.params["k_min"]), int(self.params["k_max"]))
@@ -135,89 +122,75 @@ class ClincBuilder:
         gold = gold_intent if include_gold else OTHER_LABEL
         return choice_question(INTENT_INSTRUCTIONS, options, rng), gold, include_gold
 
-    def _record(
-        self,
-        split: str,
-        index: int,
-        u: Utterance,
-        choice: tuple[dict[str, Any], str, bool],
-        noul: tuple[str, dict[str, Any], str],
-        noul_first: bool,
-        negated: bool,
-        meta: dict[str, Any],
-    ) -> dict[str, Any]:
-        from jevmark.data.negation import negate  # negation.py imports this module's instruction texts
-
+    def _record(self, split: str, index: int, u: Utterance, choice: tuple[dict[str, Any], str, bool], kind: str, noul: tuple) -> dict[str, Any]:
+        """A draft record with the intent question and one noul question; about_intent is added later."""
         question, choice_gold, gold_in_options = choice
-        noul_id, noul_question, noul_gold = noul
-        if negated:
-            noul_question = {**noul_question, "instructions": negate(noul_id, noul_question["instructions"])}
-            noul_gold = {"true": "false", "false": "true"}[noul_gold]
-        pairs = [("intent", question, choice_gold), (noul_id, noul_question, noul_gold)]
-        if noul_first:
-            pairs.reverse()
-        return make_record(
-            f"clinc-{split}-{index:06d}",
-            SOURCE,
-            split,
-            u.text,
-            {qid: q for qid, q, _ in pairs},
-            {qid: g for qid, _, g in pairs},
-            {
+        noul_q, noul_gold, noul_info = noul
+        return {
+            "id": f"clinc-{split}-{index:06d}",
+            "source": SOURCE,
+            "split": split,
+            "state": u.text,
+            "questions": {"intent": question, kind: noul_q},
+            "gold": {"intent": choice_gold, kind: noul_gold},
+            "meta": {
                 "source_split": u.source_split,
                 "source_index": u.source_index,
                 "gold_intent": u.intent,
                 "domain": self.domain_of.get(u.intent),
                 "gold_in_options": gold_in_options if u.intent != CLINC_OUT_OF_SCOPE else None,
-                "noul_kind": noul_id,
-                "negated": negated,
-                **meta,
+                "nouls": {kind: noul_info},
             },
-        )
+        }
 
     def build_split(self, split: str) -> list[dict[str, Any]]:
         rng = split_rng(self.seed, split)
-        negation_rng = split_rng(self.seed, f"{split}:negation")  # its own stream, so negation shifts no other draw
         pool, allowed = self._pool(split)
-        n_oos = sum(u.intent == CLINC_OUT_OF_SCOPE for u in pool)
-        n_in = len(pool) - n_oos
-        p = self.p_out_of_scope
-        # q balances about_domain's underlying answers: about A = N_in (1 - p) in-scope records ask it,
-        # and every out-of-scope utterance adds one "false"; q A = (1 - q) A + N_oos.
-        in_scope_about_domain = n_in * (1 - p)
-        if in_scope_about_domain < n_oos:
-            raise RuntimeError(f"{split}: {n_oos} out-of-scope utterances exceed {in_scope_about_domain:.0f} in-scope about_domain questions")
-        q = (in_scope_about_domain + n_oos) / (2 * in_scope_about_domain)
+        in_scope = [i for i, u in enumerate(pool) if u.intent != CLINC_OUT_OF_SCOPE]
+        n_oos = len(pool) - len(in_scope)
+        if 2 * n_oos > len(in_scope):
+            raise RuntimeError(f"{split}: {n_oos} out-of-scope utterances are too many to balance against {len(in_scope)} in-scope ones")
+        # out_of_scope: exactly as many in-scope utterances (answer no) as out-of-scope ones (answer yes).
+        asks_out_of_scope = set(rng.sample(in_scope, n_oos))
+        # about_domain: the remaining in-scope utterances plus one "no" question per out-of-scope utterance;
+        # exactly half of all about_domain questions ask the gold domain.
+        domain_candidates = [i for i in in_scope if i not in asks_out_of_scope]
+        asks_gold_domain = set(rng.sample(domain_candidates, (len(domain_candidates) + n_oos) // 2))
         domains = sorted(DOMAIN_PHRASES)
 
-        def negated() -> bool:
-            return negation_rng.random() < self.p_negated
+        def domain_noul(asked: str, gold: bool) -> tuple:
+            return noul_question("about_domain", gold, DOMAIN_PHRASES[asked], asked_domain=asked)
 
         records: list[dict[str, Any]] = []
-        for u in pool:
+        for index, u in enumerate(pool):
             if u.intent == CLINC_OUT_OF_SCOPE:
-                # Two records: out_of_scope (true), then about_domain for a uniform domain (false).
-                choice = self._choice(rng, None, allowed)
-                records.append(self._record(split, len(records), u, choice, out_of_scope_question("true"), rng.random() < 0.5, negated(), {}))
+                records.append(self._record(split, len(records), u, self._choice(rng, None, allowed), "out_of_scope", noul_question("out_of_scope", True)))
                 asked = rng.choice(domains)
-                choice = self._choice(rng, None, allowed)
-                noul = domain_question(asked, "false")
-                records.append(self._record(split, len(records), u, choice, noul, rng.random() < 0.5, negated(), {"asked_domain": asked}))
+                records.append(self._record(split, len(records), u, self._choice(rng, None, allowed), "about_domain", domain_noul(asked, False)))
                 continue
             choice = self._choice(rng, u.intent, allowed)
-            if rng.random() < p:
-                noul, meta = out_of_scope_question("false"), {}
+            if index in asks_out_of_scope:
+                records.append(self._record(split, len(records), u, choice, "out_of_scope", noul_question("out_of_scope", False)))
             else:
                 gold_domain = self.domain_of[u.intent]
-                asked = gold_domain if rng.random() < q else rng.choice([d for d in domains if d != gold_domain])
-                noul, meta = domain_question(asked, "true" if asked == gold_domain else "false"), {"asked_domain": asked}
-            records.append(self._record(split, len(records), u, choice, noul, rng.random() < 0.5, negated(), meta))
-        return records
+                asked = gold_domain if index in asks_gold_domain else rng.choice([d for d in domains if d != gold_domain])
+                records.append(self._record(split, len(records), u, choice, "about_domain", domain_noul(asked, asked == gold_domain)))
 
+        # about_intent on every record: exactly half ask the gold intent; out-of-scope records always ask another.
+        in_scope_records = [j for j, r in enumerate(records) if r["meta"]["gold_intent"] != CLINC_OUT_OF_SCOPE]
+        asks_gold_intent = set(rng.sample(in_scope_records, len(records) // 2))
+        for j, record in enumerate(records):
+            gold_intent = record["meta"]["gold_intent"]
+            asked = gold_intent if j in asks_gold_intent else rng.choice([i for i in allowed if i != gold_intent])
+            description = rng.choice(self.descriptions[asked].variants)
+            question, gold, info = noul_question("about_intent", asked == gold_intent, description, asked_intent=asked)
+            order = [*record["questions"], "about_intent"]
+            rng.shuffle(order)
+            questions = {**record["questions"], "about_intent": question}
+            answers = {**record["gold"], "about_intent": gold}
+            record["questions"] = {qid: questions[qid] for qid in order}
+            record["gold"] = {qid: answers[qid] for qid in order}
+            record["meta"]["nouls"]["about_intent"] = info
 
-def out_of_scope_question(gold: str) -> tuple[str, dict[str, Any], str]:
-    return "out_of_scope", {"type": "noul", "instructions": OUT_OF_SCOPE_INSTRUCTIONS}, gold
-
-
-def domain_question(domain: str, gold: str) -> tuple[str, dict[str, Any], str]:
-    return "about_domain", {"type": "noul", "instructions": DOMAIN_INSTRUCTIONS.format(phrase=DOMAIN_PHRASES[domain])}, gold
+        assign_phrasings(records, split_rng(self.seed, f"{split}:phrasing"))
+        return [make_record(r["id"], r["source"], r["split"], r["state"], r["questions"], r["gold"], r["meta"]) for r in records]

@@ -12,8 +12,8 @@ import yaml
 from jevmark.config import load_config
 from jevmark.data.assemble import build_all
 from jevmark.data.build import SPLITS
-from jevmark.data.clinc import DOMAIN_INSTRUCTIONS, DOMAIN_PHRASES, OUT_OF_SCOPE_INSTRUCTIONS
-from jevmark.data.negation import NEGATIONS, negate
+from jevmark.data.clinc import DOMAIN_PHRASES
+from jevmark.data.negation import KINDS, TEMPLATES, negate, parse, render
 
 REPO = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("evaluate_script", REPO / "scripts" / "evaluate.py")
@@ -27,25 +27,52 @@ PER_SPLIT = 30
 # Negation templates
 
 
-def test_negation_templates_cover_both_noul_kinds():
-    assert set(NEGATIONS) == {"about_domain", "out_of_scope"}
+SLOTS = {"about_domain": DOMAIN_PHRASES["travel"], "about_intent": "Wants to move money between accounts", "expresses_emotion": "joy"}
+
+
+def test_every_kind_has_two_or_three_templates():
+    assert set(KINDS) == {"about_domain", "out_of_scope", "about_intent", "is_positive", "is_negative", "expresses_emotion"}
+    assert all(2 <= len(TEMPLATES[kind]) <= 3 for kind in KINDS)
+
+
+@pytest.mark.parametrize("kind", ["about_domain", "out_of_scope", "about_intent", "is_positive", "is_negative", "expresses_emotion"])
+def test_every_template_maps_to_its_pair_in_both_directions(kind):
+    rendered = set()
+    for template in range(len(TEMPLATES[kind])):
+        positive = render(kind, template, False, SLOTS.get(kind))
+        negated = render(kind, template, True, SLOTS.get(kind))
+        assert negate(kind, positive) == negated and negate(kind, negated) == positive
+        assert parse(kind, positive).template == parse(kind, negated).template == template
+        assert not parse(kind, positive).negated and parse(kind, negated).negated
+        assert parse(kind, negated).slot == SLOTS.get(kind)
+        rendered |= {positive, negated}
+    assert len(rendered) == 2 * len(TEMPLATES[kind])
+
+
+def test_negation_examples():
     phrase = DOMAIN_PHRASES["travel"]
-    assert negate("about_domain", DOMAIN_INSTRUCTIONS.format(phrase=phrase)) == f"Is this message about something other than {phrase}?"
-    assert negate("out_of_scope", OUT_OF_SCOPE_INSTRUCTIONS) == "Is this request something a banking, travel, home, work or everyday assistant can help with?"
+    assert negate("about_domain", f"Is this message about {phrase}?") == f"Is this message about something other than {phrase}?"
+    assert negate("expresses_emotion", "Is joy the main emotion in this message?") == "Is something other than joy the main emotion in this message?"
 
 
 def test_negation_rejects_unknown_kind_or_unfit_instruction():
     with pytest.raises(ValueError, match="no negation template"):
         negate("sentiment", "How positive?")
-    with pytest.raises(ValueError, match="fits neither phrasing"):
+    with pytest.raises(ValueError, match="fits no phrasing"):
         negate("about_domain", "Is this about travel?")
 
 
 def test_negated_record_works_for_either_stored_phrasing():
     phrase = DOMAIN_PHRASES["work"]
-    record = {"questions": {"about_domain": {"type": "noul", "instructions": DOMAIN_INSTRUCTIONS.format(phrase=phrase)}}, "meta": {"noul_kind": "about_domain"}}
+    record = {
+        "questions": {
+            "about_domain": {"type": "noul", "instructions": render("about_domain", 1, True, phrase)},
+            "about_intent": {"type": "noul", "instructions": render("about_intent", 0, False, "Asks about pay")},
+        }
+    }
     flipped = evaluate.negated_record(record)
-    assert flipped["questions"]["about_domain"]["instructions"] == f"Is this message about something other than {phrase}?"
+    assert flipped["questions"]["about_domain"]["instructions"] == render("about_domain", 1, False, phrase)
+    assert flipped["questions"]["about_intent"]["instructions"] == render("about_intent", 0, True, "Asks about pay")
     assert evaluate.negated_record(flipped)["questions"] == record["questions"]
 
 
@@ -115,13 +142,14 @@ def test_metrics_json_structure(run):
     for block in ("overall", "noul", "choice"):
         assert {"n", "accuracy", "ece", "brier", "nll", "reliability"} <= set(train[block])
         assert len(train[block]["reliability"]) == 15
-    assert train["overall"]["n"] == 2 * PER_SPLIT  # every CLINC record has two questions
+    assert train["overall"]["n"] == 3 * PER_SPLIT  # every CLINC record has three questions (data v1.2)
     assert len(train["noul"]["coverage"]) == 21 and "coverage" not in train["overall"]
     assert "macro_f1" in train["choice"]
-    assert train["symmetry"]["n"] == PER_SPLIT and 0.0 <= train["symmetry"]["argmax_consistent"] <= 1.0
+    assert train["symmetry"]["n"] == 2 * PER_SPLIT  # every CLINC record has two noul questions (data v1.2)
+    assert 0.0 <= train["symmetry"]["argmax_consistent"] <= 1.0
 
     sst5 = metrics["splits"]["test_sst5"]
-    assert set(sst5) == {"overall", "score", "n_records"} and "mae" in sst5["score"]
+    assert set(sst5) == {"overall", "score", "noul", "symmetry", "n_records"} and "mae" in sst5["score"]  # v1.2: sentiment nouls
     assert set(metrics["splits"]["test_agnews"]) == {"overall", "choice", "letter_bias", "n_records"}
 
     assert metrics["batching_precision"]["n_requests"] == 200
@@ -189,7 +217,7 @@ def test_results_file_has_one_line_per_question(run):
     assert len(lines) == sum(split["overall"]["n"] for split in metrics["splits"].values())
     assert set(lines[0]) == {"record_id", "question_id", "split", "type", "kind", "labels", "probs", "gold", "confidence", "prediction", "negated_p_yes"}
     nouls = [l for l in lines if l["type"] == "noul"]
-    assert nouls and all(l["kind"] in ("about_domain", "out_of_scope") and l["negated_p_yes"] is not None for l in nouls)
+    assert nouls and all(l["kind"] in KINDS and l["kind"] == l["question_id"] and l["negated_p_yes"] is not None for l in nouls)
     assert all(l["kind"] is None and l["negated_p_yes"] is None for l in lines if l["type"] != "noul")
 
 
@@ -207,7 +235,10 @@ def test_recompute_rebuilds_metrics_exactly(run, tmp_path):
 def test_new_breakdowns_reach_metrics_json(run):
     metrics = json.loads((run / "metrics.json").read_text())
     indomain = metrics["splits"]["test_indomain"]
-    assert set(indomain["noul"]["by_kind"]) <= {"about_domain", "out_of_scope"} and "yes_rate" in indomain["noul"]
+    assert set(indomain["noul"]["by_kind"]) <= {"about_domain", "out_of_scope", "about_intent"} and "about_intent" in indomain["noul"]["by_kind"]
+    assert "yes_rate" in indomain["noul"]
+    assert set(metrics["splits"]["test_emotion"]["noul"]["by_kind"]) == {"expresses_emotion"}
+    assert "score" in metrics["splits"]["test_yelp"] and "noul" not in metrics["splits"]["test_yelp"]
     assert {"n_offering_other", "predicted_other_rate"} <= set(indomain["choice"]["by_gold_other"])
     assert "by_k_position" in indomain["letter_bias"]
     assert "by_gold_other" not in metrics["splits"]["test_agnews"]["choice"]  # AG News offers no "other"

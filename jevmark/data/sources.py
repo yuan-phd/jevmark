@@ -26,8 +26,9 @@ SST5 = DatasetSource("sst5", "SetFit/sst5", None, "e51bdcd8cd3a30da231967c1a249b
 AG_NEWS = DatasetSource("ag_news", "fancyzhx/ag_news", None, "eb185aade064a813bc0b7f42de02595523103ca4", "label")
 EMOTION = DatasetSource("emotion", "dair-ai/emotion", None, "cab853a1dbdf4c42c2b3ef2173804746df8825fe", "label")
 BANKING77 = DatasetSource("banking77", "legacy-datasets/banking77", None, "f54121560de48f2852f90be299010d1d6dc612ec", "label")
+YELP = DatasetSource("yelp", "Yelp/yelp_review_full", None, "c1f9ee939b7d05667af864ee1cb066393154bf85", "label")
 
-SOURCES = {s.key: s for s in (CLINC, SST5, AG_NEWS, EMOTION, BANKING77)}
+SOURCES = {s.key: s for s in (CLINC, SST5, AG_NEWS, EMOTION, BANKING77, YELP)}
 
 CLINC_OUT_OF_SCOPE = "oos"
 

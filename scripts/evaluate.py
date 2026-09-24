@@ -91,11 +91,11 @@ def option_labels(question: dict[str, Any]) -> tuple[str, ...]:
 
 
 def negated_record(record: dict[str, Any]) -> dict[str, Any]:
-    """The same record with its noul instruction negated by the template for meta.noul_kind."""
+    """The same record with every noul instruction in its other phrasing (the question id is the noul kind)."""
     negated = copy.deepcopy(record)
-    for question in negated["questions"].values():
+    for qid, question in negated["questions"].items():
         if question["type"] == "noul":
-            question["instructions"] = negate(record["meta"]["noul_kind"], question["instructions"])
+            question["instructions"] = negate(qid, question["instructions"])
     return negated
 
 
@@ -179,7 +179,7 @@ def evaluate_split(
                     gold_index(question, record["gold"][qid]),
                     option_labels(question),
                     split=split,
-                    kind=record["meta"].get("noul_kind") if question["type"] == "noul" else None,
+                    kind=qid if question["type"] == "noul" else None,
                 )
             )
 
@@ -262,7 +262,7 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--ckpt", required=True, help="a run directory, or 'base' for the frozen backbone of --config")
     parser.add_argument("--config", default=None, help="config file; default configs/base.yaml for base, the run's config.yaml otherwise")
-    parser.add_argument("--splits", nargs="+", choices=SPLITS, default=list(SPLITS), help="default: all eight")
+    parser.add_argument("--splits", nargs="+", choices=SPLITS, default=list(SPLITS), help="default: all nine")
     parser.add_argument("--limit", type=int, default=None, help="first N records per split, for smoke runs")
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--device", default=None, help="cpu, cuda or cuda:N; default cuda when available")

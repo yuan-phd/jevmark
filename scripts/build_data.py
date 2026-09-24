@@ -3,12 +3,15 @@
     uv run python scripts/build_data.py --config configs/data.yaml [key=value ...]
 
 Every record is validated with Request.from_dict and must encode within max_tokens
-with the pinned reference tokenizer. The build fails if a noul kind's yes share is
-outside the configured range in any split, if a held-out intent reaches train or
-valid, if test_unseen_intents offers a seen intent, if a gold option position
-deviates from uniform by more than 4 standard deviations for some K, or if record
-ids repeat. The report prints split sizes, option-count and answer-letter
-histograms, noul balance and gold positions per K.
+with the pinned reference tokenizer. The build fails if, for any noul kind in any
+split, the yes share is outside the configured range or the phrasing-only accuracy
+(answering each phrasing with its own majority answer) is above
+max_phrasing_only_accuracy; if a held-out intent reaches train or valid as an
+utterance, an option or an asked intent; if test_unseen_intents offers a seen
+intent; if a gold option position deviates from uniform by more than 4 standard
+deviations for some K; or if record ids repeat. The report prints split sizes, noul
+balance and phrasing-only accuracy per kind, score levels per scale, option-count
+and answer-letter histograms, and gold positions per K.
 """
 
 from __future__ import annotations
@@ -24,7 +27,7 @@ from transformers import AutoTokenizer
 
 from jevmark.config import load_config
 from jevmark.data.assemble import build_all
-from jevmark.data.build import SPLITS, gold_positions, held_out_leaks, noul_balance, noul_phrasing, phrasing_only_accuracy, position_deviations
+from jevmark.data.build import SPLITS, gold_positions, held_out_leaks, noul_phrasing, position_deviations, score_distribution
 from jevmark.encode import LETTERS, encode, letter_token_ids
 from jevmark.schema import Request
 
@@ -57,39 +60,29 @@ def check_and_report(built: Any, config: dict[str, Any], tokenizer: Any) -> None
         sources = Counter(r["source"] for r in records)
         print(f"{split:20} {len(records):6}  {dict(sources)}  max tokens {max(lengths)}")
 
-    print("\n== noul yes/no per kind")
-    for split, records in built.splits.items():
-        balance = noul_balance(records)
-        if not balance:
-            print(f"{split:20} no noul questions")
-            continue
-        parts = []
-        for kind in ("about_domain", "out_of_scope"):
-            if kind not in balance:
-                parts.append(f"{kind}: absent")
-                continue
-            yes, no = balance[kind]["true"], balance[kind]["false"]
-            share = yes / (yes + no)
-            parts.append(f"{kind}: {yes} yes / {no} no ({share:.1%} yes)")
-            if not low <= share <= high:
-                failures.append(f"{split}/{kind}: yes share {share:.1%} outside {low:.0%}-{high:.0%}")
-        print(f"{split:20} " + "; ".join(parts))
-
-    print("\n== noul phrasing (data v1.1): negated share, gold yes/no per phrasing, phrasing-only accuracy (train majority per phrasing)")
-    train_table = noul_phrasing(built.splits.get("train", []))
+    max_shortcut = float(config["max_phrasing_only_accuracy"])
+    print(f"\n== noul balance per kind (fail: yes share outside {low:.0%}-{high:.0%}, or phrasing-only accuracy above {max_shortcut:.0%})")
     for split, records in built.splits.items():
         table = noul_phrasing(records)
         if not table:
+            print(f"{split:20} no noul questions")
             continue
-        shortcut = phrasing_only_accuracy(train_table, table)
-        for kind in ("about_domain", "out_of_scope"):
-            if kind in table:
-                row = table[kind]
-                print(
-                    f"{split:20} {kind:13} n {row['n']:5}  negated {row['negated_share']:.1%}  "
-                    f"positive {row['positive']['true']}/{row['positive']['false']}  negated {row['negated']['true']}/{row['negated']['false']}  "
-                    f"phrasing-only acc {shortcut.get(kind, float('nan')):.1%}"
-                )
+        for kind in sorted(table):
+            row = table[kind]
+            print(
+                f"{split:20} {kind:17} n {row['n']:5}  yes {row['yes_share']:.1%}  negated {row['negated_share']:.1%}  "
+                f"phrasing-only acc {row['phrasing_only_accuracy']:.1%}  ({len(row['phrasings'])} phrasings)"
+            )
+            if not low <= row["yes_share"] <= high:
+                failures.append(f"{split}/{kind}: yes share {row['yes_share']:.1%} outside {low:.0%}-{high:.0%}")
+            if row["phrasing_only_accuracy"] > max_shortcut:
+                failures.append(f"{split}/{kind}: phrasing-only accuracy {row['phrasing_only_accuracy']:.1%} above {max_shortcut:.0%}")
+
+    print("\n== score gold level distribution per scale")
+    for split, records in built.splits.items():
+        for scale, counts in score_distribution(records).items():
+            total = sum(counts.values())
+            print(f"{split:20} {scale:15} n {total:5}  " + "  ".join(f"{level}: {n} ({n / total:.0%})" for level, n in counts.items()))
 
     print("\n== options per choice question (K: count)")
     for split, records in built.splits.items():

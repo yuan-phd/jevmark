@@ -1,6 +1,6 @@
 # Data build (docs/DATA.md section 2). All randomness derives from seed: every split
 # uses random.Random(f"{seed}:{split}"), and the held-out intents use "{seed}:held_out".
-version: v1.1                    # v1.1: negated noul questions, more out_of_scope questions (decision 40)
+version: v1.2                    # v1.2: noul and score diversity (decision 41); v1.1: negated noul questions (decision 40)
 seed: 0
 out_dir: data
 base_config: configs/base.yaml   # tokenizer_reference for the encoding check
@@ -11,11 +11,18 @@ clinc:
   k_max: 10
   p_gold_in_options: 0.8
   held_out_per_domain: 2
-  out_of_scope_questions_train: 1750   # target size of the out_of_scope kind in train; sets the in-scope rate p for every split
-  p_negated: 0.5                  # share of noul questions stored in the negated phrasing, gold flipped
+
+sst5:
+  p_three_levels: 0.3            # share of SST-5 records, per split, that use the 3-level scale
 
 unseen:
   n_per_set: 1000
   banking77_options: 10          # gold, 8 distractors and "other"
+  yelp_per_star: 200             # test_yelp: stratified, 200 reviews per star
+  yelp_max_chars: 2500           # only reviews this short are sampled, so every record fits max_tokens
+
+# Noul balance (decisions 32, 40, 41): every noul question is negated in exactly half of each
+# (kind, underlying answer) group, with templates and polarity from shuffled balanced blocks.
+max_phrasing_only_accuracy: 0.55 # build fails if answering each phrasing with its majority answer beats this
 
 noul_balance: [0.4, 0.6]         # build fails if a noul kind's yes share is outside this range

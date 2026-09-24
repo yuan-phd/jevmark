@@ -41,7 +41,7 @@ class QuestionResult:
     gold: int  # index of the gold option
     labels: tuple[str, ...]  # option labels in the same order
     split: str = ""
-    kind: str | None = None  # meta.noul_kind for CLINC noul questions, else None
+    kind: str | None = None  # the noul kind (its question id) for noul questions, else None
     negated_p_yes: float | None = None  # noul only: P(yes) for the negated instruction
 
     @property
@@ -183,7 +183,7 @@ def letter_bias(results: Sequence[QuestionResult]) -> dict[str, Any]:
 
 
 def noul_by_kind(results: Sequence[QuestionResult]) -> dict[str, dict[str, Any]]:
-    """Noul questions by kind (meta.noul_kind): accuracy, ECE on top-1 and the share of yes predictions."""
+    """Noul questions by kind (question id): accuracy, ECE on top-1 and the share of yes predictions."""
     groups: dict[str, list[QuestionResult]] = defaultdict(list)
     for r in results:
         groups[r.kind or "unknown"].append(r)

@@ -24,11 +24,11 @@ def build_all(config: Mapping[str, Any], splits: Sequence[str] = SPLITS) -> Buil
     built: dict[str, list[dict[str, Any]]] = {}
     for split in splits:
         if split in ("train", "valid"):
-            built[split] = clinc.build_split(split) + sst5.build_split(split)
+            built[split] = clinc.build_split(split) + sst5.build_split(split, config)
         elif split in ("test_indomain", "test_unseen_intents"):
             built[split] = clinc.build_split(split)
         elif split == "test_sst5":
-            built[split] = sst5.build_split(split)
+            built[split] = sst5.build_split(split, config)
         else:
             built[split] = unseen.build_split(split, config)
     return BuiltData(built, tuple(clinc.held_out), tuple(clinc.seen))
