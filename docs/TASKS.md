@@ -37,6 +37,7 @@ Datasets are referenced by Hugging Face id. Ids move; the first step of any data
 ### 1.4 systemone.py
 - [ ] `systemone` and `systemone_batch` per API_SPEC sections 1 and 3, including confidence, score expectation, legend, rounding, usage.
 - [ ] `scripts/serve.py` optional FastAPI wrapper exposing `POST /v1/systemone` with the same JSON.
+- [ ] `serve.py` parses the request body with a `json` `object_pairs_hook` that raises `ValueError` on any duplicate key, because `json.loads` otherwise keeps only the last duplicate and duplicate option labels would go undetected.
 - Acceptance: `tests/test_systemone.py` round-trips the three-question example from API_SPEC through the tiny model and validates the response shape field by field, with probabilities summing to 1 within 1e-3.
 
 ### 1.5 Data
