@@ -163,3 +163,34 @@ def test_nan_in_fp32_is_an_error(monkeypatch, tiny_model, tokenizer):
     monkeypatch.setattr(jev, "slot_logits", lambda batch: [torch.tensor([float("inf"), 0.0])])
     with pytest.raises(RuntimeError, match="fp32"):
         evaluate.first_batch_check(jev, [])
+
+
+# results.jsonl.gz and recompute_metrics.py (task 1.6b)
+
+spec_r = importlib.util.spec_from_file_location("recompute_metrics", REPO / "scripts" / "recompute_metrics.py")
+recompute_script = importlib.util.module_from_spec(spec_r)
+sys.modules[spec_r.name] = recompute_script
+spec_r.loader.exec_module(recompute_script)
+
+
+def test_results_file_has_one_line_per_question(run):
+    import gzip
+
+    lines = [json.loads(line) for line in gzip.open(run / "results.jsonl.gz", "rt")]
+    metrics = json.loads((run / "metrics.json").read_text())
+    assert len(lines) == sum(split["overall"]["n"] for split in metrics["splits"].values())
+    assert set(lines[0]) == {"record_id", "question_id", "split", "type", "kind", "labels", "probs", "gold", "confidence", "prediction", "negated_p_yes"}
+    nouls = [l for l in lines if l["type"] == "noul"]
+    assert nouls and all(l["kind"] in ("about_domain", "out_of_scope") and l["negated_p_yes"] is not None for l in nouls)
+    assert all(l["kind"] is None and l["negated_p_yes"] is None for l in lines if l["type"] != "noul")
+
+
+def test_recompute_rebuilds_metrics_exactly(run, tmp_path):
+    out = tmp_path / "recomputed.json"
+    assert recompute_script.main([str(run), "--out", str(out)]) == 0
+    original = json.loads((run / "metrics.json").read_text())
+    rebuilt = json.loads(out.read_text())
+    assert rebuilt["splits"] == original["splits"]
+    for key in ("git", "precision", "latency", "batching_precision", "data_files_sha256"):
+        assert rebuilt[key] == original[key]
+    assert rebuilt["recomputed"]["questions"] == sum(s["overall"]["n"] for s in original["splits"].values())

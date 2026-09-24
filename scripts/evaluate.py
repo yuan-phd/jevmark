@@ -5,7 +5,9 @@
 
 Reads the unrounded distributions from JevMark.forward_distributions (through
 encode), never the rounded systemone responses. Writes runs/<run_name>/metrics.json,
-config.yaml, model_id.txt and plots/<split>.png. With --ckpt base the run name is
+config.yaml, model_id.txt, plots/<split>.png and results.jsonl.gz (one line per
+question, gitignored; scripts/recompute_metrics.py rebuilds metrics.json from it).
+With --ckpt base the run name is
 the config's run_name (base_06b or base_17b); a --limit run writes to
 runs/<run_name>_limit<N>/ so smoke runs never overwrite real results.
 
@@ -25,6 +27,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -39,7 +42,7 @@ from jevmark.config import load_config  # noqa: E402
 from jevmark.data.build import SPLITS  # noqa: E402
 from jevmark.data.negation import negate  # noqa: E402
 from jevmark.encode import Encoded, encode  # noqa: E402
-from jevmark.metrics import QuestionResult, max_abs_difference, split_metrics, symmetry, timing_summary  # noqa: E402
+from jevmark.metrics import QuestionResult, max_abs_difference, split_report, timing_summary, write_results  # noqa: E402
 from jevmark.model import JevMark  # noqa: E402
 from jevmark.schema import Request  # noqa: E402
 
@@ -156,7 +159,10 @@ def batching_precision(jev: JevMark, encoded: Sequence[Encoded], batch_size: int
 # Evaluation of one split
 
 
-def evaluate_split(jev: JevMark, records: list[dict[str, Any]], batch_size: int) -> tuple[dict[str, Any], list[Encoded]]:
+def evaluate_split(
+    jev: JevMark, split: str, records: list[dict[str, Any]], batch_size: int
+) -> tuple[list[QuestionResult], list[Encoded]]:
+    """One QuestionResult per question; noul results carry P(yes) for the negated instruction."""
     encoded = [encode(request_of(r), jev.tokenizer, jev.max_tokens) for r in records]
     flat = iter(distributions(jev, encoded, batch_size))
     results: list[QuestionResult] = []
@@ -164,25 +170,30 @@ def evaluate_split(jev: JevMark, records: list[dict[str, Any]], batch_size: int)
         for qid, question in record["questions"].items():
             results.append(
                 QuestionResult(
-                    record["id"], qid, question["type"], tuple(next(flat)), gold_index(question, record["gold"][qid]), option_labels(question)
+                    record["id"],
+                    qid,
+                    question["type"],
+                    tuple(next(flat)),
+                    gold_index(question, record["gold"][qid]),
+                    option_labels(question),
+                    split=split,
+                    kind=record["meta"].get("noul_kind") if question["type"] == "noul" else None,
                 )
             )
-    metrics = split_metrics(results)
-    metrics["n_records"] = len(records)
 
     with_noul = [r for r in records if any(q["type"] == "noul" for q in r["questions"].values())]
     if with_noul:
-        by_record = {(r.record_id, r.question_id): r.probs[0] for r in results if r.qtype == "noul"}
-        negated = [negated_record(r) for r in with_noul]
-        negated_flat = iter(distributions(jev, [encode(request_of(r), jev.tokenizer, jev.max_tokens) for r in negated], batch_size))
-        pairs = []
-        for record in negated:
+        negated_flat = iter(distributions(jev, [encode(request_of(negated_record(r)), jev.tokenizer, jev.max_tokens) for r in with_noul], batch_size))
+        negated_p_yes = {}
+        for record in with_noul:
             for qid, question in record["questions"].items():
                 probs = next(negated_flat)
                 if question["type"] == "noul":
-                    pairs.append((by_record[(record["id"], qid)], probs[0]))
-        metrics["symmetry"] = symmetry(pairs)
-    return metrics, encoded
+                    negated_p_yes[(record["id"], qid)] = probs[0]
+        results = [
+            replace(r, negated_p_yes=negated_p_yes[(r.record_id, r.question_id)]) if r.qtype == "noul" else r for r in results
+        ]
+    return results, encoded
 
 
 # Output
@@ -278,6 +289,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     started = time.perf_counter()
     fallback_used = None
     split_results: dict[str, Any] = {}
+    all_results: list[QuestionResult] = []
     data_files: dict[str, str] = {}
     probe: list[Encoded] = []
     probe_requests: list[Request] = []
@@ -287,7 +299,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if fallback_used is None:
             fallback_used = first_batch_check(jev, [encode(request_of(r), jev.tokenizer, jev.max_tokens) for r in records[: args.batch_size]])
         split_start = time.perf_counter()
-        metrics, encoded = evaluate_split(jev, records, args.batch_size)
+        results, encoded = evaluate_split(jev, split, records, args.batch_size)
+        all_results += results
+        metrics = split_report(results)
         split_results[split] = metrics
         if len(probe) < PROBE_REQUESTS:
             take = PROBE_REQUESTS - len(probe)
@@ -322,10 +336,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     }
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "metrics.json").write_text(json.dumps(metrics_json, indent=2) + "\n")
+    write_results(out_dir / "results.jsonl.gz", all_results)
     if checkpoint is None or checkpoint.resolve() != out_dir.resolve():
         (out_dir / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
         (out_dir / "model_id.txt").write_text(jev.model_id + "\n")
-    log(f"wrote {out_dir}/metrics.json, config.yaml, model_id.txt and {len(args.splits)} plots")
+    size_kb = (out_dir / "results.jsonl.gz").stat().st_size / 1024
+    log(f"wrote {out_dir}/metrics.json, results.jsonl.gz ({len(all_results)} questions, {size_kb:.1f} KiB), config.yaml, model_id.txt and {len(args.splits)} plots")
     return 0
 
 

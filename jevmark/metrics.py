@@ -14,11 +14,14 @@ P(true) >= 0.5. Choice and score predictions are the argmax, first index on ties
 
 from __future__ import annotations
 
+import gzip
+import json
 import math
 import statistics
 from collections import defaultdict
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Any
 
 from jevmark.systemone import normalised_confidence
@@ -37,6 +40,9 @@ class QuestionResult:
     probs: tuple[float, ...]  # in option order; noul is (P(true), P(false))
     gold: int  # index of the gold option
     labels: tuple[str, ...]  # option labels in the same order
+    split: str = ""
+    kind: str | None = None  # meta.noul_kind for CLINC noul questions, else None
+    negated_p_yes: float | None = None  # noul only: P(yes) for the negated instruction
 
     @property
     def k(self) -> int:
@@ -205,6 +211,61 @@ def summarize(results: Sequence[QuestionResult], with_coverage: bool) -> dict[st
     if with_coverage:
         summary["coverage"] = coverage_curve(results)
     return summary
+
+
+def split_report(results: Sequence[QuestionResult]) -> dict[str, Any]:
+    """Everything metrics.json holds for one split: split_metrics, n_records and noul symmetry when measured."""
+    report = split_metrics(results)
+    report["n_records"] = len({r.record_id for r in results})
+    pairs = [(r.probs[0], r.negated_p_yes) for r in results if r.qtype == "noul" and r.negated_p_yes is not None]
+    if pairs:
+        report["symmetry"] = symmetry(pairs)
+    return report
+
+
+# results.jsonl.gz: one line per question, enough to rebuild metrics.json exactly.
+
+
+def result_to_line(r: QuestionResult) -> dict[str, Any]:
+    line = asdict(r)
+    line["type"] = line.pop("qtype")
+    line["confidence"] = r.confidence
+    line["prediction"] = r.prediction
+    return line
+
+
+def result_from_line(line: Mapping[str, Any]) -> QuestionResult:
+    """Inverse of result_to_line; confidence and prediction are derived, so they are recomputed, not read."""
+    return QuestionResult(
+        record_id=line["record_id"],
+        question_id=line["question_id"],
+        qtype=line["type"],
+        probs=tuple(line["probs"]),
+        gold=int(line["gold"]),
+        labels=tuple(line["labels"]),
+        split=line["split"],
+        kind=line["kind"],
+        negated_p_yes=line["negated_p_yes"],
+    )
+
+
+def write_results(path: Path, results: Sequence[QuestionResult]) -> None:
+    with gzip.open(path, "wt", encoding="utf-8") as f:
+        for r in results:
+            f.write(json.dumps(result_to_line(r)) + "\n")
+
+
+def read_results(path: Path) -> list[QuestionResult]:
+    with gzip.open(path, "rt", encoding="utf-8") as f:
+        return [result_from_line(json.loads(line)) for line in f if line.strip()]
+
+
+def reports_by_split(results: Sequence[QuestionResult]) -> dict[str, dict[str, Any]]:
+    """split -> split_report, splits in order of first appearance."""
+    order: dict[str, list[QuestionResult]] = {}
+    for r in results:
+        order.setdefault(r.split, []).append(r)
+    return {split: split_report(members) for split, members in order.items()}
 
 
 def split_metrics(results: Sequence[QuestionResult]) -> dict[str, Any]:

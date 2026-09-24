@@ -167,3 +167,12 @@ def test_split_metrics_structure_and_values():
 
 def test_split_metrics_omits_absent_types():
     assert set(split_metrics([score([0.5, 0.5], 0)])) == {"overall", "score"}
+
+
+def test_result_line_round_trip():
+    from jevmark.metrics import result_from_line, result_to_line
+
+    r = QuestionResult("id1", "about_domain", "noul", (0.7, 0.3), 1, ("true", "false"), split="valid", kind="about_domain", negated_p_yes=0.4)
+    line = result_to_line(r)
+    assert line["type"] == "noul" and line["confidence"] == pytest.approx(0.7) and line["prediction"] == 0
+    assert result_from_line(line) == r
