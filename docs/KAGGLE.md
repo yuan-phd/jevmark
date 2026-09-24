@@ -45,7 +45,7 @@ Run the cells top to bottom:
 | Install | uninstalls Kaggle's `torchao`, then `pip install -r requirements-kaggle.txt` (the seven Hugging Face packages) and jevmark with `--no-deps`; prints versions and GPU count | 1 to 2 min |
 | Data | `make data PY=python`; fails loudly if any data check fails | under 1 min |
 | Smoke | 30 records per split on 0.6B, writes `runs/base_06b_limit30/` | a few min, mostly downloads |
-| B0 0.6B | all eight splits, writes `runs/base_06b/` | about 0.5 GPU hours (measured 28 min) |
+| B0 0.6B | all eight splits, writes `runs/base_06b/` | about 0.4 GPU hours (measured 28 min with fp32 weights, 21 min with fp16) |
 | B0 1.7B | all eight splits, writes `runs/base_17b/` | about 1.0 GPU hours (measured 56 min) |
 | Copy | copies `runs/` to `/kaggle/working/runs` and prints each run's commit, dirty flag, fp32 fallback and wall clock | seconds |
 
@@ -77,7 +77,7 @@ One session trains one backbone size, then evaluates it and re-evaluates the fro
 
 | Session | `SIZE` | Training (estimate; measure and update) | Evaluations | Writes |
 |---|---|---|---|---|
-| 1 | `06b` | about 0.5 GPU hours | sft 0.5 h, base 0.5 h | `runs/sft_06b/`, `runs/base_06b/` |
+| 1 | `06b` | about 0.8 GPU hours (measured 47 min) | sft 0.4 h, base 0.4 h | `runs/sft_06b/`, `runs/base_06b/` |
 | 2 | `17b` | about 1.5 to 2 GPU hours (gradient checkpointing on) | sft 1.0 h, base 1.0 h | `runs/sft_17b/`, `runs/base_17b/` |
 
 Both sessions use the same `COMMIT`, so the four runs share one code version. Set `REPO`, `COMMIT`, `SIZE`, `SMOKE_STEPS` (default 20) and `MAX_HOURS` (default 6.0, which leaves room for the two evaluations inside a 9 hour session) in the first code cell, then run the cells top to bottom:
