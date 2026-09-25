@@ -236,3 +236,58 @@ def test_gradient_checkpointing_trains(setup, tmp_path):
     assert code == 0
     losses = [e["loss"] for e in log_of(tmp_path / "runs" / "tiny_sft") if "loss" in e]
     assert len(losses) == 2 and all(loss == loss for loss in losses)
+
+
+# Pre-flight check (decision 45)
+
+
+def test_preflight_runs_the_longest_records_and_is_logged(setup, tmp_path):
+    run_dir = run_training(setup, tmp_path / "runs", "--limit-steps", "2")
+    events = [e for e in log_of(run_dir) if e.get("event") == "preflight"]
+    assert len(events) == 1 and events[0]["passed"] is True
+    check = events[0]
+    assert check["records"] == TRAINING["micro_batch"] and check["device"] == "cpu" and "peak_gib" not in check
+    # The worst case is the longest records of the training set.
+    from jevmark.encode import encode
+
+    train_records = [json.loads(l) for l in (setup.data_dir / "train.jsonl").read_text().splitlines()]
+    tokenizer = train.JevMark.load(yaml.safe_load(setup.config_path.read_text()), device="cpu").tokenizer
+    longest = max(len(encode(Request.from_dict({"state": r["state"], "questions": r["questions"]}), tokenizer, 1024).input_ids) for r in train_records)
+    assert abs(check["longest_tokens"] - longest) <= 1  # the reshuffled order can differ by a token
+    log = log_of(run_dir)
+    assert [e.get("event") for e in log[:2]] == ["start", "preflight"]
+
+
+def test_preflight_out_of_memory_exits_nonzero_before_any_step(setup, tmp_path, monkeypatch):
+    real = train.batch_loss
+    calls = []
+
+    def exploding(jev, batch):
+        calls.append(len(batch))
+        if len(calls) == 1:
+            raise torch.cuda.OutOfMemoryError("CUDA out of memory. Tried to allocate 1.00 GiB")
+        return real(jev, batch)
+
+    monkeypatch.setattr(train, "batch_loss", exploding)
+    runs_dir = tmp_path / "runs"
+    with pytest.raises(SystemExit, match="PREFLIGHT FAIL") as excinfo:
+        train.main(["--config", str(setup.config_path), "--data-dir", str(setup.data_dir), "--runs-dir", str(runs_dir), "--device", "cpu"])
+    assert excinfo.value.code != 0
+    log = log_of(runs_dir / "tiny_sft")
+    assert log[-1]["event"] == "preflight" and log[-1]["passed"] is False and "out of memory" in log[-1]["error"]
+    assert not any("step" in e and "event" not in e for e in log)  # no training step ran
+    assert calls == [TRAINING["micro_batch"]]
+
+
+def test_preflight_leaves_no_gradients_and_the_same_random_state(setup):
+    jev = train.JevMark.load(yaml.safe_load(setup.config_path.read_text()), device="cpu")
+    config = yaml.safe_load(setup.config_path.read_text())
+    train.attach_lora(jev, config)
+    records = [json.loads(l) for l in (setup.data_dir / "train.jsonl").read_text().splitlines()]
+    records, _, lengths = train.fits(records, jev, 1024)
+    torch.manual_seed(123)
+    before = torch.get_rng_state()
+    report = train.preflight(jev, records, lengths, 2, 1024, 0, torch.amp.GradScaler("cuda", enabled=False))
+    assert torch.equal(torch.get_rng_state(), before)
+    assert all(p.grad is None for p in jev.model.parameters())
+    assert report["records"] == 2 and report["longest_tokens"] >= report["shortest_tokens"] == sorted(lengths)[-2]

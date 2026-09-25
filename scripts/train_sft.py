@@ -17,6 +17,11 @@ Run directory runs/<run_name>/:
   train_summary.json          best step, final full-valid metrics, drops, precision, time
   calibration.json            temperature 1.0 until task 2.1 fits one
 
+Before the first step, a pre-flight check runs one forward and backward pass on
+the worst-case micro-batch (the longest training records) and reports peak GPU
+memory; a CUDA out-of-memory error there ends the run within a minute with exit
+code 1 and "PREFLIGHT FAIL" (decision 45).
+
 The first batch's slot logits are checked for NaN or inf before LoRA is attached
 (a fresh LoRA has B = 0 and changes nothing), and use_fp32() reloads the model
 in fp32 on failure (decision 28). --max-hours saves last/ and exits cleanly;
@@ -98,16 +103,17 @@ class Example:
     targets: tuple[int, ...]
 
 
-def fits(records: list[dict[str, Any]], jev: JevMark, max_tokens: int) -> tuple[list[dict[str, Any]], int]:
-    """Records whose stored encoding fits max_tokens, and how many were dropped."""
-    kept = []
+def fits(records: list[dict[str, Any]], jev: JevMark, max_tokens: int) -> tuple[list[dict[str, Any]], int, list[int]]:
+    """Records whose stored encoding fits max_tokens, how many were dropped, and the kept records' encoded lengths."""
+    kept, lengths = [], []
     for record in records:
         try:
-            encode(Request.from_dict({"state": record["state"], "questions": record["questions"]}), jev.tokenizer, max_tokens)
+            encoded = encode(Request.from_dict({"state": record["state"], "questions": record["questions"]}), jev.tokenizer, max_tokens)
         except ValueError:
             continue
         kept.append(record)
-    return kept, len(records) - len(kept)
+        lengths.append(len(encoded.input_ids))
+    return kept, len(records) - len(kept), lengths
 
 
 def epoch_examples(records: list[dict[str, Any]], jev: JevMark, max_tokens: int, seed: int, epoch: int) -> tuple[list[Example], int]:
@@ -166,6 +172,72 @@ def validate(jev: JevMark, records: list[dict[str, Any]], batch_size: int, max_t
         jev.model.train()
     overall = split_metrics(results)["overall"]
     return {"n": overall["n"], "accuracy": overall["accuracy"], "ece": overall["ece"], "nll": overall["nll"], "brier": overall["brier"]}
+
+
+# Pre-flight (decision 45)
+
+PREFLIGHT_WARN_SHARE = 0.9
+
+
+def preflight(jev: JevMark, records: list[dict[str, Any]], lengths: list[int], micro: int, max_tokens: int, seed: int, scaler) -> dict[str, Any]:
+    """One forward and backward pass on the worst-case micro-batch, before any training step.
+
+    The worst case is the `micro` longest training records by encoded length (ties
+    broken by the number of questions), run in training mode with gradients under the
+    run's own autocast and GradScaler, exactly as a training step does, but with no
+    optimizer step. Gradients are dropped afterwards and the torch random state is
+    restored, so the run that follows is the same as without the check. Returns the
+    batch's size and lengths and, on CUDA, the peak memory allocated and the device's
+    total. A CUDA out-of-memory error ends the run with a message saying so.
+    """
+    order = sorted(range(len(records)), key=lambda i: (lengths[i], len(records[i]["questions"])), reverse=True)[:micro]
+    rng = random.Random(f"{seed}:preflight")
+    batch = []
+    for i in order:
+        request, targets = prepare(records[i], rng)
+        try:
+            encoded = encode(request, jev.tokenizer, max_tokens)
+        except ValueError:  # the reshuffle added a token past the limit; the stored order fits (fits() checked it)
+            request = Request.from_dict({"state": records[i]["state"], "questions": records[i]["questions"]})
+            targets = targets_for(request, records[i]["gold"])
+            encoded = encode(request, jev.tokenizer, max_tokens)
+        batch.append(Example(encoded, tuple(targets)))
+    cuda = jev.device.type == "cuda"
+    if cuda:
+        torch.cuda.synchronize(jev.device)
+        torch.cuda.empty_cache()
+        torch.cuda.reset_peak_memory_stats(jev.device)
+    was_training = jev.model.training
+    jev.model.train()
+    try:
+        with torch.random.fork_rng(devices=[jev.device] if cuda else []):
+            loss = batch_loss(jev, batch)
+            scaler.scale(loss).backward()
+    except torch.cuda.OutOfMemoryError as err:
+        raise PreflightError(f"CUDA out of memory on the worst-case micro-batch of {len(batch)} records (longest {max(len(e.encoded.input_ids) for e in batch)} tokens): {err}") from err
+    finally:
+        for param in jev.model.parameters():
+            param.grad = None
+        if not was_training:
+            jev.model.eval()
+    report: dict[str, Any] = {
+        "records": len(batch),
+        "longest_tokens": max(len(e.encoded.input_ids) for e in batch),
+        "shortest_tokens": min(len(e.encoded.input_ids) for e in batch),
+        "max_questions": max(len(e.targets) for e in batch),
+        "worst_case_loss": float(loss.detach()),
+        "device": str(jev.device),
+    }
+    if cuda:
+        torch.cuda.synchronize(jev.device)
+        report["peak_gib"] = torch.cuda.max_memory_allocated(jev.device) / 2**30
+        report["total_gib"] = torch.cuda.get_device_properties(jev.device).total_memory / 2**30
+        torch.cuda.empty_cache()
+    return report
+
+
+class PreflightError(RuntimeError):
+    pass
 
 
 # State
@@ -262,8 +334,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     jev = JevMark.load(config, device=args.device)
     say(f"run {config['run_name']}: backbone {config['backbone']['id']} on {jev.device}, autocast {jev.autocast_dtype}")
-    train_records, dropped_train = fits(read_jsonl(data_dir / "train.jsonl"), jev, max_tokens)
-    valid_all, dropped_valid = fits(read_jsonl(data_dir / "valid.jsonl"), jev, max_tokens)
+    train_records, dropped_train, train_lengths = fits(read_jsonl(data_dir / "train.jsonl"), jev, max_tokens)
+    valid_all, dropped_valid, _ = fits(read_jsonl(data_dir / "valid.jsonl"), jev, max_tokens)
     say(f"dropped over {max_tokens} tokens: train {dropped_train}, valid {dropped_valid}; kept train {len(train_records)}, valid {len(valid_all)}")
     subset_size = min(int(train_cfg["valid_subset"]), len(valid_all))
     valid_subset = [valid_all[i] for i in sorted(random.Random(f"{seed}:valid_subset").sample(range(len(valid_all)), subset_size))]
@@ -293,6 +365,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     scheduler = get_linear_schedule_with_warmup(optimizer, warmup, total_steps)
     use_scaler = jev.device.type == "cuda" and jev.autocast_dtype == torch.float16
     scaler = torch.amp.GradScaler("cuda", enabled=use_scaler)
+
+    # Pre-flight: the worst-case micro-batch, forward and backward, before any step (decision 45).
+    try:
+        check = preflight(jev, train_records, train_lengths, micro, max_tokens, seed, scaler)
+    except PreflightError as err:
+        log_line(log_path, {"event": "preflight", "passed": False, "error": str(err)[:500]})
+        say(f"PREFLIGHT FAIL: {err}")
+        raise SystemExit(f"PREFLIGHT FAIL: {config['run_name']} cannot train at micro-batch {micro}; lower training.micro_batch (the effective batch is kept by accumulation) or turn on training.gradient_checkpointing") from err
+    log_line(log_path, {"event": "preflight", "passed": True, **check})
+    memory = f"peak {check['peak_gib']:.2f} GiB of {check['total_gib']:.2f} GiB ({check['peak_gib'] / check['total_gib']:.0%})" if "peak_gib" in check else "peak memory not measured on CPU"
+    say(f"PREFLIGHT PASS: worst-case micro-batch of {check['records']} records ({check['shortest_tokens']} to {check['longest_tokens']} tokens, up to {check['max_questions']} questions): {memory}")
+    if "peak_gib" in check and check["peak_gib"] > PREFLIGHT_WARN_SHARE * check["total_gib"]:
+        say(f"WARNING: the pre-flight peak is above {PREFLIGHT_WARN_SHARE:.0%} of GPU memory; fragmentation during training may still run out")
 
     progress = {"step": 0, "epoch": 0, "micro_done": 0, "best_nll": None, "best_step": None, "fp32_fallback_used": fallback_used, "dropped_train": dropped_train, "dropped_valid": dropped_valid}
     if args.resume:
