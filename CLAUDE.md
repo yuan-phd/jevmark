@@ -105,7 +105,8 @@ Created in task 0.1; keep this list in sync with the Makefile.
 
 - `make setup` install the package in editable mode with dev deps
 - `make test` run pytest on CPU
-- `make data` build all JSONL datasets into data/
+- `make data` build all JSONL datasets into data/, then run the CPU gates (leak probes, duplicate check)
+- `make data-build` build and build checks only (used on Kaggle)
 - `make train-sft CONFIG=configs/sft_06b.yaml` (or `configs/sft_17b.yaml`)
 - `make eval CKPT=runs/<run_name>` (or `CKPT=base EVAL_CONFIG=configs/base_06b.yaml`)
 - `make kaggle-requirements` regenerate requirements-kaggle.txt from uv.lock

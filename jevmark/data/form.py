@@ -1,13 +1,23 @@
-"""Form nouls and state formats (docs/DATA.md section 2, data v1.3, decision 42).
+"""Form nouls and state formats (docs/DATA.md section 2, data v1.3, decisions 42 and 43).
 
 Form nouls are label-independent noul questions answered from the state text alone
-(its length, its digits, its punctuation), never from a gold label, so they may sit
-anywhere in a record, before or after the gold-dependent questions. Kinds with a
-threshold get it per source, set on the source's full pinned texts so the kind is
-as close to balanced as it can be; a kind whose best split of a source is outside
-[0.5 - max_imbalance, 0.5 + max_imbalance] is skipped for that source. Within each
-split, source and kind, assignments are then trimmed to exactly as many yes as no
-answers.
+(its length, its digits, its punctuation), never from a gold label. Which records
+get them, which kinds and where they go are drawn at random, independently of the
+text and of every gold answer, so their presence and position carry no information.
+
+Thresholds are set per split and source, on the texts of that split's records from
+that source: the threshold whose yes share is closest to one half. A kind is used
+for a (split, source) only if that share (for a yes or no property, its yes share)
+is within max_imbalance of one half; otherwise it is skipped there. Records are
+never selected by their answer, because a selection that balances a text property
+would tie the form noul's presence to the text and so, through the text, to the
+labels.
+
+Placement: each form noul goes before the record's first gold-dependent question
+with probability p_before_first, at a uniform slot among the form nouls already
+there, and otherwise at a uniform slot after it. A fixed probability keeps "a form
+noul precedes the choice or score question" independent of how many gold-dependent
+questions follow, which would otherwise reveal, for example, a neutral SST-5 record.
 
 State formats: a seeded share of every split wraps the state text in a JSON object
 with one to three label-independent fields (channel, timestamp, ids, locale) plus
@@ -22,13 +32,9 @@ import re
 from collections import defaultdict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from functools import cache
 from typing import Any
 
-from datasets import load_dataset
-
 from jevmark.data.build import assign_phrasings, make_record, noul_question, split_rng, state_text
-from jevmark.data.sources import AG_NEWS, BANKING77, CLINC, EMOTION, SST5, YELP, DatasetSource
 
 
 @dataclass(frozen=True)
@@ -55,30 +61,11 @@ FORM_KINDS = {
 }
 FORM_KINDS_ORDER = {name: i for i, name in enumerate(FORM_KINDS)}
 
-# Record source field -> (dataset, HF splits whose texts set the thresholds).
-SOURCE_TEXTS: dict[str, tuple[DatasetSource, tuple[str, ...]]] = {
-    f"{CLINC.id}/{CLINC.config}": (CLINC, ("train", "validation", "test")),
-    SST5.id: (SST5, ("train", "validation", "test")),
-    AG_NEWS.id: (AG_NEWS, ("test",)),
-    EMOTION.id: (EMOTION, ("test",)),
-    BANKING77.id: (BANKING77, ("test",)),
-    YELP.id: (YELP, ("test",)),
-}
-
 # Label-independent JSON fields; values are drawn at random, never from the record.
 STATE_FIELDS = ("channel", "timestamp", "message_id", "user_id", "thread_id", "locale")
 CHANNELS = ("chat", "email", "sms", "web", "app", "phone")
 LOCALES = ("en-US", "en-GB", "en-AU", "en-CA", "en-IE", "en-NZ")
 TEXT_FIELD = "text"
-
-
-@cache
-def source_texts(source: str, max_chars: int | None = None) -> tuple[str, ...]:
-    dataset, hf_splits = SOURCE_TEXTS[source]
-    texts: list[str] = []
-    for hf_split in hf_splits:
-        texts += load_dataset(dataset.id, dataset.config, revision=dataset.revision, split=hf_split)["text"]
-    return tuple(t for t in texts if max_chars is None or len(t) <= max_chars)
 
 
 def best_threshold(values: Sequence[int]) -> tuple[int, float]:
@@ -110,11 +97,12 @@ def kind_settings(texts: Sequence[str], max_imbalance: float) -> dict[str, dict[
     return settings
 
 
-def form_settings(sources: Sequence[str], config: Mapping[str, Any]) -> dict[str, dict[str, dict[str, Any]]]:
-    """Source -> kind -> settings, from each source's full pinned texts (independent of which splits are built)."""
-    max_imbalance = float(config["form"]["max_imbalance"])
-    yelp_max = int(config["unseen"]["yelp_max_chars"])
-    return {s: kind_settings(source_texts(s, yelp_max if s == YELP.id else None), max_imbalance) for s in sources}
+def split_settings(records: Sequence[Mapping[str, Any]], max_imbalance: float) -> dict[str, dict[str, dict[str, Any]]]:
+    """Source -> kind -> settings, on the texts of these records (one split)."""
+    texts: dict[str, list[str]] = defaultdict(list)
+    for record in records:
+        texts[record["source"]].append(state_text(record))
+    return {source: kind_settings(t, max_imbalance) for source, t in sorted(texts.items())}
 
 
 def answer(kind: str, text: str, threshold: int | None) -> bool:
@@ -122,40 +110,27 @@ def answer(kind: str, text: str, threshold: int | None) -> bool:
     return value > threshold if threshold is not None else bool(value)
 
 
-def add_form_nouls(records: list[dict[str, Any]], settings: Mapping[str, Mapping[str, Mapping[str, Any]]], rng: random.Random, phrasing_rng: random.Random) -> None:
-    """Give each record 0, 1 or 2 form nouls at random positions, in place, then phrase them.
-
-    Every record draws how many and which of its source's used kinds; within each
-    (source, kind), assignments on the larger answer side are dropped at random until
-    yes and no are equal, so the underlying answers are exactly balanced.
-    """
-    tentative: dict[tuple[str, str], dict[bool, list[int]]] = defaultdict(lambda: {True: [], False: []})
-    for j, record in enumerate(records):
+def add_form_nouls(
+    records: list[dict[str, Any]], settings: Mapping[str, Mapping[str, Mapping[str, Any]]], p_before_first: float, rng: random.Random, phrasing_rng: random.Random
+) -> None:
+    """Give each record 0, 1 or 2 form nouls of distinct used kinds, in place, then phrase them (assign_phrasings)."""
+    for record in records:
         used = [k for k, s in settings[record["source"]].items() if s["used"]]
-        n = rng.choice((0, 1, 2))
-        for kind in rng.sample(used, min(n, len(used))):
+        kinds = rng.sample(used, min(rng.choice((0, 1, 2)), len(used)))
+        before: list[str] = []
+        after = list(record["questions"])  # the gold-dependent questions, first one at index 0
+        for kind in kinds:
             threshold = settings[record["source"]][kind]["threshold"]
-            tentative[(record["source"], kind)][answer(kind, state_text(record), threshold)].append(j)
-    chosen: dict[int, list[str]] = defaultdict(list)
-    for (source, kind), sides in sorted(tentative.items()):
-        keep = min(len(sides[True]), len(sides[False]))
-        for side in (True, False):
-            for j in sorted(rng.sample(sides[side], keep)):
-                chosen[j].append(kind)
-    for j, record in enumerate(records):
-        order = list(record["questions"])
-        for kind in sorted(chosen.get(j, []), key=lambda k: FORM_KINDS_ORDER[k]):
-            threshold = settings[record["source"]][kind]["threshold"]
-            slot = None if threshold is None else str(threshold)
-            question, gold, info = noul_question(kind, answer(kind, state_text(record), threshold), slot, form=True, threshold=threshold)
-            record["questions"][kind] = question
-            record["gold"][kind] = gold
-            record["meta"]["nouls"][kind] = info
-            order.insert(rng.randint(0, len(order)), kind)
+            question, gold, info = noul_question(kind, answer(kind, state_text(record), threshold), None if threshold is None else str(threshold), form=True, threshold=threshold)
+            record["questions"][kind], record["gold"][kind], record["meta"]["nouls"][kind] = question, gold, info
+            if rng.random() < p_before_first:
+                before.insert(rng.randint(0, len(before)), kind)
+            else:
+                after.insert(rng.randint(1, len(after)), kind)
+        order = before + after
         record["questions"] = {qid: record["questions"][qid] for qid in order}
         record["gold"] = {qid: record["gold"][qid] for qid in order}
     assign_phrasings(records, phrasing_rng, kinds=set(FORM_KINDS))
-
 
 
 def wrap_states(records: list[dict[str, Any]], share: float, rng: random.Random) -> None:
@@ -191,10 +166,12 @@ def _field_value(name: str, rng: random.Random) -> str:
     return f"t-{rng.getrandbits(24):06x}"  # thread_id
 
 
-def apply(split: str, records: list[dict[str, Any]], settings: Mapping[str, Any], config: Mapping[str, Any]) -> None:
-    """Form nouls, then state formats, for one split, each from its own seeded stream."""
+def apply(split: str, records: list[dict[str, Any]], config: Mapping[str, Any]) -> dict[str, dict[str, dict[str, Any]]]:
+    """Form nouls, then state formats, for one split, each from its own seeded stream; returns the form settings used."""
     seed = int(config["seed"])
-    add_form_nouls(records, settings, split_rng(seed, f"{split}:form"), split_rng(seed, f"{split}:form:phrasing"))
+    settings = split_settings(records, float(config["form"]["max_imbalance"]))
+    add_form_nouls(records, settings, float(config["form"]["p_before_first"]), split_rng(seed, f"{split}:form"), split_rng(seed, f"{split}:form:phrasing"))
     wrap_states(records, float(config["state_format"]["p_json"]), split_rng(seed, f"{split}:state_format"))
     for record in records:
         make_record(record["id"], record["source"], record["split"], record["state"], record["questions"], record["gold"], record["meta"])
+    return settings

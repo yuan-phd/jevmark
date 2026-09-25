@@ -10,65 +10,68 @@ A real record from `data/train.jsonl` (data v1.3, seed 0): a JSON state, a form 
 
 ```json
 {
-  "id": "clinc-train-000230",
+  "id": "clinc-train-000022",
   "source": "clinc/clinc_oos/plus",
   "split": "train",
   "state": {
-    "text": "whats the definition of poor",
-    "channel": "app"
+    "text": "send over a hundred dollars from huntington into saving",
+    "thread_id": "t-d54016",
+    "channel": "email"
   },
   "questions": {
-    "longest_word_over": {
+    "char_count_over": {
       "type": "noul",
-      "instructions": "Does every word in the text have 7 letters or fewer?"
+      "instructions": "Is the text at most 38 characters long?"
     },
     "intent": {
       "type": "choice",
       "instructions": "Which intent does this message express?",
       "criteria": {
-        "calendar_update": "Requests to modify or add events in the calendar",
-        "definition": "A question seeking the definition or explanation of a term",
-        "oil_change_when": "Ask when the next oil change is needed for a vehicle",
-        "insurance_change": "Wants to switch, update or sign up for an insurance policy",
-        "other": "None of the listed intents"
+        "balance": "Inquire about how much money is available in an account",
+        "meaning_of_life": "A question regarding the significance or reason for existence",
+        "reminder": "Asks to read back or check the reminders that are already set",
+        "other": "None of the listed intents",
+        "calories": "Inquiries regarding how many calories are in certain foods or dishes",
+        "transfer": "A request to move money between accounts or send funds to someone"
       }
     },
     "about_intent": {
       "type": "noul",
-      "instructions": "Does this description fail to fit the message: Asking what a word or concept means or stands for?"
+      "instructions": "Does this description fit the message: Requesting to send funds or shift money between accounts?"
     }
   },
   "gold": {
-    "longest_word_over": "false",
-    "intent": "definition",
-    "about_intent": "false"
+    "char_count_over": "false",
+    "intent": "transfer",
+    "about_intent": "true"
   },
   "meta": {
     "source_split": "train",
-    "source_index": 330,
-    "gold_intent": "definition",
-    "domain": "utility",
+    "source_index": 122,
+    "gold_intent": "transfer",
+    "domain": "banking",
     "gold_in_options": true,
     "nouls": {
       "about_intent": {
         "template": 0,
-        "negated": true,
-        "slot": "Asking what a word or concept means or stands for",
-        "asked_intent": "definition",
+        "negated": false,
+        "slot": "Requesting to send funds or shift money between accounts",
+        "asked_intent": "transfer",
         "asked_from": "gold",
         "asked_in_options": true
       },
-      "longest_word_over": {
+      "char_count_over": {
         "template": 1,
         "negated": true,
-        "slot": "7",
+        "slot": "38",
         "form": true,
-        "threshold": 7
+        "threshold": 38
       }
     },
     "state_format": "json",
     "state_fields": [
       "text",
+      "thread_id",
       "channel"
     ]
   }
@@ -162,7 +165,7 @@ Every kind has two or three templates, each a positive phrasing and its negation
 
 Balance, in two steps:
 
-1. The builder fixes each noul question's underlying answer with exact counts wherever the data allows: `out_of_scope` asks exactly as many in-scope utterances (no) as there are out-of-scope ones (yes); `about_domain` and `about_intent` each ask the gold in exactly half of their questions, counting the out-of-scope records' questions of that kind, which are always no; `expresses_emotion` asks the gold emotion in exactly half of the records; every form kind has exactly as many yes as no answers per split and source. The SST-5 kinds follow the dataset's labels.
+1. The builder fixes each noul question's underlying answer with exact counts wherever the data allows: `out_of_scope` asks exactly as many in-scope utterances (no) as there are out-of-scope ones (yes); `about_domain` and `about_intent` each ask the gold in exactly half of their questions, counting the out-of-scope records' questions of that kind, which are always no; `expresses_emotion` asks the gold emotion in exactly half of the records; every form kind is used only where its threshold splits the split's texts within 48 to 52 percent. The SST-5 kinds follow the dataset's labels.
 2. `build.assign_phrasings` then gives every question its template and polarity: within each kind and underlying answer, questions take (template, polarity) pairs from consecutive shuffled blocks that hold each pair once. Exactly half of each group is negated (gold flipped), and every phrasing carries about the kind's underlying balance, so no phrasing predicts the answer.
 
 `build_data.py` fails the build if, for any noul kind in any split, the yes share is outside 40 to 60 percent or the phrasing-only accuracy (answering each phrasing with its own majority answer in that split, the best any rule that ignores the message can do) is above 55 percent (`max_phrasing_only_accuracy`). It prints both per kind per split.
@@ -232,7 +235,7 @@ Labels are used exactly as the datasets give them, never normalised. This includ
 
 ### Form nouls
 
-Form nouls are label-independent noul questions answered from the state text alone (`jevmark/data/form.py`). Because they depend on no gold label, they cannot leak one, so they may sit anywhere in a record, before or after the gold-dependent questions. They add question variety, put questions before the choice or score question in about a third of the records, and teach the model to answer from the text rather than from a question's position.
+Form nouls are label-independent noul questions answered from the state text alone (`jevmark/data/form.py`). Because they depend on no gold label, they cannot leak one, so they may sit anywhere in a record, before or after the gold-dependent questions. They add question variety, put a question before the choice or score question in about a third of the records that have one, and teach the model to answer from the text rather than from a question's position.
 
 | Kind | Yes when |
 |---|---|
@@ -243,21 +246,13 @@ Form nouls are label-independent noul questions answered from the state text alo
 | `contains_comma` | the text contains a comma |
 | `ends_with_question_mark` | the text, without trailing whitespace, ends with `?` |
 
-- Thresholds are set per source on the source's full pinned texts (CLINC: all three splits; SST-5: all three splits; AG News, emotion, Banking77: test; Yelp: test reviews within `yelp_max_chars`): the threshold whose yes share is closest to one half. A kind is used for a source only if that share (or, for a yes or no property, its yes share) is within 44 to 56 percent (`form.max_imbalance`); otherwise it is skipped there. Thresholds therefore do not depend on which splits a build includes.
-- Each record gets 0, 1 or 2 form nouls (uniformly), of distinct kinds drawn from its source's used kinds, each inserted at a uniformly random position among the record's questions.
-- Within each split, source and kind, assignments on the larger answer side are dropped at random until yes and no are exactly equal, then `build.assign_phrasings` gives each its template and polarity as for every other noul kind.
+- Which records get form nouls, which kinds and where they go are drawn at random, independently of the text and of every gold answer (decision 43). Each record gets 0, 1 or 2 form nouls (uniformly; 2 is capped at the number of used kinds), of distinct kinds drawn from the kinds used for its split and source.
+- Placement: each form noul goes before the record's first gold-dependent question with probability 1/3 (`form.p_before_first`), at a uniform slot among the form nouls already there, and otherwise at a uniform slot anywhere after that question. A fixed probability keeps "a form noul precedes the choice or score question" independent of how many gold-dependent questions the record has; inserting uniformly among the existing questions would put it there with probability 1/2 in a neutral SST-5 record and 1/3 in the others, which would hint at the label.
+- Thresholds are set per split and source, on the texts of that split's records from that source: the threshold whose yes share is closest to one half. A kind is used for a (split, source) only if that share (for a yes or no property, its yes share) is within 48 to 52 percent (`form.max_imbalance`); otherwise it is skipped there. Records are never selected by their answer: a selection that balances a text property ties the form noul's presence to the text, and through the text to the labels.
+- `build.assign_phrasings` then gives each form noul its template and polarity as for every other noul kind.
 - Answers are computed on the text itself; for a JSON state that is the `text` field, never the rendered JSON (whose timestamps and ids contain digits).
 
-Used kinds and thresholds, from `make data` (data v1.3):
-
-| Source | Used (threshold, yes share) | Skipped (best yes share) |
-|---|---|---|
-| CLINC | `word_count_over` (7, 55.7%), `char_count_over` (38, 48.8%), `longest_word_over` (7, 44.9%) | `contains_number` 9.6%, `contains_comma` 5.7%, `ends_with_question_mark` 0.0% |
-| SST-5 | `word_count_over` (18, 49.8%), `char_count_over` (98, 50.1%), `contains_comma` (53.6%) | `longest_word_over` 42.5%, `contains_number` 4.7%, `ends_with_question_mark` 1.6% |
-| AG News | `word_count_over` (37, 48.4%), `char_count_over` (231, 49.8%), `longest_word_over` (10, 53.2%) | `contains_number` 58.1%, `contains_comma` 70.7%, `ends_with_question_mark` 0.4% |
-| emotion | `word_count_over` (16, 51.3%), `char_count_over` (86, 49.9%) | `longest_word_over` 40.7%, `contains_number` 0.0%, `contains_comma` 0.0%, `ends_with_question_mark` 0.0% |
-| Banking77 | `word_count_over` (9, 47.2%), `char_count_over` (44, 50.7%) | `longest_word_over` 37.0%, `contains_number` 1.6%, `contains_comma` 12.1%, `ends_with_question_mark` 62.0% |
-| Yelp | `word_count_over` (96, 50.0%), `char_count_over` (524, 50.0%), `contains_number` (50.6%) | `longest_word_over` 57.8%, `contains_comma` 79.4%, `ends_with_question_mark` 1.2% |
+`make data` prints the used kinds with their thresholds and yes shares per split and source (section 5).
 
 ### State formats
 
@@ -306,95 +301,100 @@ From `make data` with data v1.3, seed 0 (`scripts/build_data.py`). Max tokens is
 
 | Split | Records | By source | Max tokens |
 |---|---|---|---|
-| `train` | 22044 | CLINC 13500, SST-5 8544 | 416 |
-| `valid` | 3901 | CLINC 2800, SST-5 1101 | 406 |
-| `test_indomain` | 5900 | CLINC 5900 | 404 |
-| `test_unseen_intents` | 3000 | CLINC 3000 | 404 |
-| `test_sst5` | 2210 | SST-5 2210 | 294 |
-| `test_agnews` | 1000 | AG News 1000 | 289 |
-| `test_emotion` | 1000 | emotion 1000 | 305 |
-| `test_banking77` | 1000 | Banking77 1000 | 346 |
-| `test_yelp` | 1000 | Yelp 1000 | 772 |
+| `train` | 22023 | CLINC 13482, SST-5 8541 | 392 |
+| `valid` | 3896 | CLINC 2795, SST-5 1101 | 378 |
+| `test_indomain` | 5900 | CLINC 5900 | 385 |
+| `test_unseen_intents` | 3000 | CLINC 3000 | 381 |
+| `test_sst5` | 2210 | SST-5 2210 | 295 |
+| `test_agnews` | 1000 | AG News 1000 | 320 |
+| `test_emotion` | 1000 | emotion 1000 | 299 |
+| `test_banking77` | 1000 | Banking77 1000 | 324 |
+| `test_yelp` | 1000 | Yelp 1000 | 806 |
 
-CLINC record counts are in-scope utterances plus twice the out-of-scope utterances (for example `train`: 13000 + 2 x 250).
+CLINC record counts are in-scope utterances plus twice the out-of-scope utterances, less the utterances dropped as duplicates of test texts (section 8): `train` 13000 + 2 x 250 - 18, `valid` 2600 + 2 x 100 - 5; SST-5 `train` 8544 - 3.
+
+Form noul kinds used, with threshold and yes share on the split's texts (a kind is used within 48 to 52 percent):
+
+| Split | Source | Used kinds |
+|---|---|---|
+| `train` | SST-5 | word_count_over >18 49.6%, char_count_over >98 49.8% |
+| `train` | CLINC | char_count_over >38 48.9% |
+| `valid` | SST-5 | word_count_over >18 50.7%, char_count_over >99 50.4% |
+| `valid` | CLINC | char_count_over >37 49.8% |
+| `test_indomain` | CLINC | char_count_over >39 49.5% |
+| `test_unseen_intents` | CLINC | char_count_over >37 49.4% |
+| `test_sst5` | SST-5 | word_count_over >18 50.0%, char_count_over >99 49.9% |
+| `test_agnews` | AG News | word_count_over >36 50.6%, char_count_over >231 49.9%, longest_word_over >10 51.2% |
+| `test_emotion` | emotion | word_count_over >17 49.3%, char_count_over >87 49.8% |
+| `test_banking77` | Banking77 | char_count_over >45 49.1% |
+| `test_yelp` | Yelp | word_count_over >100 49.9%, char_count_over >540 50.0% |
 
 Questions per record, form nouls per record (count: records) and the share of JSON states:
 
 | Split | Questions per record | Form nouls per record | JSON states |
 |---|---|---|---|
-| `train` | 1: 561, 2: 7783, 3: 7691, 4: 6009 | 0: 7785, 1: 7746, 2: 6513 | 20.0% |
-| `valid` | 1: 73, 2: 1396, 3: 1380, 4: 1052 | 0: 1396, 1: 1370, 2: 1135 | 20.0% |
-| `test_indomain` | 2: 2084, 3: 2124, 4: 1692 | 0: 2084, 1: 2124, 2: 1692 | 20.0% |
-| `test_unseen_intents` | 2: 1192, 3: 1084, 4: 724 | 0: 1192, 1: 1084, 2: 724 | 20.0% |
-| `test_sst5` | 1: 137, 2: 795, 3: 752, 4: 526 | 0: 794, 1: 776, 2: 640 | 20.0% |
-| `test_agnews` | 1: 338, 2: 342, 3: 320 | 0: 338, 1: 342, 2: 320 | 20.0% |
-| `test_emotion` | 2: 320, 3: 354, 4: 326 | 0: 320, 1: 354, 2: 326 | 20.0% |
-| `test_banking77` | 1: 355, 2: 348, 3: 297 | 0: 355, 1: 348, 2: 297 | 20.0% |
-| `test_yelp` | 1: 365, 2: 336, 3: 299 | 0: 365, 1: 336, 2: 299 | 20.0% |
+| `train` | 1: 540, 2: 7520, 3: 11712, 4: 2251 | 0: 7496, 1: 11756, 2: 2771 | 20.0% |
+| `valid` | 1: 79, 2: 1263, 3: 2239, 4: 315 | 0: 1261, 1: 2251, 2: 384 | 20.0% |
+| `test_indomain` | 2: 1899, 3: 4001 | 0: 1899, 1: 4001 | 20.0% |
+| `test_unseen_intents` | 2: 1009, 3: 1991 | 0: 1009, 1: 1991 | 20.0% |
+| `test_sst5` | 1: 119, 2: 728, 3: 725, 4: 638 | 0: 715, 1: 719, 2: 776 | 20.0% |
+| `test_agnews` | 1: 343, 2: 309, 3: 348 | 0: 343, 1: 309, 2: 348 | 20.0% |
+| `test_emotion` | 2: 331, 3: 320, 4: 349 | 0: 331, 1: 320, 2: 349 | 20.0% |
+| `test_banking77` | 1: 330, 2: 670 | 0: 330, 1: 670 | 20.0% |
+| `test_yelp` | 1: 330, 2: 342, 3: 328 | 0: 330, 1: 342, 2: 328 | 20.0% |
 
 Noul balance per kind. Phrasing-only accuracy answers each phrasing (template and polarity) with its own majority answer in the split; the build fails above 55 percent.
 
 | Split | Kind | n | Yes share | Negated share | Phrasing-only accuracy |
 |---|---|---|---|---|---|
-| `train` | `about_domain` | 6548 | 50.0% | 50.0% | 50.0% |
-| `train` | `about_intent` | 6452 | 50.0% | 50.0% | 50.0% |
-| `train` | `char_count_over` | 7238 | 50.0% | 50.0% | 50.0% |
-| `train` | `contains_comma` | 2658 | 50.0% | 50.0% | 50.0% |
-| `train` | `is_negative` | 3526 | 50.0% | 50.0% | 52.0% |
-| `train` | `is_positive` | 3394 | 50.0% | 50.0% | 52.3% |
-| `train` | `longest_word_over` | 4098 | 50.0% | 50.0% | 50.0% |
-| `train` | `out_of_scope` | 500 | 50.2% | 50.2% | 50.4% |
-| `train` | `word_count_over` | 6778 | 50.0% | 50.0% | 50.0% |
-| `valid` | `about_domain` | 1294 | 50.1% | 50.0% | 50.1% |
-| `valid` | `about_intent` | 1306 | 50.0% | 50.1% | 50.1% |
-| `valid` | `char_count_over` | 1214 | 50.0% | 49.9% | 50.1% |
-| `valid` | `contains_comma` | 326 | 50.0% | 50.3% | 50.3% |
+| `train` | `about_domain` | 6539 | 50.0% | 50.0% | 50.0% |
+| `train` | `about_intent` | 6443 | 50.0% | 50.0% | 50.0% |
+| `train` | `char_count_over` | 13074 | 50.0% | 50.0% | 51.0% |
+| `train` | `is_negative` | 3526 | 50.0% | 50.0% | 52.5% |
+| `train` | `is_positive` | 3391 | 50.0% | 50.0% | 51.8% |
+| `train` | `out_of_scope` | 500 | 49.8% | 50.2% | 50.2% |
+| `train` | `word_count_over` | 4224 | 50.0% | 50.0% | 50.3% |
+| `valid` | `about_domain` | 1293 | 50.1% | 50.0% | 50.1% |
+| `valid` | `about_intent` | 1302 | 49.9% | 50.0% | 50.1% |
+| `valid` | `char_count_over` | 2452 | 50.0% | 50.0% | 50.4% |
 | `valid` | `is_negative` | 448 | 50.2% | 50.2% | 50.4% |
 | `valid` | `is_positive` | 424 | 50.2% | 50.2% | 52.4% |
-| `valid` | `longest_word_over` | 890 | 50.0% | 49.9% | 50.1% |
-| `valid` | `out_of_scope` | 200 | 50.5% | 50.5% | 50.5% |
-| `valid` | `word_count_over` | 1210 | 50.0% | 49.9% | 50.0% |
+| `valid` | `out_of_scope` | 200 | 49.5% | 50.5% | 50.5% |
+| `valid` | `word_count_over` | 567 | 49.9% | 50.3% | 52.6% |
 | `test_indomain` | `about_domain` | 1949 | 50.0% | 50.0% | 50.1% |
 | `test_indomain` | `about_intent` | 1951 | 50.0% | 50.0% | 50.0% |
-| `test_indomain` | `char_count_over` | 1896 | 50.0% | 50.0% | 50.0% |
-| `test_indomain` | `longest_word_over` | 1866 | 50.0% | 49.9% | 50.0% |
+| `test_indomain` | `char_count_over` | 4001 | 50.0% | 50.0% | 50.2% |
 | `test_indomain` | `out_of_scope` | 2000 | 50.0% | 50.0% | 50.1% |
-| `test_indomain` | `word_count_over` | 1746 | 49.9% | 50.0% | 50.1% |
 | `test_unseen_intents` | `about_domain` | 1467 | 50.0% | 49.9% | 50.0% |
 | `test_unseen_intents` | `about_intent` | 1533 | 49.9% | 50.0% | 50.1% |
-| `test_unseen_intents` | `char_count_over` | 888 | 50.0% | 50.0% | 50.0% |
-| `test_unseen_intents` | `longest_word_over` | 752 | 50.0% | 50.0% | 50.0% |
-| `test_unseen_intents` | `word_count_over` | 892 | 50.0% | 50.0% | 50.0% |
-| `test_sst5` | `char_count_over` | 718 | 50.0% | 50.1% | 50.0% |
-| `test_sst5` | `contains_comma` | 622 | 50.0% | 49.8% | 50.0% |
+| `test_unseen_intents` | `char_count_over` | 1991 | 50.0% | 50.0% | 50.4% |
+| `test_sst5` | `char_count_over` | 1156 | 50.0% | 50.0% | 51.6% |
 | `test_sst5` | `is_negative` | 932 | 50.0% | 49.9% | 51.2% |
 | `test_sst5` | `is_positive` | 889 | 49.9% | 49.9% | 51.1% |
-| `test_sst5` | `word_count_over` | 716 | 50.0% | 50.0% | 50.1% |
-| `test_agnews` | `char_count_over` | 314 | 50.0% | 50.3% | 50.3% |
-| `test_agnews` | `longest_word_over` | 332 | 50.0% | 50.0% | 50.3% |
-| `test_agnews` | `word_count_over` | 336 | 50.0% | 50.0% | 50.0% |
-| `test_emotion` | `char_count_over` | 510 | 50.0% | 50.2% | 50.2% |
+| `test_sst5` | `word_count_over` | 1115 | 50.0% | 50.0% | 51.0% |
+| `test_agnews` | `char_count_over` | 342 | 50.0% | 50.3% | 50.6% |
+| `test_agnews` | `longest_word_over` | 352 | 50.3% | 50.3% | 54.0% |
+| `test_agnews` | `word_count_over` | 311 | 50.2% | 49.8% | 51.4% |
+| `test_emotion` | `char_count_over` | 512 | 50.0% | 50.0% | 50.4% |
 | `test_emotion` | `expresses_emotion` | 1000 | 50.0% | 50.0% | 50.0% |
-| `test_emotion` | `word_count_over` | 496 | 50.0% | 50.0% | 50.0% |
-| `test_banking77` | `char_count_over` | 484 | 50.0% | 50.0% | 50.2% |
-| `test_banking77` | `word_count_over` | 458 | 49.8% | 50.0% | 50.2% |
-| `test_yelp` | `char_count_over` | 330 | 50.3% | 50.0% | 50.3% |
-| `test_yelp` | `contains_number` | 288 | 50.0% | 50.0% | 50.0% |
-| `test_yelp` | `word_count_over` | 316 | 49.7% | 49.7% | 50.3% |
+| `test_emotion` | `word_count_over` | 506 | 50.2% | 50.0% | 52.0% |
+| `test_banking77` | `char_count_over` | 670 | 50.0% | 50.1% | 51.5% |
+| `test_yelp` | `char_count_over` | 505 | 50.1% | 49.9% | 50.9% |
+| `test_yelp` | `word_count_over` | 493 | 50.3% | 50.1% | 50.9% |
 
 Score gold levels per scale:
 
 | Split | Scale | n | Levels |
 |---|---|---|---|
-| `train` | `sst5_3_levels` | 2563 | 0: 1010 (39%), 1: 468 (18%), 2: 1085 (42%) |
-| `train` | `sst5_5_levels` | 5981 | 0: 780 (13%), 1: 1520 (25%), 2: 1156 (19%), 3: 1617 (27%), 4: 908 (15%) |
+| `train` | `sst5_3_levels` | 2562 | 0: 971 (38%), 1: 491 (19%), 2: 1100 (43%) |
+| `train` | `sst5_5_levels` | 5979 | 0: 785 (13%), 1: 1553 (26%), 2: 1133 (19%), 3: 1622 (27%), 4: 886 (15%) |
 | `valid` | `sst5_3_levels` | 330 | 0: 135 (41%), 1: 62 (19%), 2: 133 (40%) |
 | `valid` | `sst5_5_levels` | 771 | 0: 97 (13%), 1: 196 (25%), 2: 167 (22%), 3: 192 (25%), 4: 119 (15%) |
 | `test_sst5` | `sst5_3_levels` | 663 | 0: 288 (43%), 1: 116 (17%), 2: 259 (39%) |
 | `test_sst5` | `sst5_5_levels` | 1547 | 0: 185 (12%), 1: 439 (28%), 2: 273 (18%), 3: 371 (24%), 4: 279 (18%) |
 | `test_yelp` | `yelp_5_stars` | 1000 | 0: 200 (20%), 1: 200 (20%), 2: 200 (20%), 3: 200 (20%), 4: 200 (20%) |
 
-Gold option position is checked conditional on K, the number of options: for every split and every K with at least 100 choice questions, no position's share may deviate from 1/K by more than 4 binomial standard deviations. The unconditional answer-letter histogram is not uniform and cannot be: every question has options A and B (noul questions have exactly two) while J exists only when K = 10, and score levels follow the datasets' label distributions. `build_data.py` prints it for reference.
+Gold option position is checked conditional on K, the number of options: for every split and every K with at least 100 choice questions, no position's share may deviate from 1/K by more than 4 binomial standard deviations. The unconditional answer-letter histogram is not uniform and cannot be: every question has options A and B (noul questions have exactly two) while N exists only when K = 14, and score levels follow the datasets' label distributions. `build_data.py` prints it for reference.
 
 ## 6. Description generation
 
@@ -492,3 +492,70 @@ After normalisation every text must still be a valid option description under AP
 | `clinc/insurance_change` | Generated text covered only modifying existing cover; the data also includes getting new insurance |
 | `clinc/new_card` | Generated text drifted toward activation; the data is applying for a card |
 | `clinc/time` | Generated text said time-related information, which is broad enough to cover timezone; the data asks the current time |
+
+## 8. CPU gates: leak probes and duplicate check
+
+`make data` runs two hard gates after the build (decision 42). Both read the JSONL files in `data/` and write their full results next to them (`leak_probe.json`, `duplicates.json`, gitignored with the data).
+
+### Leak probes (`scripts/leak_probe.py`)
+
+A leak is anything other than the state that predicts a gold answer. For every split and every question, a logistic regression (scikit-learn, 5-fold cross-validation, seed 0) predicts the gold answer from state-free features, in four probes:
+
+| Probe | Features |
+|---|---|
+| phrasing | the noul's template and polarity; the instructions for choice and score |
+| question text | bag of words and bigrams of the question block, options included |
+| structure | number of questions seen, position, kinds seen before, K, asked-in-options flags (an asked intent among the choice labels, an asked domain among their domains), the asked intent's domain equal to an asked domain, scale, state format and number of JSON fields |
+| cross-question | bag of words, kind and K of every question before this one, and the same relational flags |
+
+Rules:
+
+- Attention is causal, so every feature is computed on the question and the questions before it, never on later ones; a noul after the score question cannot leak into it.
+- Groups: noul questions by kind; choice questions by question id, with three targets (gold is `other`, when `other` can be gold; gold label, when every question in the group offers the same labels; gold position, without the question-text probe, since a bag of words has no positions); score questions by scale. Groups under 50 questions or with a single answer are skipped.
+- Noul targets: the phrasing probe predicts the stored gold; the other three predict the underlying answer (negation undone), because negation flips the stored gold in half of every group and a linear probe cannot undo that.
+- Gate: a probe more than 10 points over its group's majority baseline fails outright, with no permutation test. A probe more than 3 points over it is rerun on 200 copies of its targets shuffled at random (shuffling keeps the baseline and breaks every link to the features), and fails if its lift is also above the 99th percentile of those runs. The summary lists every probe above 3 points, passing or not, with n, lift and p value, because with about 250 probe results per build chance alone puts a few past 3 points.
+
+v1.3, from `make data` (seed 0): the gate passes. 209 probe results; the largest lift is +5.5 points; two probes are above 3 points, both within chance:
+
+| Split | Group | Probe | n | Lift | p | 99th percentile of shuffled runs |
+|---|---|---|---|---|---|---|
+| `valid` | `noul/out_of_scope` | structure | 200 | +3.0 | 0.194 | +9.0 |
+| `test_agnews` | `noul/word_count_over` | cross-question | 311 | +5.5 | 0.040 | +7.7 |
+
+v1.2, rebuilt from commit 0163a74 (byte-identical to the files the v1.2 `sft_06b` evaluation read, by the sha256 values in its `metrics.json`): the gate fails on 26 probe results, and each known leak is found. Lifts in points over the majority baseline; the single-feature rows refit the probe on only the feature that carries the leak:
+
+| Leak | Split | Group | Probe | n | Lift |
+|---|---|---|---|---|---|
+| SST-5 order: a sentiment noul before the score means not neutral | `train` | `score/sentiment/sst5_5_levels` | structure | 5981 | +5.0 (p 0.005, 99th percentile +0.5) |
+| | `valid` | `score/sentiment/sst5_5_levels` | cross-question | 771 | +7.0 (p 0.005) |
+| | `train` | same, kinds seen and position only | structure | 5981 | +5.0 |
+| `about_intent` priming: the asked intent among the options means yes | `train` | `noul/about_intent` | structure | 13500 | +22.3 |
+| | `train` | same, asked-in-options flag only | structure | 13500 | +18.6 |
+| `about_intent` before the choice primes it | `test_indomain` | `choice/intent/gold_other` | structure | 5900 | +18.4 |
+| | `test_indomain` | same, asked-in-options flag only | structure | 5900 | +16.7 |
+| `about_intent` and `about_domain` correlated through the gold | `train` | `noul/about_domain` | cross-question | 13000 | +17.5 |
+| | `train` | `noul/about_domain`, domain agreement only | cross-question | 13000 | +12.6 |
+| | `train` | `noul/about_intent`, domain agreement only | cross-question | 13500 | +9.6 |
+| emotion (found by the probes): a skewed gold emotion and a uniform asked one | `test_emotion` | `noul/expresses_emotion` | question text | 1000 | +14.9 |
+| | `test_emotion` | `choice/label/gold_label` (the noul came first) | cross-question | 1000 | +7.2 (p 0.005) |
+
+The first v1.3 build also failed the probes: `expresses_emotion` at +18.7 points (question text), fixed by asking each emotion as often in "no" as in "yes" questions, and a form-noul placement and balancing scheme that tied form nouls to the labels, fixed by drawing them at random (decision 43).
+
+### Duplicate check (`scripts/check_duplicates.py`)
+
+State texts (the `text` field of a JSON state) are normalised with `dedup.normalise` (NFKC, lower case, every run of characters other than letters and digits to one space, edges stripped). The check fails on any normalised text shared by train and a test split, or by valid and a test split, and reports the share of test records that share a word 8-gram with train or valid.
+
+The source datasets contain such duplicates across their own splits (for example `where did you grow up` and `next song please` in CLINC150, `no` and `what s next` in SST-5). train and valid therefore drop every utterance whose normalised text occurs in a source split that a test split draws from (`dedup.test_texts`: CLINC test and every held-out-intent utterance, SST-5 test, the test splits of AG News, emotion, Banking77 and Yelp); the test splits are unchanged (decision 43). This removes 18 CLINC and 3 SST-5 records from train and 5 CLINC records from valid.
+
+v1.3 result: no exact match in any pair. 8-gram overlap, the share of test records with at least one word 8-gram also in the reference split:
+
+| Test split | vs train | vs valid | Test records with an 8-gram |
+|---|---|---|---|
+| `test_indomain` | 2.46% | 0.64% | 3479 of 5900 |
+| `test_unseen_intents` | 0.33% | 0.10% | 1697 of 3000 |
+| `test_sst5` | 0.18% | 0.09% | 1919 of 2210 |
+| `test_agnews` | 0.00% | 0.00% | 1000 of 1000 |
+| `test_emotion` | 0.00% | 0.00% | 873 of 1000 |
+| `test_banking77` | 0.60% | 0.10% | 720 of 1000 |
+| `test_yelp` | 0.00% | 0.00% | 991 of 1000 |
+

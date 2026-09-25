@@ -1,4 +1,4 @@
-.PHONY: setup test data train-sft eval kaggle-requirements
+.PHONY: setup test data data-build train-sft eval kaggle-requirements
 
 CONFIG ?= configs/base.yaml
 DATA_CONFIG ?= configs/data.yaml
@@ -15,7 +15,13 @@ setup:
 test:
 	uv run pytest -q
 
-data:
+# Build, then the CPU gates (decision 42): leak probes and duplicate check. Each fails hard.
+data: data-build
+	$(PY) scripts/leak_probe.py --config $(DATA_CONFIG)
+	$(PY) scripts/check_duplicates.py --config $(DATA_CONFIG)
+
+# Build and build checks only; the Kaggle notebooks use this, since the gates already passed locally on the same commit.
+data-build:
 	$(PY) scripts/build_data.py --config $(DATA_CONFIG)
 
 train-sft:

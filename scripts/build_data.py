@@ -82,10 +82,11 @@ def check_and_report(built: Any, config: dict[str, Any], tokenizer: Any) -> None
             if row["phrasing_only_accuracy"] > max_shortcut:
                 failures.append(f"{split}/{kind}: phrasing-only accuracy {row['phrasing_only_accuracy']:.1%} above {max_shortcut:.0%}")
 
-    print("\n== form nouls: threshold and yes share per source on its full texts (used within 44-56 percent)")
-    for source, kinds in built.form_settings.items():
-        cells = [f"{k} {'>' + str(v['threshold']) if v['threshold'] is not None else ''} {v['yes_share']:.1%}{'' if v['used'] else ' (skipped)'}" for k, v in kinds.items()]
-        print(f"{source:22} " + "; ".join(c.replace("  ", " ") for c in cells))
+    print(f"\n== form nouls: threshold and yes share per split and source (used within {0.5 - config['form']['max_imbalance']:.0%}-{0.5 + config['form']['max_imbalance']:.0%})")
+    for split, sources in built.form_settings.items():
+        for source, kinds in sources.items():
+            used = [f"{k} {'>' + str(v['threshold']) + ' ' if v['threshold'] is not None else ''}{v['yes_share']:.1%}" for k, v in kinds.items() if v["used"]]
+            print(f"{split:20} {source:26} used: {', '.join(used) or 'none'}")
 
     print("\n== questions per record, form nouls per record, state format")
     for split, records in built.splits.items():

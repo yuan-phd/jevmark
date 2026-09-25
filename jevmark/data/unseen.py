@@ -129,13 +129,49 @@ def build_split(split: str, config: Mapping[str, Any]) -> list[dict[str, Any]]:
 
 
 def add_emotion_nouls(records: list[dict[str, Any]], emotions: list[str], rng) -> None:
-    """An expresses_emotion noul after the choice: exactly half ask the gold emotion, the rest another emotion."""
+    """An expresses_emotion noul after the choice: exactly half ask the gold emotion, the rest another emotion.
+
+    The "no" questions ask each emotion exactly as often as the "yes" questions do
+    (matched_asks), so the asked emotion says nothing about the answer. Asking a
+    uniformly drawn other emotion would not do that: the gold emotions are skewed
+    (joy and sadness are most of the test split), so a rare asked emotion would mean no.
+    """
     asks_gold = set(rng.sample(range(len(records)), len(records) // 2))
+    golds = [record["gold"][QUESTION_ID] for record in records]
+    no_records = [j for j in range(len(records)) if j not in asks_gold]
+    asked_no = matched_asks([golds[j] for j in no_records], [golds[j] for j in sorted(asks_gold)], rng)
+    asked = {**{j: golds[j] for j in asks_gold}, **dict(zip(no_records, asked_no))}
     for j, record in enumerate(records):
-        gold_emotion = record["gold"][QUESTION_ID]
-        asked = gold_emotion if j in asks_gold else rng.choice([e for e in emotions if e != gold_emotion])
-        question, gold, info = noul_question("expresses_emotion", asked == gold_emotion, asked, asked_emotion=asked)
+        question, gold, info = noul_question("expresses_emotion", asked[j] == golds[j], asked[j], asked_emotion=asked[j])
         # Choice first, then the noul (decision 42).
         record["questions"]["expresses_emotion"] = question
         record["gold"]["expresses_emotion"] = gold
         record["meta"]["nouls"]["expresses_emotion"] = info
+
+
+def matched_asks(golds: list[str], pool: list[str], rng) -> list[str]:
+    """One asked label per gold, never equal to it, using the labels in pool exactly once each.
+
+    The pool is shuffled and dealt in order; a gold that would get itself swaps with an
+    earlier assignment where both sides stay different. Fails if no valid dealing exists.
+    """
+    if len(pool) < len(golds):
+        raise ValueError("pool must hold at least one label per gold")
+    deck = list(pool)
+    rng.shuffle(deck)
+    deck = deck[: len(golds)]
+    asked: list[str] = []
+    for i, gold in enumerate(golds):
+        label = deck[i]
+        if label == gold:
+            swap = next((k for k in rng.sample(range(len(asked)), len(asked)) if asked[k] != gold and golds[k] != label), None)
+            if swap is None:
+                later = next((k for k in range(i + 1, len(deck)) if deck[k] != gold), None)
+                if later is None:
+                    raise RuntimeError("cannot assign asked labels that differ from every gold")
+                deck[i], deck[later] = deck[later], deck[i]
+                label = deck[i]
+            else:
+                label, asked[swap] = asked[swap], label
+        asked.append(label)
+    return asked

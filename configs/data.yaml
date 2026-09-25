@@ -35,7 +35,17 @@ noul_balance: [0.4, 0.6]         # build fails if a noul kind's yes share is out
 
 # Form nouls (data v1.3): 0, 1 or 2 per record, answered from the state text alone.
 form:
-  max_imbalance: 0.06            # a kind is used for a source only if its best threshold splits the source within 44-56 percent
+  max_imbalance: 0.02            # a kind is used for a (split, source) only if its best threshold splits those texts within 48-52 percent
+  p_before_first: 0.3333         # each form noul goes before the first gold-dependent question with this probability
 
 state_format:
   p_json: 0.2                    # share of records per split whose state is a JSON object with 1 to 3 extra fields
+
+# CPU gates run by make data after the build (decision 42, docs/DATA.md section 8).
+leak_probe:
+  folds: 5                       # cross-validation folds of each logistic regression probe
+  hard_lift: 0.10                # fail if a probe beats its group's majority baseline by more than this, unconditionally
+  max_lift: 0.03                 # fail if a probe beats it by more than this ...
+  null_percentile: 0.99          # ... and by more than this percentile of the lifts on shuffled targets
+  permutations: 200              # shuffled-target runs per probe above max_lift
+  min_n: 50                      # groups with fewer questions are not probed

@@ -16,6 +16,7 @@ from typing import Any
 from datasets import load_dataset
 
 from jevmark.data.build import assign_phrasings, make_record, noul_question, split_rng
+from jevmark.data.dedup import normalise
 from jevmark.data.sources import SST5
 
 QUESTION_ID = "sentiment"
@@ -43,16 +44,18 @@ HF_SPLITS = {"train": "train", "valid": "validation", "test_sst5": "test"}
 SOURCE = SST5.id
 
 
-def build_split(split: str, config: Mapping[str, Any]) -> list[dict[str, Any]]:
+def build_split(split: str, config: Mapping[str, Any], excluded: frozenset[str] = frozenset()) -> list[dict[str, Any]]:
+    """Records of one split; rows whose normalised text is in `excluded` (dedup.test_texts) are dropped."""
     rng = split_rng(int(config["seed"]), f"{split}:sst5")
     part = load_dataset(SST5.id, SST5.config, revision=SST5.revision, split=HF_SPLITS[split])
-    three_level = set(rng.sample(range(part.num_rows), round(float(config["sst5"]["p_three_levels"]) * part.num_rows)))
+    rows = [(index, row) for index, row in enumerate(part) if normalise(row["text"]) not in excluded]
+    three_level = set(rng.sample(range(len(rows)), round(float(config["sst5"]["p_three_levels"]) * len(rows))))
     records = []
-    for index, row in enumerate(part):
+    for position, (index, row) in enumerate(rows):
         label = int(row["label"])
         if row["label_text"] != LABEL_TEXTS[label]:
             raise RuntimeError(f"SST-5 {split} row {index}: label {label} has label_text {row['label_text']!r}")
-        if index in three_level:
+        if position in three_level:
             score = {"type": "score", "instructions": INSTRUCTIONS, "criteria": list(LEVELS_3)}
             level, scale = TO_3_LEVELS[label], SCALE_3
         else:
@@ -69,7 +72,7 @@ def build_split(split: str, config: Mapping[str, Any]) -> list[dict[str, Any]]:
             nouls = {kind: info}
         records.append(
             {
-                "id": f"sst5-{split}-{index:06d}",
+                "id": f"sst5-{split}-{position:06d}",
                 "source": SOURCE,
                 "split": split,
                 "state": row["text"],

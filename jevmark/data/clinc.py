@@ -28,6 +28,7 @@ from typing import Any
 from datasets import load_dataset
 
 from jevmark.data.build import assign_phrasings, choice_question, make_record, noul_question, split_rng
+from jevmark.data.dedup import normalise
 from jevmark.data.description_loader import LabelDescription, load_descriptions
 from jevmark.data.sources import CLINC, CLINC_OUT_OF_SCOPE
 
@@ -110,13 +111,17 @@ class ClincBuilder:
         self.seen = [i for i in self.intents if i not in set(self.held_out)]
         self.descriptions: dict[str, LabelDescription] = load_descriptions("clinc")
 
-    def _pool(self, split: str) -> tuple[list[Utterance], list[str]]:
-        """Utterances of a split and the intents allowed as options and asked intents there."""
+    def _pool(self, split: str, excluded: frozenset[str]) -> tuple[list[Utterance], list[str]]:
+        """Utterances of a split and the intents allowed as options and asked intents there.
+
+        Utterances whose normalised text is in `excluded` (texts a test split can hold, dedup.test_texts) are dropped.
+        """
         held = set(self.held_out)
         if split == "test_unseen_intents":
             pool = [u for hf in ("train", "validation", "test") for u in self.utterances[hf] if u.intent in held]
             return pool, self.held_out
-        return [u for u in self.utterances[HF_SPLITS[split]] if u.intent not in held], self.seen
+        pool = [u for u in self.utterances[HF_SPLITS[split]] if u.intent not in held and normalise(u.text) not in excluded]
+        return pool, self.seen
 
     def _choice(self, rng: random.Random, gold_intent: str | None, allowed: Sequence[str]) -> tuple[dict[str, Any], str, bool, list[str]]:
         """The intent question, its gold answer, whether the gold intent is offered, and the named options."""
@@ -155,7 +160,7 @@ class ClincBuilder:
             "about_domain", asks_gold, DOMAIN_PHRASES[asked], asked_domain=asked, asked_from=source, asked_in_options=asked in option_domains
         )
 
-    def build_split(self, split: str) -> list[dict[str, Any]]:
+    def build_split(self, split: str, excluded: frozenset[str] = frozenset()) -> list[dict[str, Any]]:
         """Records with the intent question first and exactly one gold-dependent noul after it (decision 42).
 
         out_of_scope: one of the two records of every out-of-scope utterance (yes), and
@@ -164,7 +169,7 @@ class ClincBuilder:
         half of its questions, choosing from the in-scope records.
         """
         rng = split_rng(self.seed, split)
-        pool, allowed = self._pool(split)
+        pool, allowed = self._pool(split, excluded)
         in_scope = [i for i, u in enumerate(pool) if u.intent != CLINC_OUT_OF_SCOPE]
         n_oos = len(pool) - len(in_scope)
         if 2 * n_oos > len(in_scope):

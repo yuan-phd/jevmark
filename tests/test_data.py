@@ -22,9 +22,11 @@ from jevmark.schema import Request
 
 REPO = Path(__file__).resolve().parents[1]
 CONFIG = load_config(REPO / "configs" / "data.yaml")
+# train and valid drop the texts that also occur where a test split is drawn from (decision 43):
+# 18 CLINC records and 3 SST-5 records in train, 5 CLINC records in valid.
 EXPECTED_SIZES = {
-    "train": 13000 + 2 * 250 + 8544,
-    "valid": 2600 + 2 * 100 + 1101,
+    "train": 13000 + 2 * 250 + 8544 - 18 - 3,
+    "valid": 2600 + 2 * 100 + 1101 - 5,
     "test_indomain": 3900 + 2 * 1000,
     "test_unseen_intents": 20 * 150,
     "test_sst5": 2210,
@@ -138,7 +140,7 @@ def test_noul_kinds_present_where_expected(built):
     for split, records in built.splits.items():
         kinds = set(noul_balance(records))
         assert kinds - set(FORM_KINDS) == GOLD_NOUL_KINDS[split]
-        used = {k for r in records for k, s in built.form_settings[r["source"]].items() if s["used"]}
+        used = {k for r in records for k, s in built.form_settings[split][r["source"]].items() if s["used"]}
         assert kinds & set(FORM_KINDS) == used, split
 
 
@@ -353,36 +355,48 @@ def test_build_is_deterministic():
 
 
 @pytest.mark.parametrize("split", SPLITS)
-def test_form_nouls_are_computed_from_the_text_and_exactly_balanced(built, split):
+def test_form_nouls_are_computed_from_the_text_and_nearly_balanced(built, split):
     underlying = defaultdict(Counter)
     for record in built.splits[split]:
         forms = [qid for qid in record["questions"] if is_form(record, qid)]
         assert len(forms) <= 2
         for kind in forms:
             info = record["meta"]["nouls"][kind]
-            setting = built.form_settings[record["source"]][kind]
+            setting = built.form_settings[split][record["source"]][kind]
             assert setting["used"] and info["threshold"] == setting["threshold"]
             yes = answer(kind, state_text(record), info["threshold"])
             assert record["gold"][kind] == ("true" if yes != info["negated"] else "false")
-            underlying[(record["source"], kind)][yes] += 1
+            underlying[kind][yes] += 1
     assert underlying
-    assert all(c[True] == c[False] for c in underlying.values()), underlying
+    for kind, c in underlying.items():
+        n = c[True] + c[False]
+        # Within 48-52 percent on the split's texts; sampling the records that get the kind adds noise.
+        assert abs(c[True] / n - 0.5) <= 0.02 + 3 * (0.25 / n) ** 0.5, (split, kind, c)
 
 
-def test_form_nouls_sit_anywhere_and_vary_in_number(built):
+def test_form_nouls_are_placed_independently_of_the_gold_questions(built):
     records = built.splits["train"]
     counts = Counter(sum(is_form(r, q) for q in r["questions"]) for r in records)
-    assert set(counts) == {0, 1, 2} and all(counts[n] > 0.2 * len(records) for n in (0, 1, 2))
-    first = Counter(is_form(r, next(iter(r["questions"]))) for r in records if any(is_form(r, q) for q in r["questions"]))
-    assert first[True] > 0.3 * sum(first.values())  # a form noul often precedes the gold-dependent questions
+    assert set(counts) == {0, 1, 2} and abs(counts[0] / len(records) - 1 / 3) < 0.03  # 2 is capped at the number of used kinds
+    # A form noul precedes the first gold-dependent question about a third of the time, for
+    # records with one and with two gold-dependent questions alike (neutral and other SST-5 records).
+    before = defaultdict(list)
+    for r in records:
+        dependent = [q for q in r["questions"] if not is_form(r, q)]
+        first = list(r["questions"]).index(dependent[0])
+        for i, q in enumerate(r["questions"]):
+            if is_form(r, q):
+                before[len(dependent)].append(i < first)
+    for n_dependent, flags in before.items():
+        assert abs(sum(flags) / len(flags) - 1 / 3) < 0.03, (n_dependent, sum(flags) / len(flags))
 
 
 def test_unbalanceable_kinds_are_skipped(built):
-    settings = built.form_settings
-    assert all(not s["used"] for s in (k["ends_with_question_mark"] for k in settings.values()))
-    for kinds in settings.values():
-        for s in kinds.values():
-            assert s["used"] == (abs(s["yes_share"] - 0.5) <= CONFIG["form"]["max_imbalance"])
+    for split, sources in built.form_settings.items():
+        for kinds in sources.values():
+            assert not kinds["ends_with_question_mark"]["used"] or split == "test_banking77"
+            for s in kinds.values():
+                assert s["used"] == (abs(s["yes_share"] - 0.5) <= CONFIG["form"]["max_imbalance"])
 
 
 @pytest.mark.parametrize("split", SPLITS)
@@ -410,3 +424,14 @@ def test_config_overrides():
     for bad in (["seed"], ["nope=1"], ["seed.x=1"]):
         with pytest.raises(ValueError):
             load_config(REPO / "configs" / "data.yaml", bad)
+
+
+# Duplicates (decision 43)
+
+
+def test_train_and_valid_share_no_normalised_text_with_any_test_split(built):
+    from jevmark.data.dedup import normalise
+
+    test_texts = {normalise(state_text(r)) for split, records in built.splits.items() if split.startswith("test_") for r in records}
+    for split in ("train", "valid"):
+        assert not {normalise(state_text(r)) for r in built.splits[split]} & test_texts, split
