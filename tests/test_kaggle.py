@@ -128,3 +128,25 @@ def test_notebooks_delete_committed_training_runs_right_after_the_clone():
     assert clone.index('run(["git", "checkout"') < clone.index("shutil.rmtree")
     eval_clone = code_cells("kaggle_eval.ipynb")[1]
     assert 'WORK.glob("runs/sft_*")' in eval_clone and 'WORK.glob("runs/fast_*")' in eval_clone
+
+
+def test_train_notebook_fails_fast_and_evaluations_require_a_passed_training():
+    cells = code_cells("kaggle_train.ipynb")
+    helper = next(c for c in cells if "from jevmark.runcheck import require_training" in c)
+    install = next(c for c in cells if "requirements-kaggle.txt" in c)
+    assert cells.index(install) < cells.index(helper)
+    smoke = next(c for c in cells if c.startswith("# Smoke training"))
+    full = next(c for c in cells if c.startswith("# Full training"))
+    fast = next(c for c in cells if c.lstrip().startswith("# Fast cycle"))
+    for cell, run_dir, flag in ((smoke, 'f"sft_{SIZE}_smoke"', "smoke"), (full, 'f"sft_{SIZE}"', "full"), (fast, "FAST_RUN", "fast")):
+        assert "started = datetime.datetime.now(datetime.timezone.utc)" in cell
+        assert cell.index("started = ") < cell.index("train_sft.py") < cell.index("require_training(") < cell.index(f'TRAINED["{flag}"] = True')
+        assert f'WORK / "runs" / {run_dir}' in cell and "_exit_code" in cell
+    assert 'raise RuntimeError("refusing to train: the smoke training cell did not print TRAINING PASS")' in full
+    evaluate_sft = next(c for c in cells if c.startswith("# Evaluate the trained adapter"))
+    evaluate_base = next(c for c in cells if c.startswith("# Re-evaluate the frozen base"))
+    for cell in (evaluate_sft, evaluate_base):
+        assert cell.index('evaluation_allowed("full")') < cell.index("evaluate.py") < cell.index('check_exit("evaluate.py", _exit_code)')
+    assert "evaluate.py --ckpt runs/sft_{SIZE} --shuffle-questions test_indomain --device cuda" in evaluate_sft
+    assert fast.index('evaluation_allowed("fast")') < fast.index("evaluate.py")
+    assert "assert (WORK / \"runs\" / f\"sft_{SIZE}\" / \"train_summary.json\").exists()" not in full  # the old check that a stale file passed

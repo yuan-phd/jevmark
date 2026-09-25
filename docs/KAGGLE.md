@@ -83,10 +83,10 @@ One session trains one backbone size, then evaluates it and re-evaluates the fro
 Both sessions use the same `COMMIT`, so the four runs share one code version. Set `REPO`, `COMMIT`, `SIZE`, `SMOKE_STEPS` (default 20) and `MAX_HOURS` (default 6.0, which leaves room for the two evaluations inside a 9 hour session) in the first code cell, then run the cells top to bottom:
 
 1. Clone, install and data: as in the evaluation notebook. With `FAST = True` the fast cycle cell runs next and every later cell is skipped (section 8).
-2. Smoke training: `SMOKE_STEPS` steps into `runs/sft_<size>_smoke/`, including one validation, the final valid pass and a `train_summary.json`. Check that it ends with `done at step ...` before going on.
-3. Full training into `runs/sft_<size>/`: logs every step to `training_log.jsonl`, validates every 200 steps on 1000 fixed valid records, keeps the best adapter by validation NLL in `adapter/`, and the resumable state in `last/`. The cell copies `runs/` to `/kaggle/working/runs` as soon as training returns, so the state survives a later failure.
-4. Evaluate the trained adapter: `evaluate.py --ckpt runs/sft_<size>`.
-5. Re-evaluate the frozen base: `evaluate.py --ckpt base --config configs/base_<size>.yaml`, replacing the committed B0 run from commit 79fc74b.
+2. Smoke training: `SMOKE_STEPS` steps into `runs/sft_<size>_smoke/`, including the pre-flight memory check (`PREFLIGHT PASS` with the peak GPU memory of the worst-case micro-batch), one validation, the final valid pass and a `train_summary.json`. The cell ends with one line, `TRAINING PASS` or `TRAINING FAIL` with the reason, and raises on FAIL (decision 45).
+3. Full training into `runs/sft_<size>/`: refuses to start unless the smoke cell passed; runs the pre-flight check again, then logs every step to `training_log.jsonl`, validates every 200 steps on 1000 fixed valid records, keeps the best adapter by validation NLL in `adapter/`, and the resumable state in `last/`. The cell copies `runs/` to `/kaggle/working/runs` as soon as training returns, so the state survives a later failure, then prints `TRAINING PASS` or `TRAINING FAIL`: it passes only if `train_sft.py` exited with code 0 and `train_summary.json` was written after the cell started, names this run and has as many steps as planned (`jevmark/runcheck.py`). On FAIL it raises and no evaluation runs.
+4. Evaluate the trained adapter: `evaluate.py --ckpt runs/sft_<size> --shuffle-questions test_indomain`, only after full training passed; a non-zero exit raises.
+5. Re-evaluate the frozen base: `evaluate.py --ckpt base --config configs/base_<size>.yaml`, replacing the committed B0 run; it too runs only after full training passed.
 6. Copy `runs/` to `/kaggle/working/runs` and print each run's commit, dirty flag, fp32 fallback and test_indomain accuracy and ECE.
 
 If training logs `WARNING: NaN or inf in first-batch slot logits`, it reloaded the model in fp32 and continued; `train_summary.json` records `"fp32_fallback_used": true`.
@@ -97,7 +97,7 @@ Run directories committed to git are history, not state (decision 45). The clone
 
 ### If training stops at MAX_HOURS
 
-The training cell then fails its final assertion on purpose, and `runs/sft_<size>/last/` holds the adapter, optimizer, scheduler, scaler, RNG state and step. To continue in a new session: download `runs/sft_<size>/` from the output, add it to the new session as a Kaggle dataset, copy it to `/tmp/jevmark/runs/sft_<size>/` after the data cell, and run `python scripts/train_sft.py --config configs/sft_<size>.yaml --resume --max-hours <hours> --device cuda` in place of the full training cell. The resumed run continues at the saved step with the same data order and gives the same result as an uninterrupted run (tested on CPU).
+The training cell then prints `TRAINING FAIL` (fewer steps than planned) and raises on purpose, and `runs/sft_<size>/last/` holds the adapter, optimizer, scheduler, scaler, RNG state and step. To continue in a new session: download `runs/sft_<size>/` from the output, add it to the new session as a Kaggle dataset, copy it to `/tmp/jevmark/runs/sft_<size>/` after the data cell, and run `python scripts/train_sft.py --config configs/sft_<size>.yaml --resume --max-hours <hours> --device cuda` in place of the full training cell, then check it in the notebook with `require_training(WORK / "runs" / f"sft_{SIZE}", started, _exit_code)` (record `started` before the command) and set `TRAINED["full"] = True` only if it prints `TRAINING PASS`. The resumed run continues at the saved step with the same data order and gives the same result as an uninterrupted run (tested on CPU).
 
 ### What to download and where it goes
 
