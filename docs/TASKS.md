@@ -101,6 +101,7 @@ Datasets are referenced by Hugging Face id. Ids move; the first step of any data
 
 ### 1.9 v1 report
 - [ ] `docs/RESULTS_v1.md`: table of B0, B1, B2, SFT on every split; reliability diagrams; letter bias; symmetry; latency and cost per 1000 calls; three sentences on what the numbers say and what they do not.
+- [ ] Recheck on the full test_sst5 (5-level scale): the rate of predicting neutral when a form noul precedes the score question versus when nothing does. In the v1.3 fast cycle (`runs/fast_06b`, first 300 records) it was 19.3 percent (n 57) against 9.7 percent (n 145), opposite to the gold neutral rates (10.5 and 14.5 percent). Form nouls carry no label, so this is noise or context sensitivity, not a leak; the report states which, with the full-split numbers.
 - Acceptance: every number in the report links to a metrics.json path.
 
 ## Phase 2: v2 RLCD
