@@ -46,7 +46,7 @@ def test_structure_probe_detects_a_noul_that_reveals_the_score():
         label = rng.choice([0, 1, 1, 1, 2])
         records.append(sentiment_record(i, label, noul_first=rng.random() < 0.5, with_noul=label != 1, negated=rng.random() < 0.5))
     report = leak_probe.probe_split(records, folds=5, min_n=50, permutations=20)
-    structure = report["score/sentiment/s3"]["structure"]
+    structure = report["score/sentiment/s3"]["logistic"]["structure"]
     assert structure["lift"] > 0.10
     assert structure["gate"] == {"null_percentile": None, "p_value": None, "failed": True, "reason": "above the hard limit"}  # no permutation test
 
@@ -59,7 +59,7 @@ def test_later_questions_are_invisible_to_the_probe():
         label = rng.choice([0, 1, 1, 1, 2])
         records.append(sentiment_record(i, label, noul_first=False, with_noul=label != 1, negated=rng.random() < 0.5))
     report = leak_probe.probe_split(records, folds=5, min_n=50, permutations=20)
-    assert report["score/sentiment/s3"]["max_lift"] < 0.03
+    assert report["score/sentiment/s3"]["max_lift"] < 0.03  # both models
 
 
 def test_noul_probes_use_the_underlying_answer_and_phrasing_the_stored_one():
@@ -87,9 +87,23 @@ def test_probe_flags_only_lifts_over_three_points():
     records = [sentiment_record(i, rng.choice([0, 2]), noul_first=False, with_noul=True, negated=rng.random() < 0.5) for i in range(300)]
     report = leak_probe.probe_split(records, folds=5, min_n=50, permutations=20)
     for entry in report.values():
-        for probe in leak_probe.PROBES:
-            lift = entry[probe]["lift"]
-            assert ("gate" in entry[probe]) == (lift is not None and lift > 0.03)
+        for model in leak_probe.MODELS:
+            for probe in leak_probe.PROBES:
+                lift = entry[model][probe]["lift"]
+                assert ("gate" in entry[model][probe]) == (lift is not None and lift > 0.03)
+
+
+def test_boosting_probe_finds_an_interaction_the_linear_probe_cannot():
+    # The answer is the exclusive or of two features: no linear function of them beats chance.
+    rng = random.Random(3)
+    features, targets = [], []
+    for _ in range(800):
+        a, b = rng.random() < 0.5, rng.random() < 0.5
+        features.append({"bias": 1.0, f"a={a}": 1.0, f"b={b}": 1.0})
+        targets.append(a != b)
+    base = leak_probe.majority(targets)
+    assert leak_probe.probe_accuracy(features, targets, 5, model="logistic") - base < 0.05
+    assert leak_probe.probe_accuracy(features, targets, 5, model="boosting") - base > 0.4
 
 
 # Duplicate check

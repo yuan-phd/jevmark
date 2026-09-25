@@ -499,7 +499,7 @@ After normalisation every text must still be a valid option description under AP
 
 ### Leak probes (`scripts/leak_probe.py`)
 
-A leak is anything other than the state that predicts a gold answer. For every split and every question, a logistic regression (scikit-learn, 5-fold cross-validation, seed 0) predicts the gold answer from state-free features, in four probes:
+A leak is anything other than the state that predicts a gold answer. For every split and every question, two probe models predict the gold answer from state-free features, each with 5-fold cross-validation (seed 0): logistic regression on all features, and a histogram gradient-boosted tree ensemble (scikit-learn `HistGradientBoostingClassifier`, one thread) that can represent interactions a linear probe cannot, on the 256 most frequent feature columns of the group (chosen without the targets; this keeps every phrasing and structure column and the most common words). Each model runs four probes:
 
 | Probe | Features |
 |---|---|
@@ -513,9 +513,9 @@ Rules:
 - Attention is causal, so every feature is computed on the question and the questions before it, never on later ones; a noul after the score question cannot leak into it.
 - Groups: noul questions by kind; choice questions by question id, with three targets (gold is `other`, when `other` can be gold; gold label, when every question in the group offers the same labels; gold position, without the question-text probe, since a bag of words has no positions); score questions by scale. Groups under 50 questions or with a single answer are skipped.
 - Noul targets: the phrasing probe predicts the stored gold; the other three predict the underlying answer (negation undone), because negation flips the stored gold in half of every group and a linear probe cannot undo that.
-- Gate: a probe more than 10 points over its group's majority baseline fails outright, with no permutation test. A probe more than 3 points over it is rerun on 200 copies of its targets shuffled at random (shuffling keeps the baseline and breaks every link to the features), and fails if its lift is also above the 99th percentile of those runs. The summary lists every probe above 3 points, passing or not, with n, lift and p value, because with about 250 probe results per build chance alone puts a few past 3 points.
+- Gate, the same for both models: a probe more than 10 points over its group's majority baseline fails outright, with no permutation test. A probe more than 3 points over it is rerun on 200 copies of its targets shuffled at random (shuffling keeps the baseline and breaks every link to the features), and fails if its lift is also above the 99th percentile of those runs. The summary lists every probe above 3 points, passing or not, with n, lift and p value, because with about 250 probe results per build chance alone puts a few past 3 points.
 
-v1.3, from `make data` (seed 0): the gate passes. 209 probe results; the largest lift is +5.5 points; two probes are above 3 points, both within chance:
+v1.3, from `make data` (seed 0): the gate passes. 418 probe results (209 per model); the largest lift is +5.5 points; two probes are above 3 points, both logistic and both within chance, and no boosting probe is above 3 points:
 
 | Split | Group | Probe | n | Lift | p | 99th percentile of shuffled runs |
 |---|---|---|---|---|---|---|
@@ -538,6 +538,21 @@ v1.2, rebuilt from commit 0163a74 (byte-identical to the files the v1.2 `sft_06b
 | | `train` | `noul/about_intent`, domain agreement only | cross-question | 13500 | +9.6 |
 | emotion (found by the probes): a skewed gold emotion and a uniform asked one | `test_emotion` | `noul/expresses_emotion` | question text | 1000 | +14.9 |
 | | `test_emotion` | `choice/label/gold_label` (the noul came first) | cross-question | 1000 | +7.2 (p 0.005) |
+
+Both models side by side on v1.2 (lifts in points; structure and cross-question probes, where every leak shows; the 50 shuffled runs per flagged probe used for this demonstration only, so the smallest possible p is 0.020, while the v1.3 gate uses 200). With both models the v1.2 gate fails on 58 of 290 probe results:
+
+| Split | Group | n | Logistic structure | Logistic cross | Boosting structure | Boosting cross |
+|---|---|---|---|---|---|---|
+| `train` | `score/sentiment/sst5_5_levels` | 5981 | +5.0 | +4.5 | +5.0 | +4.6 |
+| `valid` | `score/sentiment/sst5_5_levels` | 771 | +6.2 | +7.0 | +6.2 | +6.6 |
+| `train` | `noul/about_intent` | 13500 | +22.3 | +20.9 | +22.1 | +22.1 |
+| `test_indomain` | `choice/intent/gold_other` | 5900 | +18.4 | +17.2 | +18.0 | +18.1 |
+| `train` | `noul/about_domain` | 13000 | +19.9 | +17.5 | +19.9 | +19.4 |
+| `test_indomain` | `noul/out_of_scope` | 2000 | +7.1 | +5.8 | +7.1 | +6.6 |
+| `test_emotion` | `choice/label/gold_label` | 1000 | -0.9 | +7.2 | -0.9 | +7.4 |
+| `test_emotion` | `noul/expresses_emotion` (question text) | 1000 | +14.9 | | +14.9 | |
+
+The tree ensemble finds the same leaks at about the same size, and 1 to 2 points more on the cross-question probes of `about_intent` and `about_domain`, where the leak is a relation between two questions; on v1.3 it finds nothing above 3 points, so no interaction leak was hidden from the linear probe.
 
 The first v1.3 build also failed the probes: `expresses_emotion` at +18.7 points (question text), fixed by asking each emotion as often in "no" as in "yes" questions, and a form-noul placement and balancing scheme that tied form nouls to the labels, fixed by drawing them at random (decision 43).
 

@@ -2,8 +2,11 @@
 
     uv run python scripts/leak_probe.py [--config configs/data.yaml] [--data-dir data] [--splits ...]
 
-For every split and every question, logistic regression (5-fold cross-validation)
-predicts the gold answer from state-free features only. Four probes:
+For every split and every question, two probe models predict the gold answer from
+state-free features only, each with 5-fold cross-validation: logistic regression,
+and a histogram gradient-boosted tree ensemble (HistGradientBoostingClassifier) that
+can represent interactions between features, such as a flag that matters only for
+some K, which a linear probe cannot. Four feature sets (probes) per model:
 
 - phrasing: the question's template and polarity (noul), or its instructions;
 - question text: bag of words of the question block, options included;
@@ -24,7 +27,7 @@ gold-is-other (when other can be gold), gold label (when every question of the
 group offers the same labels) and gold position (without the question text probe:
 a bag of words holds no position information); score questions by scale.
 
-The gate (decision 42): a probe that beats its group's majority baseline by more
+The gate (decision 42) applies to each model's probes alike: a probe that beats its group's majority baseline by more
 than hard_lift (10 points) fails unconditionally; every real leak found so far was
 above 20 points. A probe above max_lift (3 points) is rerun on `permutations` (200)
 copies of its targets shuffled at random, and fails if its lift is also above the
@@ -49,10 +52,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.feature_extraction import DictVectorizer
+from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import KFold, cross_val_predict
+from threadpoolctl import threadpool_limits
 
 from jevmark.config import load_config
 from jevmark.data.build import SPLITS
@@ -199,14 +205,36 @@ def majority(targets: Sequence[Any]) -> float:
     return Counter(targets).most_common(1)[0][1] / len(targets)
 
 
-def probe_accuracy(features: Sequence[Mapping[str, float]], targets: Sequence[Any], folds: int, seed: int = 0) -> float:
-    """Mean cross-validated accuracy of a logistic regression on the given features."""
+MODELS = ("logistic", "boosting")
+BOOSTING_MAX_FEATURES = 256
+
+
+def probe_accuracy(features: Sequence[Mapping[str, float]], targets: Sequence[Any], folds: int, seed: int = 0, model: str = "logistic") -> float:
+    """Mean cross-validated accuracy of a probe model on the given features.
+
+    logistic: logistic regression on all features (sparse). boosting: a histogram
+    gradient-boosted tree ensemble, which can represent interactions between
+    features that a linear probe cannot; it needs dense input, so it sees the
+    BOOSTING_MAX_FEATURES most frequent columns of the group (chosen without the
+    targets), which keeps every column of the phrasing and structure probes and the
+    most common words of the bag-of-words probes.
+    """
     x = DictVectorizer().fit_transform(features)
     y = [str(t) for t in targets]
+    if model == "boosting":
+        frequency = np.asarray((x != 0).sum(axis=0)).ravel()
+        keep = np.sort(np.argsort(-frequency, kind="stable")[:BOOSTING_MAX_FEATURES])
+        x = x[:, keep].toarray().astype(np.float32)
+        estimator = HistGradientBoostingClassifier(random_state=seed)
+    else:
+        estimator = LogisticRegression(max_iter=1000)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=ConvergenceWarning)
         warnings.simplefilter("ignore", category=UserWarning)  # classes with fewer members than folds
-        predicted = cross_val_predict(LogisticRegression(max_iter=1000), x, y, cv=KFold(folds, shuffle=True, random_state=seed))
+        # One thread: on these small dense matrices the default thread pool oversubscribes the CPU and
+        # runs about three times slower (measured on the 14-class train gold_position group); results are identical.
+        with threadpool_limits(limits=1):
+            predicted = cross_val_predict(estimator, x, y, cv=KFold(folds, shuffle=True, random_state=seed))
     return sum(p == t for p, t in zip(predicted, y)) / len(y)
 
 
@@ -223,7 +251,7 @@ def usable_groups(rows: Sequence[Row], min_n: int) -> dict[str, list[Row]]:
     return usable
 
 
-def permutation_null(features: Sequence[Mapping[str, float]], targets: Sequence[Any], folds: int, permutations: int) -> list[float]:
+def permutation_null(features: Sequence[Mapping[str, float]], targets: Sequence[Any], folds: int, permutations: int, model: str = "logistic") -> list[float]:
     """The probe's lifts over the majority baseline on shuffled targets (seeds 0 to permutations - 1), sorted.
 
     Shuffling keeps the class counts, so the baseline is unchanged, and breaks any link
@@ -235,7 +263,7 @@ def permutation_null(features: Sequence[Mapping[str, float]], targets: Sequence[
     for seed in range(permutations):
         shuffled = list(targets)
         random.Random(seed).shuffle(shuffled)
-        lifts.append(probe_accuracy(features, shuffled, folds) - baseline)
+        lifts.append(probe_accuracy(features, shuffled, folds, model=model) - baseline)
     return sorted(lifts)
 
 
@@ -282,23 +310,24 @@ def probe_split(
         stored = [r.stored for r in members]
         underlying = [r.underlying for r in members]
         entry: dict[str, Any] = {"n": len(members), "majority_stored": majority(stored), "majority_underlying": majority(underlying)}
-        for probe in PROBES:
-            if probe == "question_text" and group.endswith("/gold_position"):
-                # A bag of words has no position information, so it cannot predict a position; skipping it saves most of the run time.
-                entry[probe] = {"accuracy": None, "lift": None}
-                continue
-            targets, baseline = (stored, entry["majority_stored"]) if probe == "phrasing" else (underlying, entry["majority_underlying"])
-            accuracy = probe_accuracy([r.features[probe] for r in members], targets, folds)
-            entry[probe] = {"accuracy": accuracy, "lift": accuracy - baseline}
-        entry["max_lift"] = max(entry[p]["lift"] for p in PROBES if entry[p]["lift"] is not None)
-        for probe in PROBES:
-            lift = entry[probe]["lift"]
-            if lift is not None and lift > hard_lift:
-                entry[probe]["gate"] = {"null_percentile": None, "p_value": None, "failed": True, "reason": "above the hard limit"}
-            elif lift is not None and lift > max_lift:
-                targets = stored if probe == "phrasing" else underlying
-                null = permutation_null([r.features[probe] for r in members], targets, folds, permutations)
-                entry[probe]["gate"] = gate(lift, null, max_lift, hard_lift, percentile)
+        for model in MODELS:
+            results: dict[str, Any] = {}
+            for probe in PROBES:
+                if probe == "question_text" and group.endswith("/gold_position"):
+                    # A bag of words has no position information, so it cannot predict a position; skipping it saves most of the run time.
+                    results[probe] = {"accuracy": None, "lift": None}
+                    continue
+                targets, baseline = (stored, entry["majority_stored"]) if probe == "phrasing" else (underlying, entry["majority_underlying"])
+                accuracy = probe_accuracy([r.features[probe] for r in members], targets, folds, model=model)
+                lift = accuracy - baseline
+                results[probe] = {"accuracy": accuracy, "lift": lift}
+                if lift > hard_lift:
+                    results[probe]["gate"] = {"null_percentile": None, "p_value": None, "failed": True, "reason": "above the hard limit"}
+                elif lift > max_lift:
+                    null = permutation_null([r.features[probe] for r in members], targets, folds, permutations, model)
+                    results[probe]["gate"] = gate(lift, null, max_lift, hard_lift, percentile)
+            entry[model] = results
+        entry["max_lift"] = max(entry[m][p]["lift"] for m in MODELS for p in PROBES if entry[m][p]["lift"] is not None)
         report[group] = entry
     return report
 
@@ -309,21 +338,22 @@ def read_split(data_dir: Path, split: str) -> list[dict[str, Any]]:
 
 
 def print_table(results: Mapping[str, Mapping[str, Any]]) -> list[str]:
-    print(f"{'split':20} {'group':34} {'n':>6} {'maj':>6} {'phrasing':>9} {'q_text':>9} {'structure':>9} {'cross':>9}  lifts in points over the majority baseline")
+    heads = " ".join(f"{p[:9]:>9}" for p in ("phrasing", "q_text", "structure", "cross"))
+    print(f"{'split':20} {'group':34} {'n':>6} {'maj':>6}  logistic: {heads}  |  boosting: {heads}")
     for split, groups in results.items():
         for group, e in groups.items():
-            cells = [f"{100 * e[p]['lift']:+8.1f}" if e[p]["lift"] is not None else f"{'n/a':>8}" for p in PROBES]
-            print(f"{split:20} {group:34} {e['n']:6} {100 * e['majority_underlying']:5.1f}% {' '.join(cells)}")
-    flagged = [(split, group, p, e) for split, groups in results.items() for group, e in groups.items() for p in PROBES if "gate" in e[p]]
-    tests = sum(1 for groups in results.values() for e in groups.values() for p in PROBES if e[p]["lift"] is not None)
+            cells = {m: " ".join(f"{100 * e[m][p]['lift']:+9.1f}" if e[m][p]["lift"] is not None else f"{'n/a':>9}" for p in PROBES) for m in MODELS}
+            print(f"{split:20} {group:34} {e['n']:6} {100 * e['majority_underlying']:5.1f}%            {cells['logistic']}  |            {cells['boosting']}")
+    flagged = [(split, group, m, p, e) for split, groups in results.items() for group, e in groups.items() for m in MODELS for p in PROBES if "gate" in e[m][p]]
+    tests = sum(1 for groups in results.values() for e in groups.values() for m in MODELS for p in PROBES if e[m][p]["lift"] is not None)
     print(f"\n== every probe more than 3 points over its baseline ({len(flagged)} of {tests} probe results); chance alone is expected to give a few")
     failures = []
-    for split, group, p, e in flagged:
-        g = e[p]["gate"]
+    for split, group, m, p, e in flagged:
+        g = e[m][p]["gate"]
         chance = "p   n/a  (no permutation test above the hard limit)" if g["p_value"] is None else f"p {g['p_value']:.3f}  null 99th pct {100 * g['null_percentile']:+5.1f}"
-        print(f"{split:20} {group:34} {p:15} n {e['n']:6}  lift {100 * e[p]['lift']:+5.1f}  {chance}  {'FAIL' if g['failed'] else 'pass'} ({g['reason']})")
+        print(f"{split:20} {group:34} {m:8} {p:15} n {e['n']:6}  lift {100 * e[m][p]['lift']:+5.1f}  {chance}  {'FAIL' if g['failed'] else 'pass'} ({g['reason']})")
         if g["failed"]:
-            failures.append(f"{split}/{group}: {p} probe +{100 * e[p]['lift']:.1f} points ({g['reason']})")
+            failures.append(f"{split}/{group}: {m} {p} probe +{100 * e[m][p]['lift']:.1f} points ({g['reason']})")
     return failures
 
 
@@ -332,6 +362,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--config", default=str(REPO / "configs" / "data.yaml"))
     parser.add_argument("--data-dir", default=None, help="default: out_dir from the config")
     parser.add_argument("--splits", nargs="+", default=list(SPLITS))
+    parser.add_argument("--permutations", type=int, default=None, help="shuffled-target runs per flagged probe; default from the config (200, the gate). Lower only for demonstrations")
     parser.add_argument("--out", default=None, help="write the full results as JSON here (default: <data-dir>/leak_probe.json)")
     args = parser.parse_args(argv)
     config = load_config(args.config)
@@ -339,9 +370,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     data_dir = Path(args.data_dir) if args.data_dir else REPO / config["out_dir"]
     max_lift = float(params["max_lift"])
     print(
-        f"== leak probes: logistic regression, {params['folds']}-fold cross-validation, state-free features; "
+        f"== leak probes: logistic regression and gradient-boosted trees, {params['folds']}-fold cross-validation, state-free features; "
         f"fail above +{100 * float(params['hard_lift']):.0f} points, or above +{100 * max_lift:.0f} points and the "
-        f"{100 * float(params['null_percentile']):.0f}th percentile of {params['permutations']} shuffled-target runs"
+        f"{100 * float(params['null_percentile']):.0f}th percentile of {args.permutations or params['permutations']} shuffled-target runs"
     )
     results = {}
     for split in args.splits:
@@ -350,7 +381,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             int(params["folds"]),
             int(params["min_n"]),
             max_lift,
-            int(params["permutations"]),
+            args.permutations or int(params["permutations"]),
             float(params["hard_lift"]),
             float(params["null_percentile"]),
         )
