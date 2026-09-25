@@ -291,3 +291,28 @@ def test_preflight_leaves_no_gradients_and_the_same_random_state(setup):
     assert torch.equal(torch.get_rng_state(), before)
     assert all(p.grad is None for p in jev.model.parameters())
     assert report["records"] == 2 and report["longest_tokens"] >= report["shortest_tokens"] == sorted(lengths)[-2]
+
+
+# Stale-state guard (decision 45)
+
+
+@pytest.mark.parametrize("artifact", ["train_summary.json", "training_log.jsonl", "adapter", "last"])
+def test_fresh_start_refuses_any_trace_of_an_earlier_run(setup, tmp_path, artifact):
+    run_dir = tmp_path / "runs" / "tiny_sft"
+    run_dir.mkdir(parents=True)
+    (run_dir / "config.yaml").write_text("history: true\n")  # committed history that is not training state is fine
+    if artifact.endswith((".json", ".jsonl")):
+        (run_dir / artifact).write_text("{}\n")
+    else:
+        (run_dir / artifact).mkdir()
+    with pytest.raises(SystemExit, match=f"already holds a training run \\({artifact}\\)"):
+        train.main(["--config", str(setup.config_path), "--data-dir", str(setup.data_dir), "--runs-dir", str(tmp_path / "runs"), "--device", "cpu"])
+    assert (run_dir / "config.yaml").read_text() == "history: true\n"  # nothing was touched
+
+
+def test_fresh_start_accepts_a_directory_without_training_state(setup, tmp_path):
+    run_dir = tmp_path / "runs" / "tiny_sft"
+    (run_dir / "plots").mkdir(parents=True)
+    (run_dir / "metrics.json").write_text("{}\n")
+    run_training(setup, tmp_path / "runs", "--limit-steps", "1")
+    assert json.loads((run_dir / "train_summary.json").read_text())["steps"] == 1

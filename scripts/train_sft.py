@@ -25,7 +25,10 @@ code 1 and "PREFLIGHT FAIL" (decision 45).
 The first batch's slot logits are checked for NaN or inf before LoRA is attached
 (a fresh LoRA has B = 0 and changes nothing), and use_fp32() reloads the model
 in fp32 on failure (decision 28). --max-hours saves last/ and exits cleanly;
---resume continues from last/ in the same run directory.
+--resume continues from last/ in the same run directory. Without --resume the run
+refuses to start if the run directory holds train_summary.json,
+training_log.jsonl, adapter/ or last/: a summary left by an earlier run, for
+example one committed to git, must never pass for this run's result (decision 45).
 """
 
 from __future__ import annotations
@@ -58,6 +61,8 @@ from jevmark.schema import ChoiceQuestion, NoulQuestion, Request
 
 REPO = Path(__file__).resolve().parents[1]
 MLP_MODULES = ["gate_proj", "up_proj", "down_proj"]
+# Files and directories a training run leaves; any of them in the run directory blocks a fresh start.
+STALE_STATE = ("train_summary.json", "training_log.jsonl", "adapter", "last")
 
 
 def log_line(path: Path, entry: dict[str, Any]) -> None:
@@ -316,14 +321,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not (run_dir / "last" / "state.pt").is_file():
             raise SystemExit(f"--resume: no saved state at {run_dir / 'last'}")
         config = load_config(run_dir / "config.yaml")
-    elif (run_dir / "last").exists() or (run_dir / "adapter").exists():
-        raise SystemExit(f"{run_dir} already holds a training run; use --resume, or another run_name")
+    else:
+        # Any trace of an earlier run, including files committed to git, means this is not a fresh start (decision 45).
+        stale = [name for name in STALE_STATE if (run_dir / name).exists()]
+        if stale:
+            raise SystemExit(f"{run_dir} already holds a training run ({', '.join(stale)}); use --resume, or delete the directory, or another run_name")
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
     (run_dir / "model_id.txt").write_text(f"jevmark-{config['run_name']}\n")
     log_path = run_dir / "training_log.jsonl"
-    if not args.resume:
-        log_path.unlink(missing_ok=True)  # left by a run that crashed before its first save
     train_cfg = config["training"]
     seed = int(config["seed"])
     max_tokens = int(train_cfg["max_tokens"])

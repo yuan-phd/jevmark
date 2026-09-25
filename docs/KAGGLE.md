@@ -93,6 +93,8 @@ If training logs `WARNING: NaN or inf in first-batch slot logits`, it reloaded t
 
 Memory: the clone cell sets `PYTORCH_ALLOC_CONF` (and `PYTORCH_CUDA_ALLOC_CONF` for PyTorch before 2.9) to `expandable_segments:True`. 0.6B trains at micro-batch 8 with accumulation 4 (effective batch 32): at micro-batch 16, v1.3 records (up to 392 tokens and four questions) ran out of memory on a T4 at step 392 (decision 45).
 
+Run directories committed to git are history, not state (decision 45). The clone cell deletes `runs/sft_<size>/`, `runs/sft_<size>_smoke/` and `runs/fast_<size>/` (the evaluation notebook deletes every `runs/sft_*` and `runs/fast_*`) before anything runs, and `train_sft.py` refuses a fresh start in a run directory that holds `train_summary.json`, `training_log.jsonl`, `adapter/` or `last/`. A crashed run therefore blocks a restart under the same name: resume it with `--resume` if `last/` exists, or delete the directory. The first v1.3 0.6B session evaluated a step-200 adapter because a committed v1.2 `train_summary.json` passed the old completion check.
+
 ### If training stops at MAX_HOURS
 
 The training cell then fails its final assertion on purpose, and `runs/sft_<size>/last/` holds the adapter, optimizer, scheduler, scaler, RNG state and step. To continue in a new session: download `runs/sft_<size>/` from the output, add it to the new session as a Kaggle dataset, copy it to `/tmp/jevmark/runs/sft_<size>/` after the data cell, and run `python scripts/train_sft.py --config configs/sft_<size>.yaml --resume --max-hours <hours> --device cuda` in place of the full training cell. The resumed run continues at the saved step with the same data order and gives the same result as an uninterrupted run (tested on CPU).

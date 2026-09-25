@@ -119,3 +119,12 @@ def test_sft_06b_uses_micro_batch_8_with_effective_batch_32():
 
     training = load_config(REPO / "configs" / "sft_06b.yaml")["training"]
     assert training["micro_batch"] == 8 and training["effective_batch"] == 32  # accumulation 4
+
+
+def test_notebooks_delete_committed_training_runs_right_after_the_clone():
+    train_cells = code_cells("kaggle_train.ipynb")
+    clone = train_cells[1]
+    assert 'for stale in (f"sft_{SIZE}", f"sft_{SIZE}_smoke", f"fast_{SIZE}"):' in clone and "shutil.rmtree(WORK / \"runs\" / stale" in clone
+    assert clone.index('run(["git", "checkout"') < clone.index("shutil.rmtree")
+    eval_clone = code_cells("kaggle_eval.ipynb")[1]
+    assert 'WORK.glob("runs/sft_*")' in eval_clone and 'WORK.glob("runs/fast_*")' in eval_clone
