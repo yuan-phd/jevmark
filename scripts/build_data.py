@@ -9,9 +9,13 @@ split, the yes share is outside the configured range or the phrasing-only accura
 max_phrasing_only_accuracy; if a held-out intent reaches train or valid as an
 utterance, an option or an asked intent; if test_unseen_intents offers a seen
 intent; if a gold option position deviates from uniform by more than 4 standard
-deviations for some K; or if record ids repeat. The report prints split sizes, noul
-balance and phrasing-only accuracy per kind, score levels per scale, option-count
-and answer-letter histograms, and gold positions per K.
+deviations for some K; if a record breaks the order rule (the choice or score
+question first among the gold-dependent questions, then at most one noul); or if
+record ids repeat. The report prints split sizes, noul balance and phrasing-only
+accuracy per kind, form noul settings per source, question counts, state formats,
+score levels per scale, option-count and answer-letter histograms, and gold
+positions per K. The leak probes and the duplicate check (scripts/leak_probe.py,
+scripts/check_duplicates.py) run after this script in make data.
 """
 
 from __future__ import annotations
@@ -27,7 +31,7 @@ from transformers import AutoTokenizer
 
 from jevmark.config import load_config
 from jevmark.data.assemble import build_all
-from jevmark.data.build import SPLITS, gold_positions, held_out_leaks, noul_phrasing, position_deviations, score_distribution
+from jevmark.data.build import SPLITS, gold_positions, held_out_leaks, is_form, noul_phrasing, order_violations, position_deviations, score_distribution
 from jevmark.encode import LETTERS, encode, letter_token_ids
 from jevmark.schema import Request
 
@@ -77,6 +81,21 @@ def check_and_report(built: Any, config: dict[str, Any], tokenizer: Any) -> None
                 failures.append(f"{split}/{kind}: yes share {row['yes_share']:.1%} outside {low:.0%}-{high:.0%}")
             if row["phrasing_only_accuracy"] > max_shortcut:
                 failures.append(f"{split}/{kind}: phrasing-only accuracy {row['phrasing_only_accuracy']:.1%} above {max_shortcut:.0%}")
+
+    print("\n== form nouls: threshold and yes share per source on its full texts (used within 44-56 percent)")
+    for source, kinds in built.form_settings.items():
+        cells = [f"{k} {'>' + str(v['threshold']) if v['threshold'] is not None else ''} {v['yes_share']:.1%}{'' if v['used'] else ' (skipped)'}" for k, v in kinds.items()]
+        print(f"{source:22} " + "; ".join(c.replace("  ", " ") for c in cells))
+
+    print("\n== questions per record, form nouls per record, state format")
+    for split, records in built.splits.items():
+        n_questions = Counter(len(r["questions"]) for r in records)
+        n_form = Counter(sum(is_form(r, q) for q in r["questions"]) for r in records)
+        formats = Counter(r["meta"]["state_format"] for r in records)
+        print(f"{split:20} questions {dict(sorted(n_questions.items()))}  form nouls {dict(sorted(n_form.items()))}  json states {formats['json'] / len(records):.1%}")
+        violations = order_violations(records)
+        if violations:
+            failures.append(f"{split}: {len(violations)} records break the order rule, first {violations[:3]}")
 
     print("\n== score gold level distribution per scale")
     for split, records in built.splits.items():

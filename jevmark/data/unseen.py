@@ -1,4 +1,4 @@
-"""Unseen-schema evaluation sets: AG News, emotion, Banking77 and Yelp (docs/DATA.md section 2, data v1.2).
+"""Unseen-schema evaluation sets: AG News, emotion, Banking77 and Yelp (docs/DATA.md section 2, data v1.3).
 
 Evaluation only: none of these datasets or labels appear in training. Labels are
 used exactly as the datasets give them; descriptions are the canonical texts from
@@ -129,16 +129,13 @@ def build_split(split: str, config: Mapping[str, Any]) -> list[dict[str, Any]]:
 
 
 def add_emotion_nouls(records: list[dict[str, Any]], emotions: list[str], rng) -> None:
-    """An expresses_emotion noul per record: exactly half ask the gold emotion, the rest another emotion."""
+    """An expresses_emotion noul after the choice: exactly half ask the gold emotion, the rest another emotion."""
     asks_gold = set(rng.sample(range(len(records)), len(records) // 2))
     for j, record in enumerate(records):
         gold_emotion = record["gold"][QUESTION_ID]
         asked = gold_emotion if j in asks_gold else rng.choice([e for e in emotions if e != gold_emotion])
         question, gold, info = noul_question("expresses_emotion", asked == gold_emotion, asked, asked_emotion=asked)
-        order = [QUESTION_ID, "expresses_emotion"]
-        rng.shuffle(order)
-        questions = {**record["questions"], "expresses_emotion": question}
-        answers = {**record["gold"], "expresses_emotion": gold}
-        record["questions"] = {qid: questions[qid] for qid in order}
-        record["gold"] = {qid: answers[qid] for qid in order}
+        # Choice first, then the noul (decision 42).
+        record["questions"]["expresses_emotion"] = question
+        record["gold"]["expresses_emotion"] = gold
         record["meta"]["nouls"]["expresses_emotion"] = info

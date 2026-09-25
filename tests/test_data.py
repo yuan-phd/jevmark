@@ -2,14 +2,15 @@
 
 import hashlib
 import random
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 
 import pytest
 
 from jevmark.config import load_config
 from jevmark.data.assemble import build_all
-from jevmark.data.build import SPLITS, gold_positions, held_out_leaks, noul_balance, position_deviations
+from jevmark.data.build import SPLITS, gold_positions, held_out_leaks, is_form, noul_balance, order_violations, position_deviations, state_text
+from jevmark.data.form import FORM_KINDS, STATE_FIELDS, answer
 from jevmark.data.clinc import DOMAIN_PHRASES, DOMAINS_FILE, DOMAINS_SHA256, choose_held_out, intent_domains, load_domains
 from jevmark.data.description_loader import load_descriptions, load_overrides
 from jevmark.data.negation import parse
@@ -116,7 +117,7 @@ def test_noul_yes_share_within_40_60(built, split):
         assert 0.4 <= share <= 0.6, (split, kind, counts)
 
 
-NOUL_KINDS = {
+GOLD_NOUL_KINDS = {
     "train": {"about_domain", "out_of_scope", "about_intent", "is_positive", "is_negative"},
     "valid": {"about_domain", "out_of_scope", "about_intent", "is_positive", "is_negative"},
     "test_indomain": {"about_domain", "out_of_scope", "about_intent"},
@@ -129,8 +130,16 @@ NOUL_KINDS = {
 }
 
 
+def gold_nouls(record):
+    return {qid: info for qid, info in record["meta"]["nouls"].items() if not info.get("form")}
+
+
 def test_noul_kinds_present_where_expected(built):
-    assert {split: set(noul_balance(records)) for split, records in built.splits.items()} == NOUL_KINDS
+    for split, records in built.splits.items():
+        kinds = set(noul_balance(records))
+        assert kinds - set(FORM_KINDS) == GOLD_NOUL_KINDS[split]
+        used = {k for r in records for k, s in built.form_settings[r["source"]].items() if s["used"]}
+        assert kinds & set(FORM_KINDS) == used, split
 
 
 @pytest.mark.parametrize("split", SPLITS)
@@ -159,14 +168,30 @@ def test_gold_position_close_to_uniform_given_k(built, split):
 # CLINC record structure
 
 
-def test_clinc_records_have_three_questions_in_varied_orders(built):
-    intent_position = Counter()
-    for record in clinc_records(built.splits["train"]):
-        assert sorted(q["type"] for q in record["questions"].values()) == ["choice", "noul", "noul"]
-        assert "about_intent" in record["questions"]
-        intent_position[list(record["questions"]).index("intent")] += 1
-    total = sum(intent_position.values())
-    assert all(0.28 < intent_position[p] / total < 0.39 for p in range(3)), intent_position
+@pytest.mark.parametrize("split", SPLITS)
+def test_one_gold_dependent_noul_after_the_choice_or_score(built, split):
+    # Decision 42: attention is causal, so no gold-dependent question may precede another one.
+    assert order_violations(built.splits[split]) == []
+    for record in built.splits[split]:
+        dependent = [qid for qid in record["questions"] if not is_form(record, qid)]
+        assert record["questions"][dependent[0]]["type"] in ("choice", "score")
+        assert len(gold_nouls(record)) == len(dependent) - 1 <= 1
+
+
+def test_order_violations_catches_a_noul_before_the_choice():
+    record = {"id": "x", "questions": {"about_intent": {"type": "noul"}, "intent": {"type": "choice"}}, "meta": {"nouls": {"about_intent": {}}}}
+    two = {"id": "y", "questions": {"intent": {"type": "choice"}, "a": {"type": "noul"}, "b": {"type": "noul"}}, "meta": {"nouls": {"a": {}, "b": {}}}}
+    form_first = {"id": "z", "questions": {"w": {"type": "noul"}, "intent": {"type": "choice"}}, "meta": {"nouls": {"w": {"form": True}}}}
+    assert order_violations([record, two, form_first]) == ["x", "y"]
+
+
+def test_clinc_noul_kind_mix(built):
+    records = clinc_records(built.splits["train"])
+    kinds = Counter(next(iter(gold_nouls(r))) for r in records)
+    assert kinds["out_of_scope"] == 2 * 250
+    assert abs(kinds["about_domain"] - kinds["about_intent"]) < 0.04 * len(records)
+    ks = Counter(len(r["questions"]["intent"]["criteria"]) for r in records)
+    assert set(ks) == set(range(3, 15)) and min(ks.values()) > 0.8 * len(records) / 12
 
 
 def underlying_answer(record, kind):
@@ -186,24 +211,51 @@ def test_clinc_gold_answers_follow_the_rules(built):
             meta, gold, questions = record["meta"], record["gold"], record["questions"]
             k = len(questions["intent"]["criteria"])
             assert CONFIG["clinc"]["k_min"] <= k <= CONFIG["clinc"]["k_max"] and "other" in questions["intent"]["criteria"]
+            named = [label for label in questions["intent"]["criteria"] if label != "other"]
             if meta["gold_intent"] == CLINC_OUT_OF_SCOPE:
                 assert gold["intent"] == "other"
             else:
                 assert gold["intent"] == (meta["gold_intent"] if meta["gold_in_options"] else "other")
-            for kind, info in meta["nouls"].items():
+            for kind, info in gold_nouls(record).items():
                 answer = underlying_answer(record, kind) != info["negated"]
                 assert gold[kind] == ("true" if answer else "false")
                 if kind == "about_domain":
                     assert info["slot"] == DOMAIN_PHRASES[info["asked_domain"]]
+                    domains = {built_domain_of(built)[i] for i in named}
+                    assert info["asked_in_options"] == (info["asked_domain"] in domains)
+                    assert (info["asked_from"] == "gold") == (info["asked_domain"] == meta["domain"])
+                    if info["asked_from"] == "distractor":
+                        assert any(built_domain_of(built)[i] == info["asked_domain"] and i != meta["gold_intent"] for i in named)
                 if kind == "about_intent":
                     assert info["asked_intent"] in allowed and info["slot"] in clinc[info["asked_intent"]].variants
+                    assert info["asked_in_options"] == (info["asked_intent"] in named)
+                    assert info["asked_from"] == {True: "gold", False: "distractor" if info["asked_intent"] in named else "outside"}[info["asked_intent"] == meta["gold_intent"]]
+
+
+def built_domain_of(built):
+    return intent_domains(sorted(set(built.seen) | set(built.held_out)))
 
 
 def test_out_of_scope_utterances_yield_two_records(built):
     oos = [r for r in clinc_records(built.splits["train"]) if r["meta"]["gold_intent"] == CLINC_OUT_OF_SCOPE]
-    per_utterance = Counter((r["meta"]["source_split"], r["meta"]["source_index"]) for r in oos)
-    assert len(per_utterance) == 250 and set(per_utterance.values()) == {2}
-    assert Counter(next(k for k in r["meta"]["nouls"] if k != "about_intent") for r in oos) == {"out_of_scope": 250, "about_domain": 250}
+    per_utterance = defaultdict(list)
+    for r in oos:
+        (kind,) = gold_nouls(r)
+        per_utterance[(r["meta"]["source_split"], r["meta"]["source_index"])].append(kind)
+    assert len(per_utterance) == 250
+    for kinds in per_utterance.values():
+        assert len(kinds) == 2 and kinds.count("out_of_scope") == 1 and set(kinds) - {"out_of_scope"} <= {"about_domain", "about_intent"}
+
+
+@pytest.mark.parametrize("kind", ["about_intent", "about_domain"])
+def test_no_answers_are_feature_matched_to_the_options(built, kind):
+    # Decision 42: a "no" asks a distractor option (or its domain) with probability 0.8, so
+    # whether the asked item is among the options does not predict the answer.
+    infos = [(underlying_answer(r, kind), gold_nouls(r)[kind]) for r in clinc_records(built.splits["train"]) if kind in r["meta"]["nouls"]]
+    no = [info for yes, info in infos if not yes]
+    assert abs(sum(i["asked_from"] == "distractor" for i in no) / len(no) - 0.8) < 0.03
+    in_options = {yes: sum(i["asked_in_options"] for y, i in infos if y == yes) / sum(1 for y, _ in infos if y == yes) for yes in (True, False)}
+    assert abs(in_options[True] - in_options[False]) < 0.05, in_options
 
 
 @pytest.mark.parametrize("split, n_oos", [("train", 250), ("valid", 100), ("test_indomain", 1000)])
@@ -241,11 +293,13 @@ def test_sst5_scales_and_sentiment_nouls(built, split):
             assert score["criteria"] == list(LEVELS_3) and record["gold"]["sentiment"] == TO_3_LEVELS[label]
         else:
             assert score["criteria"] == list(LEVELS) and record["gold"]["sentiment"] == label
-        nouls = record["meta"]["nouls"]
+        nouls = gold_nouls(record)
+        dependent = [qid for qid in record["questions"] if not is_form(record, qid)]
         if label == 2:
-            assert nouls == {} and list(record["questions"]) == ["sentiment"]
+            assert nouls == {} and dependent == ["sentiment"]
             continue
         (kind,) = nouls
+        assert dependent == ["sentiment", kind]
         answer = label > 2 if kind == "is_positive" else label < 2
         assert record["gold"][kind] == ("true" if answer != nouls[kind]["negated"] else "false")
 
@@ -259,6 +313,7 @@ def test_emotion_nouls(built):
         answer = info["asked_emotion"] == record["gold"]["label"]
         asks_gold += answer
         assert record["gold"]["expresses_emotion"] == ("true" if answer != info["negated"] else "false")
+        assert [qid for qid in record["questions"] if not is_form(record, qid)] == ["label", "expresses_emotion"]
     assert asks_gold == 500
 
 
@@ -268,9 +323,10 @@ def test_yelp_is_stratified_short_and_scored_on_five_levels(built):
     records = built.splits["test_yelp"]
     assert Counter(r["gold"]["stars"] for r in records) == {star: 200 for star in range(5)}
     for record in records:
-        assert len(record["state"]) <= CONFIG["unseen"]["yelp_max_chars"]
-        assert record["questions"] == {"stars": {"type": "score", "instructions": "How many stars does this review give the business?", "criteria": list(YELP_LEVELS)}}
-        assert record["meta"]["scale"] == "yelp_5_stars" and record["meta"]["nouls"] == {}
+        assert len(state_text(record)) <= CONFIG["unseen"]["yelp_max_chars"]
+        assert record["questions"]["stars"] == {"type": "score", "instructions": "How many stars does this review give the business?", "criteria": list(YELP_LEVELS)}
+        assert [qid for qid in record["questions"] if not is_form(record, qid)] == ["stars"]
+        assert record["meta"]["scale"] == "yelp_5_stars" and gold_nouls(record) == {}
     assert len({r["meta"]["source_index"] for r in records}) == 1000
 
 
@@ -291,6 +347,58 @@ def test_build_is_deterministic():
     assert first.splits == second.splits
     other_seed = build_all({**CONFIG, "seed": 1}, ["test_agnews"])
     assert other_seed.splits["test_agnews"] != first.splits["test_agnews"]
+
+
+# Form nouls and state formats (data v1.3)
+
+
+@pytest.mark.parametrize("split", SPLITS)
+def test_form_nouls_are_computed_from_the_text_and_exactly_balanced(built, split):
+    underlying = defaultdict(Counter)
+    for record in built.splits[split]:
+        forms = [qid for qid in record["questions"] if is_form(record, qid)]
+        assert len(forms) <= 2
+        for kind in forms:
+            info = record["meta"]["nouls"][kind]
+            setting = built.form_settings[record["source"]][kind]
+            assert setting["used"] and info["threshold"] == setting["threshold"]
+            yes = answer(kind, state_text(record), info["threshold"])
+            assert record["gold"][kind] == ("true" if yes != info["negated"] else "false")
+            underlying[(record["source"], kind)][yes] += 1
+    assert underlying
+    assert all(c[True] == c[False] for c in underlying.values()), underlying
+
+
+def test_form_nouls_sit_anywhere_and_vary_in_number(built):
+    records = built.splits["train"]
+    counts = Counter(sum(is_form(r, q) for q in r["questions"]) for r in records)
+    assert set(counts) == {0, 1, 2} and all(counts[n] > 0.2 * len(records) for n in (0, 1, 2))
+    first = Counter(is_form(r, next(iter(r["questions"]))) for r in records if any(is_form(r, q) for q in r["questions"]))
+    assert first[True] > 0.3 * sum(first.values())  # a form noul often precedes the gold-dependent questions
+
+
+def test_unbalanceable_kinds_are_skipped(built):
+    settings = built.form_settings
+    assert all(not s["used"] for s in (k["ends_with_question_mark"] for k in settings.values()))
+    for kinds in settings.values():
+        for s in kinds.values():
+            assert s["used"] == (abs(s["yes_share"] - 0.5) <= CONFIG["form"]["max_imbalance"])
+
+
+@pytest.mark.parametrize("split", SPLITS)
+def test_twenty_percent_of_states_are_json(built, split):
+    records = built.splits[split]
+    wrapped = [r for r in records if r["meta"]["state_format"] == "json"]
+    assert len(wrapped) == round(0.2 * len(records))
+    for record in records:
+        if record["meta"]["state_format"] == "plain":
+            assert isinstance(record["state"], str) and record["meta"]["state_fields"] == []
+            continue
+        state = record["state"]
+        assert list(state) == record["meta"]["state_fields"] and "text" in state
+        extra = [k for k in state if k != "text"]
+        assert 1 <= len(extra) <= 3 and set(extra) <= set(STATE_FIELDS)
+        assert all(isinstance(v, str) and v for v in state.values())
 
 
 # Config overrides

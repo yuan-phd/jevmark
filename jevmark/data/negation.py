@@ -1,8 +1,8 @@
-"""Noul phrasing templates and their negations, per noul kind (decisions 40 and 41).
+"""Noul phrasing templates and their negations, per noul kind (decisions 40, 41 and 42).
 
 Every kind has two or three templates. Each template is a pair of phrasings, a
 positive one and its negation, around at most one slot (a domain phrase, an intent
-description, an emotion). negate() maps any phrasing of any template to its pair
+description, an emotion, or a form noul's threshold). negate() maps any phrasing of any template to its pair
 in both directions, so negate(negate(q)) == q, and parse() recovers the template,
 the polarity and the slot from a rendered instruction.
 
@@ -44,6 +44,31 @@ TEMPLATES: dict[str, list[tuple[str, str]]] = {
     "expresses_emotion": [
         ("Does this message express {slot}?", "Does this message express something other than {slot}?"),
         ("Is {slot} the main emotion in this message?", "Is something other than {slot} the main emotion in this message?"),
+    ],
+    # Form nouls (data v1.3): label-independent, computed from the state text only (form.py).
+    "word_count_over": [
+        ("Does the text have more than {slot} words?", "Does the text have {slot} words or fewer?"),
+        ("Is the text longer than {slot} words?", "Is the text at most {slot} words long?"),
+    ],
+    "char_count_over": [
+        ("Does the text have more than {slot} characters?", "Does the text have {slot} characters or fewer?"),
+        ("Is the text longer than {slot} characters?", "Is the text at most {slot} characters long?"),
+    ],
+    "longest_word_over": [
+        ("Does the text contain a word longer than {slot} letters?", "Are all words in the text at most {slot} letters long?"),
+        ("Does any word in the text have more than {slot} letters?", "Does every word in the text have {slot} letters or fewer?"),
+    ],
+    "contains_number": [
+        ("Does the text contain a digit?", "Is the text free of digits?"),
+        ("Does the text include a number written in digits?", "Does the text include no number written in digits?"),
+    ],
+    "contains_comma": [
+        ("Does the text contain a comma?", "Is the text free of commas?"),
+        ("Is there at least one comma in the text?", "Is there no comma in the text?"),
+    ],
+    "ends_with_question_mark": [
+        ("Does the text end with a question mark?", "Does the text end with something other than a question mark?"),
+        ("Is the last character of the text a question mark?", "Is the last character of the text something other than a question mark?"),
     ],
 }
 KINDS = tuple(TEMPLATES)

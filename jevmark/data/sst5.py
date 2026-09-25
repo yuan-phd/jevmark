@@ -1,11 +1,11 @@
-"""SST-5 -> records with a score question, and a sentiment noul on non-neutral records (docs/DATA.md section 2, data v1.2).
+"""SST-5 -> records with a score question, and a sentiment noul on non-neutral records (docs/DATA.md section 2, data v1.3).
 
 Two hand-written scales live only here: the 5-level scale, and a 3-level scale
 (negative, neutral or mixed, positive) used on a seeded 30 percent of records in
 every split, with labels 0 and 1 mapped to 0, 2 to 1, and 3 and 4 to 2. meta.scale
 records which scale a record uses. Every non-neutral record (labels 0, 1, 3, 4)
 also gets an is_positive or is_negative noul question, chosen at random; neutral
-records keep only their score question.
+records keep only their score question. The score question always comes first.
 """
 
 from __future__ import annotations
@@ -63,10 +63,9 @@ def build_split(split: str, config: Mapping[str, Any]) -> list[dict[str, Any]]:
             kind = rng.choice(("is_positive", "is_negative"))
             answer = label > NEUTRAL if kind == "is_positive" else label < NEUTRAL
             noul_q, noul_gold, info = noul_question(kind, answer)
-            order = [QUESTION_ID, kind]
-            rng.shuffle(order)
-            questions = {qid: {QUESTION_ID: score, kind: noul_q}[qid] for qid in order}
-            gold = {qid: {QUESTION_ID: level, kind: noul_gold}[qid] for qid in order}
+            # Score first: a sentiment noul before it would tell the model the record is not neutral (decision 42).
+            questions = {QUESTION_ID: score, kind: noul_q}
+            gold = {QUESTION_ID: level, kind: noul_gold}
             nouls = {kind: info}
         records.append(
             {

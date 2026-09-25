@@ -34,11 +34,17 @@ def split_rng(seed: int, name: str) -> random.Random:
     return random.Random(f"{seed}:{name}")
 
 
+def state_text(record: Mapping[str, Any]) -> str:
+    """The record's text: the state itself, or its text field when the state is a JSON object (data v1.3)."""
+    state = record["state"]
+    return state["text"] if isinstance(state, dict) else state
+
+
 def make_record(
     record_id: str,
     source: str,
     split: str,
-    state: str,
+    state: str | dict[str, Any],
     questions: dict[str, dict[str, Any]],
     gold: dict[str, Any],
     meta: dict[str, Any],
@@ -107,6 +113,26 @@ def held_out_leaks(records: Iterable[Mapping[str, Any]], held_out: Iterable[str]
     return leaks
 
 
+def is_form(record: Mapping[str, Any], qid: str) -> bool:
+    """True for a form noul (label-independent, data v1.3); every other question depends on the record's gold."""
+    return bool(record["meta"].get("nouls", {}).get(qid, {}).get("form"))
+
+
+def order_violations(records: Iterable[Mapping[str, Any]]) -> list[str]:
+    """Ids of records that break the data v1.3 order rule (decision 42).
+
+    Among a record's gold-dependent questions (all but form nouls), the choice or
+    score question comes first and at most one noul follows it. Form nouls may be
+    anywhere.
+    """
+    bad = []
+    for record in records:
+        dependent = [q["type"] for qid, q in record["questions"].items() if not is_form(record, qid)]
+        if dependent[0] == "noul" or dependent.count("noul") > 1 or len(dependent) - dependent.count("noul") != 1:
+            bad.append(record["id"])
+    return bad
+
+
 # Noul phrasing (decisions 40 and 41)
 
 
@@ -118,8 +144,8 @@ def noul_question(kind: str, gold: bool, slot: str | None = None, **meta: Any) -
     return question, "true" if gold else "false", {"template": 0, "negated": False, "slot": slot, **meta}
 
 
-def assign_phrasings(records: list[dict[str, Any]], rng: random.Random) -> None:
-    """Give every noul question its final template and polarity, in place.
+def assign_phrasings(records: list[dict[str, Any]], rng: random.Random, kinds: set[str] | None = None) -> None:
+    """Give every noul question (of the given kinds, default all) its final template and polarity, in place.
 
     Within each kind and underlying answer, questions get (template, negated) pairs
     from consecutive shuffled blocks that hold each pair once. Every phrasing then
@@ -131,7 +157,7 @@ def assign_phrasings(records: list[dict[str, Any]], rng: random.Random) -> None:
     groups: dict[tuple[str, str], list[tuple[dict[str, Any], str]]] = defaultdict(list)
     for record in records:
         for qid, question in record["questions"].items():
-            if question["type"] == "noul":
+            if question["type"] == "noul" and (kinds is None or qid in kinds):
                 groups[(qid, record["gold"][qid])].append((record, qid))
     for (kind, underlying), members in sorted(groups.items()):
         pairs = [(t, negated) for t in range(len(TEMPLATES[kind])) for negated in (False, True)]

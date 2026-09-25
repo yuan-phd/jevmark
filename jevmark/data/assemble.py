@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from jevmark.data import sst5, unseen
+from jevmark.data import form, sst5, unseen
 from jevmark.data.build import SPLITS
 from jevmark.data.clinc import ClincBuilder
 
@@ -16,10 +16,16 @@ class BuiltData:
     splits: dict[str, list[dict[str, Any]]]
     held_out: tuple[str, ...]
     seen: tuple[str, ...]
+    form_settings: dict[str, dict[str, dict[str, Any]]]  # source -> form kind -> threshold, yes share, used
 
 
 def build_all(config: Mapping[str, Any], splits: Sequence[str] = SPLITS) -> BuiltData:
-    """Records per split. train and valid hold CLINC records followed by SST-5 records."""
+    """Records per split. train and valid hold CLINC records followed by SST-5 records.
+
+    After each split is built, form nouls and state formats are added (form.apply),
+    with thresholds from each source's full texts, so a split's records do not depend
+    on which other splits are built.
+    """
     clinc = ClincBuilder(config)
     built: dict[str, list[dict[str, Any]]] = {}
     for split in splits:
@@ -31,4 +37,7 @@ def build_all(config: Mapping[str, Any], splits: Sequence[str] = SPLITS) -> Buil
             built[split] = sst5.build_split(split, config)
         else:
             built[split] = unseen.build_split(split, config)
-    return BuiltData(built, tuple(clinc.held_out), tuple(clinc.seen))
+    settings = form.form_settings(sorted({r["source"] for records in built.values() for r in records}), config)
+    for split, records in built.items():
+        form.apply(split, records, settings, config)
+    return BuiltData(built, tuple(clinc.held_out), tuple(clinc.seen), settings)

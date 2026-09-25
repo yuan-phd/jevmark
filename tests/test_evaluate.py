@@ -13,6 +13,7 @@ from jevmark.config import load_config
 from jevmark.data.assemble import build_all
 from jevmark.data.build import SPLITS
 from jevmark.data.clinc import DOMAIN_PHRASES
+from jevmark.data.form import FORM_KINDS
 from jevmark.data.negation import KINDS, TEMPLATES, negate, parse, render
 
 REPO = Path(__file__).resolve().parents[1]
@@ -27,15 +28,23 @@ PER_SPLIT = 30
 # Negation templates
 
 
-SLOTS = {"about_domain": DOMAIN_PHRASES["travel"], "about_intent": "Wants to move money between accounts", "expresses_emotion": "joy"}
+SLOTS = {
+    "about_domain": DOMAIN_PHRASES["travel"],
+    "about_intent": "Wants to move money between accounts",
+    "expresses_emotion": "joy",
+    "word_count_over": "12",
+    "char_count_over": "80",
+    "longest_word_over": "9",
+}
+GOLD_KINDS = {"about_domain", "out_of_scope", "about_intent", "is_positive", "is_negative", "expresses_emotion"}
 
 
 def test_every_kind_has_two_or_three_templates():
-    assert set(KINDS) == {"about_domain", "out_of_scope", "about_intent", "is_positive", "is_negative", "expresses_emotion"}
+    assert set(KINDS) == GOLD_KINDS | set(FORM_KINDS)
     assert all(2 <= len(TEMPLATES[kind]) <= 3 for kind in KINDS)
 
 
-@pytest.mark.parametrize("kind", ["about_domain", "out_of_scope", "about_intent", "is_positive", "is_negative", "expresses_emotion"])
+@pytest.mark.parametrize("kind", sorted(GOLD_KINDS | set(FORM_KINDS)))
 def test_every_template_maps_to_its_pair_in_both_directions(kind):
     rendered = set()
     for template in range(len(TEMPLATES[kind])):
@@ -127,7 +136,7 @@ def test_outputs_written(run):
     assert sorted(p.name for p in (run / "plots").iterdir()) == sorted(f"{s}.png" for s in SPLITS)
 
 
-def test_metrics_json_structure(run):
+def test_metrics_json_structure(run, eval_inputs):
     metrics = json.loads((run / "metrics.json").read_text())
     assert metrics["run_name"] == f"tiny_eval_limit{PER_SPLIT}"
     assert metrics["limit"] == PER_SPLIT and metrics["device"] == "cpu"
@@ -142,15 +151,16 @@ def test_metrics_json_structure(run):
     for block in ("overall", "noul", "choice"):
         assert {"n", "accuracy", "ece", "brier", "nll", "reliability"} <= set(train[block])
         assert len(train[block]["reliability"]) == 15
-    assert train["overall"]["n"] == 3 * PER_SPLIT  # every CLINC record has three questions (data v1.2)
+    train_records = [json.loads(line) for line in (eval_inputs[2] / "train.jsonl").read_text().splitlines()]
+    assert train["overall"]["n"] == sum(len(r["questions"]) for r in train_records)  # choice, one gold noul, 0 to 2 form nouls
     assert len(train["noul"]["coverage"]) == 21 and "coverage" not in train["overall"]
     assert "macro_f1" in train["choice"]
-    assert train["symmetry"]["n"] == 2 * PER_SPLIT  # every CLINC record has two noul questions (data v1.2)
+    assert train["symmetry"]["n"] == sum(q["type"] == "noul" for r in train_records for q in r["questions"].values())
     assert 0.0 <= train["symmetry"]["argmax_consistent"] <= 1.0
 
     sst5 = metrics["splits"]["test_sst5"]
     assert set(sst5) == {"overall", "score", "noul", "symmetry", "n_records"} and "mae" in sst5["score"]  # v1.2: sentiment nouls
-    assert set(metrics["splits"]["test_agnews"]) == {"overall", "choice", "letter_bias", "n_records"}
+    assert set(metrics["splits"]["test_agnews"]) == {"overall", "choice", "noul", "symmetry", "letter_bias", "n_records"}  # v1.3: form nouls
 
     assert metrics["batching_precision"]["n_requests"] == 200
     assert metrics["batching_precision"]["max_abs_difference"] < 1e-4
@@ -167,8 +177,9 @@ def test_accuracy_matches_a_direct_forward(run, eval_inputs, tiny_model, tokeniz
     records = [json.loads(line) for line in (data_dir / "test_agnews.jsonl").read_text().splitlines()]
     jev = JevMark(tiny_model, tokenizer, max_tokens=2048)
     encoded = [encode(Request.from_dict({"state": r["state"], "questions": r["questions"]}), tokenizer, 2048) for r in records]
-    probs = jev.forward_distributions(encoded)
-    correct = [list(r["questions"]["label"]["criteria"])[int(p.argmax())] == r["gold"]["label"] for r, p in zip(records, probs)]
+    flat = iter(jev.forward_distributions(encoded))
+    per_record = [{qid: next(flat) for qid in r["questions"]} for r in records]  # form nouls share the sequence (data v1.3)
+    correct = [list(r["questions"]["label"]["criteria"])[int(p["label"].argmax())] == r["gold"]["label"] for r, p in zip(records, per_record)]
     metrics = json.loads((run / "metrics.json").read_text())
     assert metrics["splits"]["test_agnews"]["choice"]["accuracy"] == pytest.approx(sum(correct) / len(correct))
 
@@ -235,10 +246,10 @@ def test_recompute_rebuilds_metrics_exactly(run, tmp_path):
 def test_new_breakdowns_reach_metrics_json(run):
     metrics = json.loads((run / "metrics.json").read_text())
     indomain = metrics["splits"]["test_indomain"]
-    assert set(indomain["noul"]["by_kind"]) <= {"about_domain", "out_of_scope", "about_intent"} and "about_intent" in indomain["noul"]["by_kind"]
+    assert set(indomain["noul"]["by_kind"]) <= {"about_domain", "out_of_scope", "about_intent"} | set(FORM_KINDS) and "about_intent" in indomain["noul"]["by_kind"]
     assert "yes_rate" in indomain["noul"]
-    assert set(metrics["splits"]["test_emotion"]["noul"]["by_kind"]) == {"expresses_emotion"}
-    assert "score" in metrics["splits"]["test_yelp"] and "noul" not in metrics["splits"]["test_yelp"]
+    assert set(metrics["splits"]["test_emotion"]["noul"]["by_kind"]) - set(FORM_KINDS) == {"expresses_emotion"}
+    assert "score" in metrics["splits"]["test_yelp"] and set(metrics["splits"]["test_yelp"]["noul"]["by_kind"]) <= set(FORM_KINDS)
     assert {"n_offering_other", "predicted_other_rate"} <= set(indomain["choice"]["by_gold_other"])
     assert "by_k_position" in indomain["letter_bias"]
     assert "by_gold_other" not in metrics["splits"]["test_agnews"]["choice"]  # AG News offers no "other"

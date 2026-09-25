@@ -1,6 +1,7 @@
 # Data build (docs/DATA.md section 2). All randomness derives from seed: every split
 # uses random.Random(f"{seed}:{split}"), and the held-out intents use "{seed}:held_out".
-version: v1.2                    # v1.2: noul and score diversity (decision 41); v1.1: negated noul questions (decision 40)
+version: v1.3                    # v1.3: one gold-dependent question per record, form nouls, JSON states (decision 42)
+                                 # v1.2: noul and score diversity (decision 41); v1.1: negated noul questions (decision 40)
 seed: 0
 out_dir: data
 base_config: configs/base.yaml   # tokenizer_reference for the encoding check
@@ -8,9 +9,14 @@ max_tokens: 1024                 # every record must encode within the training 
 
 clinc:
   k_min: 3                       # options per choice question, including "other"
-  k_max: 10
+  k_max: 14
   p_gold_in_options: 0.8
   held_out_per_domain: 2
+  # The one gold-dependent noul per record. out_of_scope is fixed by the option 1 rule
+  # (as many in-scope records as out-of-scope utterances); every other record draws
+  # about_domain or about_intent in the ratio of these weights.
+  kind_weights: {about_domain: 0.45, about_intent: 0.45, out_of_scope: 0.10}
+  p_asked_from_options: 0.8      # a "no" noul asks a distractor option (or its domain) with this probability
 
 sst5:
   p_three_levels: 0.3            # share of SST-5 records, per split, that use the 3-level scale
@@ -26,3 +32,10 @@ unseen:
 max_phrasing_only_accuracy: 0.55 # build fails if answering each phrasing with its majority answer beats this
 
 noul_balance: [0.4, 0.6]         # build fails if a noul kind's yes share is outside this range
+
+# Form nouls (data v1.3): 0, 1 or 2 per record, answered from the state text alone.
+form:
+  max_imbalance: 0.06            # a kind is used for a source only if its best threshold splits the source within 44-56 percent
+
+state_format:
+  p_json: 0.2                    # share of records per split whose state is a JSON object with 1 to 3 extra fields
