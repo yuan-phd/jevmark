@@ -43,7 +43,7 @@ Run the cells top to bottom:
 | Parameters | `REPO`, `COMMIT`, `LIMIT` | |
 | Clone | fetches exactly `COMMIT` into `/tmp/jevmark` and checks the sha | seconds |
 | Install | uninstalls Kaggle's `torchao`, then `pip install -r requirements-kaggle.txt` (the seven Hugging Face packages) and jevmark with `--no-deps`; prints versions and GPU count | 1 to 2 min |
-| Data | `make data PY=python`; fails loudly if any data check fails | under 1 min |
+| Data | `make data-build PY=python`; fails loudly if any build check fails (the leak probes and duplicate check run locally, section 8) | under 1 min |
 | Smoke | 30 records per split on 0.6B, writes `runs/base_06b_limit30/` | a few min, mostly downloads |
 | B0 0.6B | all nine splits, writes `runs/base_06b/` | about 0.4 GPU hours (measured 28 min with fp32 weights, 21 min with fp16) |
 | B0 1.7B | all nine splits, writes `runs/base_17b/` | about 1.0 GPU hours (measured 56 min) |
@@ -82,7 +82,7 @@ One session trains one backbone size, then evaluates it and re-evaluates the fro
 
 Both sessions use the same `COMMIT`, so the four runs share one code version. Set `REPO`, `COMMIT`, `SIZE`, `SMOKE_STEPS` (default 20) and `MAX_HOURS` (default 6.0, which leaves room for the two evaluations inside a 9 hour session) in the first code cell, then run the cells top to bottom:
 
-1. Clone, install and data: as in the evaluation notebook.
+1. Clone, install and data: as in the evaluation notebook. With `FAST = True` the fast cycle cell runs next and every later cell is skipped (section 8).
 2. Smoke training: `SMOKE_STEPS` steps into `runs/sft_<size>_smoke/`, including one validation, the final valid pass and a `train_summary.json`. Check that it ends with `done at step ...` before going on.
 3. Full training into `runs/sft_<size>/`: logs every step to `training_log.jsonl`, validates every 200 steps on 1000 fixed valid records, keeps the best adapter by validation NLL in `adapter/`, and the resumable state in `last/`. The cell copies `runs/` to `/kaggle/working/runs` as soon as training returns, so the state survives a later failure.
 4. Evaluate the trained adapter: `evaluate.py --ckpt runs/sft_<size>`.
@@ -106,3 +106,13 @@ From `/kaggle/working/runs/`:
 | `sft_<size>_smoke/` | nothing | discard |
 
 Put the directories at `runs/sft_<size>/` and `runs/base_<size>/` in the local checkout. `.gitignore` already excludes `adapter/`, `last/`, `results.jsonl.gz` and smoke runs, so `git add runs/sft_<size> runs/base_<size>` picks up exactly the files in the commit column. Check that every `metrics.json` has the session's `COMMIT` and `"dirty": false` before committing.
+
+## 8. Validating a data version: CPU gates, fast cycle, then the full session (decision 42)
+
+A new data version, or any change to the builders, goes through three steps in this order. Each costs far less than the next, and a failure stops the sequence.
+
+1. CPU gates, locally: `make data`. It builds every split with the build checks (balance, phrasing, order rule, positions, held-out leaks), then runs `scripts/leak_probe.py` (state-free logistic regression probes; fails on any lift above 10 points, or above 3 points and the 99th percentile of 200 shuffled-target runs; lists every probe above 3 points with its p value) and `scripts/check_duplicates.py` (fails on any normalised text shared by train or valid and a test split). About two minutes on a laptop CPU. Commit and push only when all three pass.
+2. Fast cycle, on Kaggle: `notebooks/kaggle_train.ipynb` with `FAST = True`, `SIZE = "06b"` and `COMMIT` set to the pushed commit. It builds the data (`make data-build`), trains Qwen3-0.6B-Base for `FAST_STEPS` (300) optimizer steps into `runs/fast_06b/`, and evaluates 300 records per split into the same directory with every diagnostic: bootstrap intervals, accuracy by question position, noul symmetry, letter bias, batching precision, latency, and `--shuffle-questions` on `FAST_SHUFFLE_SPLIT` (test_indomain). Budget about 20 minutes, most of it the 300 training steps (the full 0.6B run took 47 minutes for 1378 steps); measure and update. The learning rate schedule is the full run's, so 300 steps are its warmup and early decay: the fast run shows whether training moves in the right direction and whether any diagnostic looks wrong, not final numbers. `runs/fast_*/` is gitignored; download `metrics.json` to look at it, never commit it.
+3. Full session: the same notebook with `FAST = False` (section 7), only after the fast cycle looks sound on that commit.
+
+What to check in the fast run's printout and `metrics.json` before a full session: no split with accuracy at or below the frozen base's; noul `by_kind` without a kind near 50 percent where the others have moved; `by_question_position` without a large gap between first and later questions; `order_sensitivity` on test_indomain with a high prediction agreement; symmetry `mean_sum` near 1.

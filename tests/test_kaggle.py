@@ -58,7 +58,7 @@ def test_notebook_runs_smoke_before_both_backbones_and_copies_runs():
     smoke = joined.index("--limit {LIMIT}")
     assert smoke < joined.index("--config configs/base_06b.yaml --device cuda\n") < joined.index("configs/base_17b.yaml")
     assert "requirements-kaggle.txt" in joined and "--no-deps" in joined
-    assert "make data PY=python" in joined
+    assert "make data-build PY=python" in joined
     assert '"/kaggle/working/runs"' in joined
 
 
@@ -74,10 +74,32 @@ def test_train_notebook_runs_one_size_smoke_first_then_train_evaluate_and_copy()
     evaluate_base = joined.index("evaluate.py --ckpt base --config configs/base_{SIZE}.yaml")
     assert smoke < full < evaluate_sft < evaluate_base
     assert joined.rindex('shutil.copytree(WORK / "runs", "/kaggle/working/runs"') > evaluate_base
-    assert "make data PY=python" in joined and "requirements-kaggle.txt" in joined
+    assert "make data-build PY=python" in joined and "requirements-kaggle.txt" in joined
 
 
 @pytest.mark.parametrize("name", ["kaggle_eval.ipynb", "kaggle_train.ipynb"])
 def test_notebooks_uninstall_torchao_before_installing(name):
     install = next(c for c in code_cells(name) if "requirements-kaggle.txt" in c)
     assert install.index("pip uninstall -y -q torchao") < install.index("pip install -q -r requirements-kaggle.txt")
+
+
+def test_train_notebook_fast_cycle_trains_300_steps_and_evaluates_300_records_with_every_diagnostic():
+    cells = code_cells("kaggle_train.ipynb")
+    params = cells[0]
+    assert re.search(r"^FAST = False", params, re.M)
+    assert re.search(r"^FAST_STEPS = 300\b", params, re.M) and re.search(r"^FAST_RECORDS = 300\b", params, re.M)
+    fast = next(c for c in cells if c.lstrip().startswith("# Fast cycle"))
+    assert "if FAST:" in fast and 'FAST_RUN = f"fast_{SIZE}"' in fast
+    assert "train_sft.py --config configs/sft_{SIZE}.yaml run_name={FAST_RUN} --limit-steps {FAST_STEPS}" in fast
+    assert "evaluate.py --ckpt runs/{FAST_RUN} --run-name {FAST_RUN} --limit {FAST_RECORDS} --shuffle-questions {FAST_SHUFFLE_SPLIT}" in fast
+    joined = "\n".join(cells)
+    assert joined.index("make data-build") < joined.index("# Fast cycle") < joined.index("--limit-steps {SMOKE_STEPS}")
+    for cell in cells[cells.index(fast) + 1 :]:
+        assert "if not FAST:" in cell  # the full session is skipped in fast mode
+
+
+def test_fast_runs_are_gitignored():
+    import subprocess
+
+    ignored = subprocess.run(["git", "check-ignore", "--no-index", "-q", "runs/fast_06b/metrics.json"], cwd=REPO)
+    assert ignored.returncode == 0

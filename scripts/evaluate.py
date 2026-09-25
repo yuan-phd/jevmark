@@ -310,6 +310,7 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         metavar="SPLIT",
         help="also evaluate each record with its questions reordered, to measure order sensitivity; on the named splits, or on every evaluated split when none is named",
     )
+    parser.add_argument("--run-name", default=None, help="write to runs/<run-name>/ instead of the default name (no _limit suffix is added); the fast cycle uses it")
     parser.add_argument("--data-dir", default=str(REPO / "data"))
     parser.add_argument("--runs-dir", default=str(REPO / "runs"))
     args = parser.parse_args(argv)
@@ -334,7 +335,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         config_path = Path(args.config) if args.config else checkpoint / "config.yaml"
         config = load_config(config_path)
         run_name = checkpoint.name
-    if args.limit:
+    if args.run_name:
+        run_name = args.run_name
+    elif args.limit:
         run_name = f"{run_name}_limit{args.limit}"
     out_dir = Path(args.runs_dir) / run_name
 
