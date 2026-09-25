@@ -167,10 +167,18 @@ def _field_value(name: str, rng: random.Random) -> str:
 
 
 def apply(split: str, records: list[dict[str, Any]], config: Mapping[str, Any]) -> dict[str, dict[str, dict[str, Any]]]:
-    """Form nouls, then state formats, for one split, each from its own seeded stream; returns the form settings used."""
+    """Form nouls (only in the splits listed in form.splits), then state formats, each from its own seeded stream.
+
+    Returns the form settings used, empty for a split without form nouls. The
+    evaluation-only splits have none (decision 44): their texts are long news
+    articles and reviews, and counting words or characters there measures a skill the
+    model was never trained on and that no decision needs.
+    """
     seed = int(config["seed"])
-    settings = split_settings(records, float(config["form"]["max_imbalance"]))
-    add_form_nouls(records, settings, float(config["form"]["p_before_first"]), split_rng(seed, f"{split}:form"), split_rng(seed, f"{split}:form:phrasing"))
+    settings: dict[str, dict[str, dict[str, Any]]] = {}
+    if split in config["form"]["splits"]:
+        settings = split_settings(records, float(config["form"]["max_imbalance"]))
+        add_form_nouls(records, settings, float(config["form"]["p_before_first"]), split_rng(seed, f"{split}:form"), split_rng(seed, f"{split}:form:phrasing"))
     wrap_states(records, float(config["state_format"]["p_json"]), split_rng(seed, f"{split}:state_format"))
     for record in records:
         make_record(record["id"], record["source"], record["split"], record["state"], record["questions"], record["gold"], record["meta"])

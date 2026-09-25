@@ -346,3 +346,28 @@ def test_result_line_round_trip_with_position_and_shuffle():
     for key in ("position", "shuffled_probs", "shuffled_position"):
         del old[key]
     assert result_from_line(old).position is None and result_from_line(old).shuffled_probs is None
+
+
+def test_form_nouls_are_kept_out_of_the_headline_metrics():
+    # Decision 44: overall and the noul block cover gold-dependent questions; form nouls get their own block.
+    def q(kind, p_true, gold_true, rid):
+        return QuestionResult(rid, kind, "noul", (p_true, 1 - p_true), 0 if gold_true else 1, ("true", "false"), kind=kind, negated_p_yes=1 - p_true)
+
+    results = [
+        q("about_domain", 0.9, True, "a"),  # correct
+        q("about_domain", 0.8, True, "b"),  # correct
+        q("char_count_over", 0.9, False, "a"),  # wrong, form
+        q("word_count_over", 0.7, False, "b"),  # wrong, form
+        choice([0.6, 0.4], 0, rid="a"),
+    ]
+    metrics = split_metrics(results)
+    assert metrics["overall"]["n"] == 3 and metrics["overall"]["accuracy"] == 1.0
+    assert metrics["noul"]["n"] == 2 and set(metrics["noul"]["by_kind"]) == {"about_domain"}
+    assert metrics["form"]["n"] == 2 and metrics["form"]["accuracy"] == 0.0
+    assert set(metrics["form"]["by_kind"]) == {"char_count_over", "word_count_over"}
+    assert {"ece", "brier", "nll", "coverage", "accuracy_ci", "ece_ci", "yes_rate"} <= set(metrics["form"])
+    from jevmark.metrics import split_report
+
+    report = split_report(results)
+    assert report["symmetry"]["n"] == 2 and report["form"]["symmetry"]["n"] == 2
+    assert "form" not in split_metrics(results[:2])

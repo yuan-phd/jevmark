@@ -37,6 +37,9 @@ noul_balance: [0.4, 0.6]         # build fails if a noul kind's yes share is out
 form:
   max_imbalance: 0.02            # a kind is used for a (split, source) only if its best threshold splits those texts within 48-52 percent
   p_before_first: 0.3333         # each form noul goes before the first gold-dependent question with this probability
+  # Splits with form nouls: the training sources only (decision 44). The evaluation-only splits
+  # (test_agnews, test_emotion, test_banking77, test_yelp) have none.
+  splits: [train, valid, test_indomain, test_unseen_intents, test_sst5]
 
 state_format:
   p_json: 0.2                    # share of records per split whose state is a JSON object with 1 to 3 extra fields

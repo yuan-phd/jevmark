@@ -152,15 +152,21 @@ def test_metrics_json_structure(run, eval_inputs):
         assert {"n", "accuracy", "ece", "brier", "nll", "reliability"} <= set(train[block])
         assert len(train[block]["reliability"]) == 15
     train_records = [json.loads(line) for line in (eval_inputs[2] / "train.jsonl").read_text().splitlines()]
-    assert train["overall"]["n"] == sum(len(r["questions"]) for r in train_records)  # choice, one gold noul, 0 to 2 form nouls
+    def form(r, q):
+        return bool(r["meta"]["nouls"].get(q, {}).get("form"))
+
+    # Headline metrics cover gold-dependent questions only; form nouls have their own block (decision 44).
+    assert train["overall"]["n"] == sum(not form(r, q) for r in train_records for q in r["questions"])
+    assert train["form"]["n"] == sum(form(r, q) for r in train_records for q in r["questions"]) > 0
+    assert {"accuracy", "accuracy_ci", "ece", "ece_ci", "by_kind", "symmetry", "coverage"} <= set(train["form"])
     assert len(train["noul"]["coverage"]) == 21 and "coverage" not in train["overall"]
     assert "macro_f1" in train["choice"]
-    assert train["symmetry"]["n"] == sum(q["type"] == "noul" for r in train_records for q in r["questions"].values())
+    assert train["symmetry"]["n"] == sum(q["type"] == "noul" and not form(r, qid) for r in train_records for qid, q in r["questions"].items())
     assert 0.0 <= train["symmetry"]["argmax_consistent"] <= 1.0
 
     sst5 = metrics["splits"]["test_sst5"]
-    assert set(sst5) == {"overall", "score", "noul", "symmetry", "n_records"} and "mae" in sst5["score"]  # v1.2: sentiment nouls
-    assert set(metrics["splits"]["test_agnews"]) == {"overall", "choice", "noul", "symmetry", "letter_bias", "n_records"}  # v1.3: form nouls
+    assert set(sst5) == {"overall", "score", "noul", "symmetry", "form", "n_records"} and "mae" in sst5["score"]  # sentiment nouls; form nouls kept in test_sst5
+    assert set(metrics["splits"]["test_agnews"]) == {"overall", "choice", "letter_bias", "n_records"}  # no form nouls in evaluation-only splits
 
     assert metrics["batching_precision"]["n_requests"] == 200
     assert metrics["batching_precision"]["max_abs_difference"] < 1e-4
@@ -225,7 +231,7 @@ def test_results_file_has_one_line_per_question(run):
 
     lines = [json.loads(line) for line in gzip.open(run / "results.jsonl.gz", "rt")]
     metrics = json.loads((run / "metrics.json").read_text())
-    assert len(lines) == sum(split["overall"]["n"] for split in metrics["splits"].values())
+    assert len(lines) == sum(split["overall"]["n"] + split.get("form", {}).get("n", 0) for split in metrics["splits"].values())
     assert set(lines[0]) == {
         "record_id", "question_id", "split", "type", "kind", "labels", "probs", "gold", "confidence", "prediction", "negated_p_yes",
         "position", "shuffled_probs", "shuffled_position",
@@ -244,16 +250,17 @@ def test_recompute_rebuilds_metrics_exactly(run, tmp_path):
     assert rebuilt["splits"] == original["splits"]
     for key in ("git", "precision", "latency", "batching_precision", "data_files_sha256"):
         assert rebuilt[key] == original[key]
-    assert rebuilt["recomputed"]["questions"] == sum(s["overall"]["n"] for s in original["splits"].values())
+    assert rebuilt["recomputed"]["questions"] == sum(s["overall"]["n"] + s.get("form", {}).get("n", 0) for s in original["splits"].values())
 
 
 def test_new_breakdowns_reach_metrics_json(run):
     metrics = json.loads((run / "metrics.json").read_text())
     indomain = metrics["splits"]["test_indomain"]
-    assert set(indomain["noul"]["by_kind"]) <= {"about_domain", "out_of_scope", "about_intent"} | set(FORM_KINDS) and "about_intent" in indomain["noul"]["by_kind"]
+    assert set(indomain["noul"]["by_kind"]) <= {"about_domain", "out_of_scope", "about_intent"} and "about_intent" in indomain["noul"]["by_kind"]
+    assert set(indomain["form"]["by_kind"]) <= set(FORM_KINDS)
     assert "yes_rate" in indomain["noul"]
-    assert set(metrics["splits"]["test_emotion"]["noul"]["by_kind"]) - set(FORM_KINDS) == {"expresses_emotion"}
-    assert "score" in metrics["splits"]["test_yelp"] and set(metrics["splits"]["test_yelp"]["noul"]["by_kind"]) <= set(FORM_KINDS)
+    assert set(metrics["splits"]["test_emotion"]["noul"]["by_kind"]) == {"expresses_emotion"} and "form" not in metrics["splits"]["test_emotion"]
+    assert "score" in metrics["splits"]["test_yelp"] and "noul" not in metrics["splits"]["test_yelp"]
     assert {"n_offering_other", "predicted_other_rate"} <= set(indomain["choice"]["by_gold_other"])
     assert "by_k_position" in indomain["letter_bias"]
     assert "by_gold_other" not in metrics["splits"]["test_agnews"]["choice"]  # AG News offers no "other"
@@ -372,7 +379,10 @@ def test_shuffle_questions_measures_order_sensitivity(eval_inputs, tmp_path):
 
     all_records = [json.loads(l) for l in (data_dir / "test_indomain.jsonl").read_text().splitlines()]
     records = evaluate.sample_records(all_records, 12, random.Random("limit:test_indomain"))
-    assert sensitivity["overall"]["n"] == sum(len(r["questions"]) for r in records if len(r["questions"]) > 1)
+    def gold_questions(r):
+        return [q for q in r["questions"] if not r["meta"]["nouls"].get(q, {}).get("form")]
+
+    assert sensitivity["overall"]["n"] == sum(len(gold_questions(r)) for r in records if len(r["questions"]) > 1)
     assert 0.0 <= sensitivity["overall"]["prediction_agreement"] <= 1.0 and sensitivity["overall"]["max_abs_difference"] >= 0.0
     assert "order_sensitivity" not in metrics["splits"]["test_agnews"]
     lines = [json.loads(l) for l in gzip.open(run_dir / "results.jsonl.gz", "rt")]

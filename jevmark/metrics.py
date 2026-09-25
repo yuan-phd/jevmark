@@ -11,6 +11,10 @@ Two confidence quantities are used on purpose, and every report states this once
 A noul distribution is (P(true), P(false)); its prediction is true when
 P(true) >= 0.5. Choice and score predictions are the argmax, first index on ties.
 
+Headline metrics (overall and the per-type blocks) cover the gold-dependent
+questions only; form nouls, which ask about the text's form rather than a label,
+are reported in their own "form" block with the same metrics (decision 44).
+
 Accuracy and ECE carry 95 percent bootstrap confidence intervals (1000 resamples,
 percentile method, seed 0) on every split and breakdown. Resampling is by record,
 not by question, because the questions of one record share a state and are not
@@ -32,6 +36,7 @@ from typing import Any
 
 import numpy as np
 
+from jevmark.data.form import FORM_KINDS
 from jevmark.systemone import normalised_confidence
 
 N_BINS = 15
@@ -387,15 +392,23 @@ def summarize(results: Sequence[QuestionResult], with_coverage: bool) -> dict[st
 
 
 def split_report(results: Sequence[QuestionResult]) -> dict[str, Any]:
-    """Everything metrics.json holds for one split: split_metrics, n_records and noul symmetry when measured."""
+    """Everything metrics.json holds for one split: split_metrics, n_records, noul symmetry and order sensitivity when measured.
+
+    Symmetry and order sensitivity follow the same split as split_metrics: the
+    headline entries cover gold-dependent questions, and form nouls get their own
+    inside the "form" block.
+    """
     report = split_metrics(results)
     report["n_records"] = len({r.record_id for r in results})
-    pairs = [(r.probs[0], r.negated_p_yes) for r in results if r.qtype == "noul" and r.negated_p_yes is not None]
-    if pairs:
-        report["symmetry"] = symmetry(pairs)
-    sensitivity = order_sensitivity(results)
-    if sensitivity is not None:
-        report["order_sensitivity"] = sensitivity
+    for members, target in ((gold_dependent(results), report), (form_nouls(results), report.get("form"))):
+        if target is None:
+            continue
+        pairs = [(r.probs[0], r.negated_p_yes) for r in members if r.qtype == "noul" and r.negated_p_yes is not None]
+        if pairs:
+            target["symmetry"] = symmetry(pairs)
+        sensitivity = order_sensitivity(members)
+        if sensitivity is not None:
+            target["order_sensitivity"] = sensitivity
     return report
 
 
@@ -447,11 +460,32 @@ def reports_by_split(results: Sequence[QuestionResult]) -> dict[str, dict[str, A
     return {split: split_report(members) for split, members in order.items()}
 
 
+def is_form_noul(r: QuestionResult) -> bool:
+    """A form noul (label-independent, answered from the text's form; data v1.3), recognised by its kind."""
+    return r.qtype == "noul" and r.kind in FORM_KINDS
+
+
+def gold_dependent(results: Sequence[QuestionResult]) -> list[QuestionResult]:
+    return [r for r in results if not is_form_noul(r)]
+
+
+def form_nouls(results: Sequence[QuestionResult]) -> list[QuestionResult]:
+    return [r for r in results if is_form_noul(r)]
+
+
 def split_metrics(results: Sequence[QuestionResult]) -> dict[str, Any]:
-    """overall plus one block per question type present; coverage per type only, since its confidence differs by type."""
-    metrics: dict[str, Any] = {"overall": summarize(results, with_coverage=False)}
+    """Headline metrics on the gold-dependent questions, plus a "form" block for form nouls (decision 44).
+
+    overall and one block per question type cover the questions whose answer
+    depends on a gold label, the capability the model is for; form nouls (word
+    and character counts and the like) are reported apart, in "form", with the
+    same metrics, so they never move a split's headline accuracy or ECE. Coverage
+    is per type only, since its confidence differs by type.
+    """
+    gold = gold_dependent(results)
+    metrics: dict[str, Any] = {"overall": summarize(gold, with_coverage=False)}
     for qtype in QUESTION_TYPES:
-        of_type = [r for r in results if r.qtype == qtype]
+        of_type = [r for r in gold if r.qtype == qtype]
         if not of_type:
             continue
         block = summarize(of_type, with_coverage=True)
@@ -470,4 +504,13 @@ def split_metrics(results: Sequence[QuestionResult]) -> dict[str, Any]:
         if by_position:
             block["by_question_position"] = by_position
         metrics[qtype] = block
+    form = form_nouls(results)
+    if form:
+        block = summarize(form, with_coverage=True)
+        block["yes_rate"] = _mean([float(r.prediction == 0) for r in form])
+        block["by_kind"] = noul_by_kind(form)
+        by_position = by_question_position(form)
+        if by_position:
+            block["by_question_position"] = by_position
+        metrics["form"] = block
     return metrics

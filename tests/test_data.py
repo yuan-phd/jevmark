@@ -140,7 +140,7 @@ def test_noul_kinds_present_where_expected(built):
     for split, records in built.splits.items():
         kinds = set(noul_balance(records))
         assert kinds - set(FORM_KINDS) == GOLD_NOUL_KINDS[split]
-        used = {k for r in records for k, s in built.form_settings[split][r["source"]].items() if s["used"]}
+        used = {k for r in records for k, s in built.form_settings[split].get(r["source"], {}).items() if s["used"]}
         assert kinds & set(FORM_KINDS) == used, split
 
 
@@ -367,7 +367,7 @@ def test_form_nouls_are_computed_from_the_text_and_nearly_balanced(built, split)
             yes = answer(kind, state_text(record), info["threshold"])
             assert record["gold"][kind] == ("true" if yes != info["negated"] else "false")
             underlying[kind][yes] += 1
-    assert underlying
+    assert bool(underlying) == (split in CONFIG["form"]["splits"])
     for kind, c in underlying.items():
         n = c[True] + c[False]
         # Within 48-52 percent on the split's texts; sampling the records that get the kind adds noise.
@@ -389,6 +389,18 @@ def test_form_nouls_are_placed_independently_of_the_gold_questions(built):
                 before[len(dependent)].append(i < first)
     for n_dependent, flags in before.items():
         assert abs(sum(flags) / len(flags) - 1 / 3) < 0.03, (n_dependent, sum(flags) / len(flags))
+
+
+EVALUATION_ONLY = ("test_agnews", "test_emotion", "test_banking77", "test_yelp")
+
+
+def test_no_form_nouls_in_the_evaluation_only_splits(built):
+    # Decision 44: counting words or characters in long unseen texts is not a decision capability and was never trained.
+    assert not set(EVALUATION_ONLY) & set(CONFIG["form"]["splits"])
+    assert set(CONFIG["form"]["splits"]) == {"train", "valid", "test_indomain", "test_unseen_intents", "test_sst5"}
+    for split in EVALUATION_ONLY:
+        assert built.form_settings[split] == {}
+        assert not any(is_form(r, q) for r in built.splits[split] for q in r["questions"]), split
 
 
 def test_unbalanceable_kinds_are_skipped(built):

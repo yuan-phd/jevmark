@@ -95,8 +95,8 @@ A real record from `data/train.jsonl` (data v1.3, seed 0): a JSON state, a form 
 | CLINC | `source_split`, `source_index`, `gold_intent` (intent name, or `oos`), `domain` (null for `oos`), `gold_in_options` (null for `oos`), `nouls` |
 | SST-5 | `source_split`, `source_index`, `label_text`, `scale` (`sst5_5_levels` or `sst5_3_levels`), `nouls` (no sentiment noul on neutral records) |
 | emotion | `source_split`, `source_index`, `nouls` |
-| AG News, Banking77 | `source_split`, `source_index`, `nouls` (form nouls only) |
-| Yelp | `source_split`, `source_index`, `label_text` (the dataset's label name, `1 star` to `5 stars`), `scale` (`yelp_5_stars`), `nouls` (form nouls only) |
+| AG News, Banking77 | `source_split`, `source_index`, `nouls` (always empty) |
+| Yelp | `source_split`, `source_index`, `label_text` (the dataset's label name, `1 star` to `5 stars`), `scale` (`yelp_5_stars`), `nouls` (always empty) |
 
 `meta.nouls` maps each noul question id (its kind) to `template` (index into that kind's templates in `jevmark/data/negation.py`), `negated` (stored in the negated phrasing, gold flipped), `slot` (the text filled into the template, or null) and, where it applies:
 
@@ -131,7 +131,7 @@ v1.3 therefore fixes the order and allows exactly one gold-dependent noul per re
 | emotion | `label` (choice), then `expresses_emotion` |
 | AG News, Banking77, Yelp | the choice or score question alone |
 
-Form nouls, which do not depend on any gold label, are inserted at seeded random positions anywhere in the record, including before the choice or score question. `build.order_violations` enforces the rule on every record.
+Form nouls, which do not depend on any gold label, are inserted at seeded random positions anywhere in the record, including before the choice or score question; they appear only in the splits built from the training sources. `build.order_violations` enforces the rule on every record.
 
 All randomness comes from one build seed in `configs/data.yaml`: **seed 0**. Each split uses its own generators, `random.Random(f"{seed}:{name}")` with names such as `train`, `train:sst5`, `train:phrasing`, and the held-out intents use `"{seed}:held_out"`, so rebuilding one split never changes another. The other build parameters are in the same file.
 
@@ -144,7 +144,7 @@ All randomness comes from one build seed in `configs/data.yaml`: **seed 0**. Eac
 | `about_intent` | CLINC, about 45 percent of records | does an intent description fit the message | the asked intent is the gold intent |
 | `is_positive`, `is_negative` | non-neutral SST-5 records, one of the two at random | is the sentiment positive (negative) | label 3 or 4 (0 or 1) |
 | `expresses_emotion` | every `test_emotion` record (evaluation only) | does the message express an emotion | the asked emotion is the gold emotion |
-| form nouls | 0 to 2 per record, every split (section 2, Form nouls) | a property of the text, such as its length | computed from the text |
+| form nouls | 0 to 2 per record in train, valid, test_indomain, test_unseen_intents and test_sst5 (section 2, Form nouls) | a property of the text, such as its length | computed from the text |
 
 Every kind has two or three templates, each a positive phrasing and its negation (`jevmark/data/negation.py`, which maps every phrasing to its pair in both directions and parses template, polarity and slot back from a rendered instruction):
 
@@ -218,7 +218,7 @@ Every non-neutral record (labels 0, 1, 3, 4) also gets one sentiment noul, `is_p
 
 ### Unseen schemas (evaluation only, never in training)
 
-AG News, emotion and Banking77: one choice question per record (plus form nouls), 1000 records per set sampled from the dataset's test split with the build seed. Canonical descriptions come from `generate_descriptions.py` (section 6); no paraphrases.
+AG News, emotion and Banking77: one choice question per record, 1000 records per set sampled from the dataset's test split with the build seed. Canonical descriptions come from `generate_descriptions.py` (section 6); no paraphrases.
 
 | Split | Built from | Questions |
 |---|---|---|
@@ -246,6 +246,7 @@ Form nouls are label-independent noul questions answered from the state text alo
 | `contains_comma` | the text contains a comma |
 | `ends_with_question_mark` | the text, without trailing whitespace, ends with `?` |
 
+- Splits: train, valid, test_indomain, test_unseen_intents and test_sst5 (`form.splits`), the splits built from the training sources. The evaluation-only splits (test_agnews, test_emotion, test_banking77, test_yelp) have none (decision 44): their texts are long news articles and reviews, where a form noul measures counting words or characters in long text, a skill that was never trained and that no decision needs. The fast cycle showed it: 0.43 to 0.58 accuracy with ECE up to 0.51 on those splits.
 - Which records get form nouls, which kinds and where they go are drawn at random, independently of the text and of every gold answer (decision 43). Each record gets 0, 1 or 2 form nouls (uniformly; 2 is capped at the number of used kinds), of distinct kinds drawn from the kinds used for its split and source.
 - Placement: each form noul goes before the record's first gold-dependent question with probability 1/3 (`form.p_before_first`), at a uniform slot among the form nouls already there, and otherwise at a uniform slot anywhere after that question. A fixed probability keeps "a form noul precedes the choice or score question" independent of how many gold-dependent questions the record has; inserting uniformly among the existing questions would put it there with probability 1/2 in a neutral SST-5 record and 1/3 in the others, which would hint at the label.
 - Thresholds are set per split and source, on the texts of that split's records from that source: the threshold whose yes share is closest to one half. A kind is used for a (split, source) only if that share (for a yes or no property, its yes share) is within 48 to 52 percent (`form.max_imbalance`); otherwise it is skipped there. Records are never selected by their answer: a selection that balances a text property ties the form noul's presence to the text, and through the text to the labels.
@@ -306,14 +307,14 @@ From `make data` with data v1.3, seed 0 (`scripts/build_data.py`). Max tokens is
 | `test_indomain` | 5900 | CLINC 5900 | 385 |
 | `test_unseen_intents` | 3000 | CLINC 3000 | 381 |
 | `test_sst5` | 2210 | SST-5 2210 | 295 |
-| `test_agnews` | 1000 | AG News 1000 | 320 |
-| `test_emotion` | 1000 | emotion 1000 | 299 |
-| `test_banking77` | 1000 | Banking77 1000 | 324 |
-| `test_yelp` | 1000 | Yelp 1000 | 806 |
+| `test_agnews` | 1000 | AG News 1000 | 289 |
+| `test_emotion` | 1000 | emotion 1000 | 247 |
+| `test_banking77` | 1000 | Banking77 1000 | 293 |
+| `test_yelp` | 1000 | Yelp 1000 | 742 |
 
 CLINC record counts are in-scope utterances plus twice the out-of-scope utterances, less the utterances dropped as duplicates of test texts (section 8): `train` 13000 + 2 x 250 - 18, `valid` 2600 + 2 x 100 - 5; SST-5 `train` 8544 - 3.
 
-Form noul kinds used, with threshold and yes share on the split's texts (a kind is used within 48 to 52 percent):
+Form noul kinds used, with threshold and yes share on the split's texts (a kind is used within 48 to 52 percent); the evaluation-only splits have no form nouls:
 
 | Split | Source | Used kinds |
 |---|---|---|
@@ -324,10 +325,6 @@ Form noul kinds used, with threshold and yes share on the split's texts (a kind 
 | `test_indomain` | CLINC | char_count_over >39 49.5% |
 | `test_unseen_intents` | CLINC | char_count_over >37 49.4% |
 | `test_sst5` | SST-5 | word_count_over >18 50.0%, char_count_over >99 49.9% |
-| `test_agnews` | AG News | word_count_over >36 50.6%, char_count_over >231 49.9%, longest_word_over >10 51.2% |
-| `test_emotion` | emotion | word_count_over >17 49.3%, char_count_over >87 49.8% |
-| `test_banking77` | Banking77 | char_count_over >45 49.1% |
-| `test_yelp` | Yelp | word_count_over >100 49.9%, char_count_over >540 50.0% |
 
 Questions per record, form nouls per record (count: records) and the share of JSON states:
 
@@ -338,10 +335,10 @@ Questions per record, form nouls per record (count: records) and the share of JS
 | `test_indomain` | 2: 1899, 3: 4001 | 0: 1899, 1: 4001 | 20.0% |
 | `test_unseen_intents` | 2: 1009, 3: 1991 | 0: 1009, 1: 1991 | 20.0% |
 | `test_sst5` | 1: 119, 2: 728, 3: 725, 4: 638 | 0: 715, 1: 719, 2: 776 | 20.0% |
-| `test_agnews` | 1: 343, 2: 309, 3: 348 | 0: 343, 1: 309, 2: 348 | 20.0% |
-| `test_emotion` | 2: 331, 3: 320, 4: 349 | 0: 331, 1: 320, 2: 349 | 20.0% |
-| `test_banking77` | 1: 330, 2: 670 | 0: 330, 1: 670 | 20.0% |
-| `test_yelp` | 1: 330, 2: 342, 3: 328 | 0: 330, 1: 342, 2: 328 | 20.0% |
+| `test_agnews` | 1: 1000 | 0: 1000 | 20.0% |
+| `test_emotion` | 2: 1000 | 0: 1000 | 20.0% |
+| `test_banking77` | 1: 1000 | 0: 1000 | 20.0% |
+| `test_yelp` | 1: 1000 | 0: 1000 | 20.0% |
 
 Noul balance per kind. Phrasing-only accuracy answers each phrasing (template and polarity) with its own majority answer in the split; the build fails above 55 percent.
 
@@ -372,15 +369,7 @@ Noul balance per kind. Phrasing-only accuracy answers each phrasing (template an
 | `test_sst5` | `is_negative` | 932 | 50.0% | 49.9% | 51.2% |
 | `test_sst5` | `is_positive` | 889 | 49.9% | 49.9% | 51.1% |
 | `test_sst5` | `word_count_over` | 1115 | 50.0% | 50.0% | 51.0% |
-| `test_agnews` | `char_count_over` | 342 | 50.0% | 50.3% | 50.6% |
-| `test_agnews` | `longest_word_over` | 352 | 50.3% | 50.3% | 54.0% |
-| `test_agnews` | `word_count_over` | 311 | 50.2% | 49.8% | 51.4% |
-| `test_emotion` | `char_count_over` | 512 | 50.0% | 50.0% | 50.4% |
 | `test_emotion` | `expresses_emotion` | 1000 | 50.0% | 50.0% | 50.0% |
-| `test_emotion` | `word_count_over` | 506 | 50.2% | 50.0% | 52.0% |
-| `test_banking77` | `char_count_over` | 670 | 50.0% | 50.1% | 51.5% |
-| `test_yelp` | `char_count_over` | 505 | 50.1% | 49.9% | 50.9% |
-| `test_yelp` | `word_count_over` | 493 | 50.3% | 50.1% | 50.9% |
 
 Score gold levels per scale:
 
@@ -515,12 +504,13 @@ Rules:
 - Noul targets: the phrasing probe predicts the stored gold; the other three predict the underlying answer (negation undone), because negation flips the stored gold in half of every group and a linear probe cannot undo that.
 - Gate, the same for both models: a probe more than 10 points over its group's majority baseline fails outright, with no permutation test. A probe more than 3 points over it is rerun on 200 copies of its targets shuffled at random (shuffling keeps the baseline and breaks every link to the features), and fails if its lift is also above the 99th percentile of those runs. The summary lists every probe above 3 points, passing or not, with n, lift and p value, because with about 250 probe results per build chance alone puts a few past 3 points.
 
-v1.3, from `make data` (seed 0): the gate passes. 418 probe results (209 per model); the largest lift is +5.5 points; two probes are above 3 points, both logistic and both within chance, and no boosting probe is above 3 points:
+v1.3, from `make data` (seed 0, after decision 44 removed form nouls from the evaluation-only splits): the gate passes. 354 probe results (177 per model); the largest lift is +3.0 points; one probe is above 3 points, logistic and within chance, and no boosting probe is above 3 points:
 
 | Split | Group | Probe | n | Lift | p | 99th percentile of shuffled runs |
 |---|---|---|---|---|---|---|
-| `valid` | `noul/out_of_scope` | structure | 200 | +3.0 | 0.194 | +9.0 |
-| `test_agnews` | `noul/word_count_over` | cross-question | 311 | +5.5 | 0.040 | +7.7 |
+| `valid` | `noul/out_of_scope` | structure (logistic) | 200 | +3.0 | 0.194 | +9.0 |
+
+Before decision 44 the gate also passed, with 418 probe results and a second chance flag, test_agnews `noul/word_count_over` (cross-question, logistic, +5.5 points on 311 questions, p 0.040, 99th percentile +7.7); that group no longer exists.
 
 v1.2, rebuilt from commit 0163a74 (byte-identical to the files the v1.2 `sft_06b` evaluation read, by the sha256 values in its `metrics.json`): the gate fails on 26 probe results, and each known leak is found. Lifts in points over the majority baseline; the single-feature rows refit the probe on only the feature that carries the leak:
 
@@ -574,3 +564,7 @@ v1.3 result: no exact match in any pair. 8-gram overlap, the share of test recor
 | `test_banking77` | 0.60% | 0.10% | 720 of 1000 |
 | `test_yelp` | 0.00% | 0.00% | 991 of 1000 |
 
+
+## 9. Metrics: gold-dependent headline, form nouls apart
+
+In every split's `metrics.json` block, `overall` and the per-type blocks (`noul`, `choice`, `score`), with their symmetry and order sensitivity, cover the gold-dependent questions only: the questions whose answer depends on a gold label, the capability the model is for. Form nouls are reported in their own `form` block, with the same metrics (accuracy and ECE with bootstrap intervals, Brier, NLL, reliability, coverage, yes rate, `by_kind`, `by_question_position`, symmetry, order sensitivity), so they never move a split's headline numbers (decision 44).
