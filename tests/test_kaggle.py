@@ -103,3 +103,19 @@ def test_fast_runs_are_gitignored():
 
     ignored = subprocess.run(["git", "check-ignore", "--no-index", "-q", "runs/fast_06b/metrics.json"], cwd=REPO)
     assert ignored.returncode == 0
+
+
+@pytest.mark.parametrize("name", ["kaggle_eval.ipynb", "kaggle_train.ipynb"])
+def test_notebooks_set_expandable_segments_before_any_training_or_evaluation(name):
+    cells = code_cells(name)
+    joined = "\n".join(cells)
+    first_run = min(joined.index(s) for s in ("train_sft.py", "evaluate.py") if s in joined)
+    for var in ("PYTORCH_ALLOC_CONF", "PYTORCH_CUDA_ALLOC_CONF"):
+        assert joined.index(f'os.environ["{var}"] = "expandable_segments:True"') < first_run
+
+
+def test_sft_06b_uses_micro_batch_8_with_effective_batch_32():
+    from jevmark.config import load_config
+
+    training = load_config(REPO / "configs" / "sft_06b.yaml")["training"]
+    assert training["micro_batch"] == 8 and training["effective_batch"] == 32  # accumulation 4

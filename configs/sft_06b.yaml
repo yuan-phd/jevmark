@@ -39,7 +39,7 @@ training:
   weight_decay: 0.0
   warmup_ratio: 0.03              # linear warmup, then linear decay to 0
   effective_batch: 32
-  micro_batch: 16
+  micro_batch: 8                  # x accumulation 4 = effective 32; 16 ran out of memory at step 392 on a T4 with v1.3 records (decision 45)
   grad_clip: 1.0
   eval_every: 200                 # optimizer steps between validations
   valid_subset: 1000              # fixed seeded subset of valid.jsonl

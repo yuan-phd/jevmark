@@ -77,7 +77,7 @@ One session trains one backbone size, then evaluates it and re-evaluates the fro
 
 | Session | `SIZE` | Training (estimate; measure and update) | Evaluations | Writes |
 |---|---|---|---|---|
-| 1 | `06b` | about 0.8 GPU hours (measured 47 min) | sft 0.4 h, base 0.4 h | `runs/sft_06b/`, `runs/base_06b/` |
+| 1 | `06b` | about 0.8 to 1.2 GPU hours (47 min measured on v1.2 at micro-batch 16; v1.3 uses micro-batch 8 x accumulation 4, not yet measured) | sft 0.6 h, base 0.6 h (36 min each measured on v1.3) | `runs/sft_06b/`, `runs/base_06b/` |
 | 2 | `17b` | about 1.5 to 2 GPU hours (gradient checkpointing on) | sft 1.0 h, base 1.0 h | `runs/sft_17b/`, `runs/base_17b/` |
 
 Both sessions use the same `COMMIT`, so the four runs share one code version. Set `REPO`, `COMMIT`, `SIZE`, `SMOKE_STEPS` (default 20) and `MAX_HOURS` (default 6.0, which leaves room for the two evaluations inside a 9 hour session) in the first code cell, then run the cells top to bottom:
@@ -90,6 +90,8 @@ Both sessions use the same `COMMIT`, so the four runs share one code version. Se
 6. Copy `runs/` to `/kaggle/working/runs` and print each run's commit, dirty flag, fp32 fallback and test_indomain accuracy and ECE.
 
 If training logs `WARNING: NaN or inf in first-batch slot logits`, it reloaded the model in fp32 and continued; `train_summary.json` records `"fp32_fallback_used": true`.
+
+Memory: the clone cell sets `PYTORCH_ALLOC_CONF` (and `PYTORCH_CUDA_ALLOC_CONF` for PyTorch before 2.9) to `expandable_segments:True`. 0.6B trains at micro-batch 8 with accumulation 4 (effective batch 32): at micro-batch 16, v1.3 records (up to 392 tokens and four questions) ran out of memory on a T4 at step 392 (decision 45).
 
 ### If training stops at MAX_HOURS
 
