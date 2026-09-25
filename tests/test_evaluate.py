@@ -368,7 +368,10 @@ def test_shuffle_questions_measures_order_sensitivity(eval_inputs, tmp_path):
     metrics = json.loads((run_dir / "metrics.json").read_text())
     assert metrics["shuffle_questions"] == ["test_indomain"]
     sensitivity = metrics["splits"]["test_indomain"]["order_sensitivity"]
-    records = [json.loads(l) for l in (data_dir / "test_indomain.jsonl").read_text().splitlines()[:12]]
+    import random
+
+    all_records = [json.loads(l) for l in (data_dir / "test_indomain.jsonl").read_text().splitlines()]
+    records = evaluate.sample_records(all_records, 12, random.Random("limit:test_indomain"))
     assert sensitivity["overall"]["n"] == sum(len(r["questions"]) for r in records if len(r["questions"]) > 1)
     assert 0.0 <= sensitivity["overall"]["prediction_agreement"] <= 1.0 and sensitivity["overall"]["max_abs_difference"] >= 0.0
     assert "order_sensitivity" not in metrics["splits"]["test_agnews"]
@@ -381,3 +384,48 @@ def test_shuffle_questions_measures_order_sensitivity(eval_inputs, tmp_path):
 def test_shuffle_questions_rejects_a_split_that_is_not_evaluated():
     with pytest.raises(SystemExit):
         evaluate.parse_args(["--ckpt", "base", "--splits", "test_agnews", "--shuffle-questions", "test_indomain"])
+
+
+# --limit sampling (fast cycle)
+
+
+def clinc_like(n_intents, per_intent, n_oos, extra_source=0):
+    records = []
+    for i in range(n_intents):
+        for j in range(per_intent):
+            records.append({"id": f"c{i}-{j}", "source": "clinc", "meta": {"gold_intent": f"intent{i}"}})
+    records += [{"id": f"o{j}", "source": "clinc", "meta": {"gold_intent": "oos"}} for j in range(n_oos)]
+    records += [{"id": f"s{j}", "source": "sst", "meta": {}} for j in range(extra_source)]
+    return records
+
+
+def test_limit_sample_covers_intents_and_out_of_scope_in_file_order():
+    import random
+
+    records = clinc_like(n_intents=50, per_intent=30, n_oos=500, extra_source=1000)
+    sample = evaluate.sample_records(records, 300, random.Random("limit:x"))
+    assert len(sample) == 300 and len({r["id"] for r in sample}) == 300
+    assert sample == evaluate.sample_records(records, 300, random.Random("limit:x"))  # seeded
+    positions = [records.index(r) for r in sample]
+    assert positions == sorted(positions)  # file order kept
+    clinc = [r for r in sample if r["source"] == "clinc"]
+    assert len(clinc) == round(300 * 2000 / 3000)  # sources in proportion
+    intents = {r["meta"]["gold_intent"] for r in clinc}
+    assert len(intents - {"oos"}) == 50  # every intent
+    assert sum(r["meta"]["gold_intent"] == "oos" for r in clinc) == round(200 * 500 / 2000)  # out-of-scope share
+
+
+def test_limit_sample_is_the_whole_split_when_the_limit_is_larger():
+    import random
+
+    records = clinc_like(3, 2, 1)
+    assert evaluate.sample_records(records, 50, random.Random(0)) == records
+
+
+def test_limit_sample_keeps_one_out_of_scope_when_its_share_rounds_to_zero():
+    import random
+
+    records = clinc_like(n_intents=20, per_intent=50, n_oos=3)
+    sample = evaluate.sample_records(records, 30, random.Random(0))
+    assert sum(r["meta"]["gold_intent"] == "oos" for r in sample) == 1 and len(sample) == 30
+    assert len({r["meta"]["gold_intent"] for r in sample}) == 21
