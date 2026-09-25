@@ -10,6 +10,12 @@ Two confidence quantities are used on purpose, and every report states this once
 
 A noul distribution is (P(true), P(false)); its prediction is true when
 P(true) >= 0.5. Choice and score predictions are the argmax, first index on ties.
+
+Accuracy and ECE carry 95 percent bootstrap confidence intervals (1000 resamples,
+percentile method, seed 0) on every split and breakdown. Resampling is by record,
+not by question, because the questions of one record share a state and are not
+independent: a resample draws records with replacement and keeps all of their
+questions in the block being measured.
 """
 
 from __future__ import annotations
@@ -20,9 +26,11 @@ import math
 import statistics
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 from jevmark.systemone import normalised_confidence
 
@@ -30,6 +38,9 @@ N_BINS = 15
 THRESHOLDS = tuple(round(0.05 * i, 2) for i in range(21))
 NLL_FLOOR = 1e-12
 QUESTION_TYPES = ("noul", "choice", "score")
+BOOTSTRAP_RESAMPLES = 1000
+BOOTSTRAP_SEED = 0
+BOOTSTRAP_CHUNK = 100
 
 
 @dataclass(frozen=True)
@@ -43,6 +54,9 @@ class QuestionResult:
     split: str = ""
     kind: str | None = None  # the noul kind (its question id) for noul questions, else None
     negated_p_yes: float | None = None  # noul only: P(yes) for the negated instruction
+    position: int | None = None  # 0-based index of the question in its record's question order
+    shuffled_probs: tuple[float, ...] | None = None  # the distribution with the record's questions reordered (--shuffle-questions)
+    shuffled_position: int | None = None  # the question's index in that reordered record
 
     @property
     def k(self) -> int:
@@ -111,6 +125,51 @@ def ece(confidences: Sequence[float], correct: Sequence[bool], n_bins: int = N_B
     )
 
 
+def bootstrap_ci(
+    results: Sequence[QuestionResult], n_resamples: int = BOOTSTRAP_RESAMPLES, seed: int = BOOTSTRAP_SEED, n_bins: int = N_BINS
+) -> dict[str, list[float]]:
+    """95 percent percentile intervals for accuracy and ECE (top-1, n_bins bins), resampling records with replacement.
+
+    Each resample gives every record a multiplicity from a multinomial draw; a
+    question's weight is its record's multiplicity. ECE with weights is
+    sum over bins of |sum of weighted correct - sum of weighted confidence| / total weight.
+    """
+    if not results:
+        return {}
+    record_index: dict[str, int] = {}
+    rec = np.array([record_index.setdefault(r.record_id, len(record_index)) for r in results])
+    correct = np.array([float(r.correct) for r in results])
+    top1 = np.array([r.top1 for r in results])
+    bins = np.minimum((top1 * n_bins).astype(int), n_bins - 1)
+    one_hot = np.zeros((len(results), n_bins))
+    one_hot[np.arange(len(results)), bins] = 1.0
+    n_records = len(record_index)
+    rng = np.random.default_rng(seed)
+    accuracies, eces = [], []
+    for start in range(0, n_resamples, BOOTSTRAP_CHUNK):
+        size = min(BOOTSTRAP_CHUNK, n_resamples - start)
+        weights = rng.multinomial(n_records, np.full(n_records, 1.0 / n_records), size=size)[:, rec].astype(float)
+        total = weights.sum(axis=1)
+        total[total == 0] = np.nan  # a resample that drew none of this block's records
+        accuracies.append((weights @ correct) / total)
+        gap = np.abs((weights * correct) @ one_hot - (weights * top1) @ one_hot).sum(axis=1)
+        eces.append(gap / total)
+    accuracy, calibration = np.concatenate(accuracies), np.concatenate(eces)
+
+    def interval(values: np.ndarray) -> list[float]:
+        return [float(v) for v in np.nanpercentile(values, [2.5, 97.5])]
+
+    return {"accuracy_ci": interval(accuracy), "ece_ci": interval(calibration)}
+
+
+def _with_ci(block: dict[str, Any], results: Sequence[QuestionResult], ece_too: bool = True) -> dict[str, Any]:
+    ci = bootstrap_ci(results)
+    block["accuracy_ci"] = ci.get("accuracy_ci")
+    if ece_too:
+        block["ece_ci"] = ci.get("ece_ci")
+    return block
+
+
 def brier(results: Sequence[QuestionResult]) -> float:
     """Multi-class Brier score: mean over questions of sum_k (p_k - 1[k = gold])^2."""
     return sum(sum((p - (k == r.gold)) ** 2 for k, p in enumerate(r.probs)) for r in results) / len(results)
@@ -151,11 +210,12 @@ def coverage_curve(results: Sequence[QuestionResult], thresholds: Sequence[float
 
 
 def _gold_stats(members: Sequence[QuestionResult]) -> dict[str, Any]:
-    return {
+    stats = {
         "n": len(members),
         "accuracy": _mean([float(r.correct) for r in members]),
         "mean_gold_probability": _mean([r.probs[r.gold] for r in members]),
     }
+    return _with_ci(stats, members, ece_too=False)
 
 
 def _by_int_key(groups: Mapping[str, Sequence[QuestionResult]]) -> dict[str, dict[str, Any]]:
@@ -187,15 +247,63 @@ def noul_by_kind(results: Sequence[QuestionResult]) -> dict[str, dict[str, Any]]
     groups: dict[str, list[QuestionResult]] = defaultdict(list)
     for r in results:
         groups[r.kind or "unknown"].append(r)
-    return {
-        kind: {
+    out = {}
+    for kind, members in sorted(groups.items()):
+        entry = {
             "n": len(members),
             "accuracy": _mean([float(r.correct) for r in members]),
             "ece": ece([r.top1 for r in members], [r.correct for r in members]),
             "yes_rate": _mean([float(r.prediction == 0) for r in members]),
         }
-        for kind, members in sorted(groups.items())
-    }
+        out[kind] = _with_ci(entry, members)
+        by_position = by_question_position(members)
+        if by_position:
+            out[kind]["by_question_position"] = by_position
+    return out
+
+
+def by_question_position(results: Sequence[QuestionResult]) -> dict[str, dict[str, Any]] | None:
+    """Accuracy and ECE with intervals for questions first in their record versus later ones; None without positions."""
+    placed = [r for r in results if r.position is not None]
+    if not placed:
+        return None
+    out = {}
+    for name, members in (("first", [r for r in placed if r.position == 0]), ("later", [r for r in placed if r.position > 0])):
+        if members:
+            entry = {"n": len(members), "accuracy": _mean([float(r.correct) for r in members]), "ece": ece([r.top1 for r in members], [r.correct for r in members])}
+            out[name] = _with_ci(entry, members)
+    return out
+
+
+def order_sensitivity(results: Sequence[QuestionResult]) -> dict[str, Any] | None:
+    """Questions evaluated a second time with their record's questions reordered: how much the answers moved.
+
+    Per question type and overall: accuracy in the stored and in the reordered order,
+    the share of questions whose prediction is unchanged, and the mean and maximum
+    over questions of max_k |p_k - p'_k|. None when nothing was reordered.
+    """
+    shuffled = [r for r in results if r.shuffled_probs is not None]
+    if not shuffled:
+        return None
+
+    def block(members: Sequence[QuestionResult]) -> dict[str, Any]:
+        moved = [replace(r, probs=r.shuffled_probs) for r in members]
+        diffs = [max(abs(a - b) for a, b in zip(r.probs, r.shuffled_probs)) for r in members]
+        return {
+            "n": len(members),
+            "accuracy": _mean([float(r.correct) for r in members]),
+            "accuracy_shuffled": _mean([float(r.correct) for r in moved]),
+            "prediction_agreement": _mean([float(a.prediction == b.prediction) for a, b in zip(members, moved)]),
+            "mean_max_abs_difference": statistics.fmean(diffs),
+            "max_abs_difference": max(diffs),
+        }
+
+    out = {"overall": block(shuffled)}
+    for qtype in QUESTION_TYPES:
+        of_type = [r for r in shuffled if r.qtype == qtype]
+        if of_type:
+            out[qtype] = block(of_type)
+    return out
 
 
 def choice_by_gold_other(results: Sequence[QuestionResult], other: str = "other") -> dict[str, Any] | None:
@@ -209,14 +317,19 @@ def choice_by_gold_other(results: Sequence[QuestionResult], other: str = "other"
         return None
 
     def stats(members: Sequence[QuestionResult]) -> dict[str, Any]:
-        return {
-            "n": len(members),
-            "accuracy": _mean([float(r.correct) for r in members]),
-            "predicted_other_rate": _mean([float(r.labels[r.prediction] == other) for r in members]),
-        }
+        return _with_ci(
+            {
+                "n": len(members),
+                "accuracy": _mean([float(r.correct) for r in members]),
+                "predicted_other_rate": _mean([float(r.labels[r.prediction] == other) for r in members]),
+            },
+            members,
+            ece_too=False,
+        )
 
     split = {
         "n_offering_other": len(offering),
+        "accuracy_ci": bootstrap_ci(offering).get("accuracy_ci"),
         "predicted_other_rate": _mean([float(r.labels[r.prediction] == other) for r in offering]),
     }
     gold_other = [r for r in offering if r.labels[r.gold] == other]
@@ -267,6 +380,7 @@ def summarize(results: Sequence[QuestionResult], with_coverage: bool) -> dict[st
         "nll": nll(results),
         "reliability": reliability(top1, correct),
     }
+    _with_ci(summary, results)
     if with_coverage:
         summary["coverage"] = coverage_curve(results)
     return summary
@@ -279,6 +393,9 @@ def split_report(results: Sequence[QuestionResult]) -> dict[str, Any]:
     pairs = [(r.probs[0], r.negated_p_yes) for r in results if r.qtype == "noul" and r.negated_p_yes is not None]
     if pairs:
         report["symmetry"] = symmetry(pairs)
+    sensitivity = order_sensitivity(results)
+    if sensitivity is not None:
+        report["order_sensitivity"] = sensitivity
     return report
 
 
@@ -305,6 +422,9 @@ def result_from_line(line: Mapping[str, Any]) -> QuestionResult:
         split=line["split"],
         kind=line["kind"],
         negated_p_yes=line["negated_p_yes"],
+        position=line.get("position"),  # absent in results files written before these fields existed
+        shuffled_probs=tuple(line["shuffled_probs"]) if line.get("shuffled_probs") is not None else None,
+        shuffled_position=line.get("shuffled_position"),
     )
 
 
@@ -346,5 +466,8 @@ def split_metrics(results: Sequence[QuestionResult]) -> dict[str, Any]:
             metrics["letter_bias"] = letter_bias(of_type)
         if qtype == "score":
             block["mae"] = mean_absolute_error(of_type)
+        by_position = by_question_position(of_type)
+        if by_position:
+            block["by_question_position"] = by_position
         metrics[qtype] = block
     return metrics

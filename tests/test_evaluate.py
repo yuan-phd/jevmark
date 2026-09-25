@@ -226,7 +226,11 @@ def test_results_file_has_one_line_per_question(run):
     lines = [json.loads(line) for line in gzip.open(run / "results.jsonl.gz", "rt")]
     metrics = json.loads((run / "metrics.json").read_text())
     assert len(lines) == sum(split["overall"]["n"] for split in metrics["splits"].values())
-    assert set(lines[0]) == {"record_id", "question_id", "split", "type", "kind", "labels", "probs", "gold", "confidence", "prediction", "negated_p_yes"}
+    assert set(lines[0]) == {
+        "record_id", "question_id", "split", "type", "kind", "labels", "probs", "gold", "confidence", "prediction", "negated_p_yes",
+        "position", "shuffled_probs", "shuffled_position",
+    }  # fmt: skip
+    assert all(l["shuffled_probs"] is None for l in lines)  # no --shuffle-questions in this run
     nouls = [l for l in lines if l["type"] == "noul"]
     assert nouls and all(l["kind"] in KINDS and l["kind"] == l["question_id"] and l["negated_p_yes"] is not None for l in nouls)
     assert all(l["kind"] is None and l["negated_p_yes"] is None for l in lines if l["type"] != "noul")
@@ -326,3 +330,54 @@ def test_metrics_record_whether_lora_was_merged(eval_inputs, lora_checkpoint, tm
 
 def test_base_run_records_no_lora(run):
     assert json.loads((run / "metrics.json").read_text())["lora_merged"] is None
+
+
+# Question position and order sensitivity (decision 42)
+
+
+def test_positions_follow_the_stored_question_order(run, eval_inputs):
+    import gzip
+
+    lines = [json.loads(line) for line in gzip.open(run / "results.jsonl.gz", "rt")]
+    records = {json.loads(l)["id"]: json.loads(l) for l in (eval_inputs[2] / "test_indomain.jsonl").read_text().splitlines()}
+    for line in lines:
+        if line["split"] == "test_indomain":
+            assert list(records[line["record_id"]]["questions"]).index(line["question_id"]) == line["position"]
+    metrics = json.loads((run / "metrics.json").read_text())
+    assert set(metrics["splits"]["test_indomain"]["noul"]["by_question_position"]) <= {"first", "later"}
+    assert len(metrics["splits"]["test_indomain"]["overall"]["accuracy_ci"]) == 2
+
+
+def test_shuffled_order_is_seeded_and_differs():
+    record = {"id": "r1", "questions": {"a": {}, "b": {}, "c": {}}}
+    order = evaluate.shuffled_order(record)
+    assert order != ["a", "b", "c"] and sorted(order) == ["a", "b", "c"]
+    assert evaluate.shuffled_order(record) == order
+    assert evaluate.shuffled_order({"id": "r2", "questions": {"a": {}, "b": {}}}) == ["b", "a"]
+
+
+def test_shuffle_questions_measures_order_sensitivity(eval_inputs, tmp_path):
+    import gzip
+
+    _, config_path, data_dir = eval_inputs
+    runs_dir = tmp_path / "runs"
+    args = ["--ckpt", "base", "--config", str(config_path), "--limit", "12", "--splits", "test_indomain", "test_agnews",
+            "--shuffle-questions", "test_indomain", "--data-dir", str(data_dir), "--runs-dir", str(runs_dir), "--device", "cpu"]  # fmt: skip
+    assert evaluate.main(args) == 0
+    run_dir = runs_dir / "tiny_eval_limit12"
+    metrics = json.loads((run_dir / "metrics.json").read_text())
+    assert metrics["shuffle_questions"] == ["test_indomain"]
+    sensitivity = metrics["splits"]["test_indomain"]["order_sensitivity"]
+    records = [json.loads(l) for l in (data_dir / "test_indomain.jsonl").read_text().splitlines()[:12]]
+    assert sensitivity["overall"]["n"] == sum(len(r["questions"]) for r in records if len(r["questions"]) > 1)
+    assert 0.0 <= sensitivity["overall"]["prediction_agreement"] <= 1.0 and sensitivity["overall"]["max_abs_difference"] >= 0.0
+    assert "order_sensitivity" not in metrics["splits"]["test_agnews"]
+    lines = [json.loads(l) for l in gzip.open(run_dir / "results.jsonl.gz", "rt")]
+    moved = [l for l in lines if l["shuffled_probs"] is not None]
+    assert moved and all(l["split"] == "test_indomain" for l in moved)
+    assert any(l["shuffled_position"] != l["position"] for l in moved)
+
+
+def test_shuffle_questions_rejects_a_split_that_is_not_evaluated():
+    with pytest.raises(SystemExit):
+        evaluate.parse_args(["--ckpt", "base", "--splits", "test_agnews", "--shuffle-questions", "test_indomain"])

@@ -7,6 +7,8 @@ Reads the unrounded distributions from JevMark.forward_distributions (through
 encode), never the rounded systemone responses. Writes runs/<run_name>/metrics.json,
 config.yaml, model_id.txt, plots/<split>.png and results.jsonl.gz (one line per
 question, gitignored; scripts/recompute_metrics.py rebuilds metrics.json from it).
+--shuffle-questions [SPLIT ...] evaluates each record a second time with its
+questions in a seeded different order and reports order_sensitivity per split.
 A trained adapter is merged into the backbone
 before evaluation unless --no-merge is given; metrics.json records which path ran.
 With --ckpt base the run name is
@@ -25,6 +27,7 @@ import copy
 import datetime
 import hashlib
 import json
+import random
 import subprocess
 import sys
 import time
@@ -161,15 +164,34 @@ def batching_precision(jev: JevMark, encoded: Sequence[Encoded], batch_size: int
 # Evaluation of one split
 
 
+def shuffled_order(record: dict[str, Any]) -> list[str]:
+    """A seeded reordering of the record's question ids that differs from the stored order (records with two or more questions)."""
+    order = list(record["questions"])
+    rng = random.Random(f"shuffle-questions:{record['id']}")
+    shuffled = list(order)
+    while shuffled == order:
+        rng.shuffle(shuffled)
+    return shuffled
+
+
+def reordered_record(record: dict[str, Any], order: Sequence[str]) -> dict[str, Any]:
+    return {**record, "questions": {qid: record["questions"][qid] for qid in order}}
+
+
 def evaluate_split(
-    jev: JevMark, split: str, records: list[dict[str, Any]], batch_size: int
+    jev: JevMark, split: str, records: list[dict[str, Any]], batch_size: int, shuffle_questions: bool = False
 ) -> tuple[list[QuestionResult], list[Encoded]]:
-    """One QuestionResult per question; noul results carry P(yes) for the negated instruction."""
+    """One QuestionResult per question; noul results carry P(yes) for the negated instruction.
+
+    With shuffle_questions, every record with two or more questions is evaluated a
+    second time with its questions in a seeded different order, and each result
+    carries that distribution and its position there (order sensitivity).
+    """
     encoded = [encode(request_of(r), jev.tokenizer, jev.max_tokens) for r in records]
     flat = iter(distributions(jev, encoded, batch_size))
     results: list[QuestionResult] = []
     for record in records:
-        for qid, question in record["questions"].items():
+        for position, (qid, question) in enumerate(record["questions"].items()):
             results.append(
                 QuestionResult(
                     record["id"],
@@ -180,8 +202,22 @@ def evaluate_split(
                     option_labels(question),
                     split=split,
                     kind=qid if question["type"] == "noul" else None,
+                    position=position,
                 )
             )
+
+    if shuffle_questions:
+        multi = [r for r in records if len(r["questions"]) > 1]
+        orders = [shuffled_order(r) for r in multi]
+        moved = iter(distributions(jev, [encode(request_of(reordered_record(r, o)), jev.tokenizer, jev.max_tokens) for r, o in zip(multi, orders)], batch_size))
+        shuffled = {}
+        for record, order in zip(multi, orders):
+            for position, qid in enumerate(order):
+                shuffled[(record["id"], qid)] = (tuple(next(moved)), position)
+        results = [
+            replace(r, shuffled_probs=shuffled[key][0], shuffled_position=shuffled[key][1]) if (key := (r.record_id, r.question_id)) in shuffled else r
+            for r in results
+        ]
 
     with_noul = [r for r in records if any(q["type"] == "noul" for q in r["questions"].values())]
     if with_noul:
@@ -267,11 +303,22 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--device", default=None, help="cpu, cuda or cuda:N; default cuda when available")
     parser.add_argument("--no-merge", action="store_true", help="keep the LoRA adapter unmerged (default: merge it into the backbone for speed)")
+    parser.add_argument(
+        "--shuffle-questions",
+        nargs="*",
+        default=None,
+        metavar="SPLIT",
+        help="also evaluate each record with its questions reordered, to measure order sensitivity; on the named splits, or on every evaluated split when none is named",
+    )
     parser.add_argument("--data-dir", default=str(REPO / "data"))
     parser.add_argument("--runs-dir", default=str(REPO / "runs"))
     args = parser.parse_args(argv)
     if args.limit is not None and args.limit < 1:
         parser.error("--limit must be at least 1")
+    if args.shuffle_questions:
+        unknown = set(args.shuffle_questions) - set(args.splits)
+        if unknown:
+            parser.error(f"--shuffle-questions names splits that are not evaluated: {sorted(unknown)}")
     return args
 
 
@@ -310,7 +357,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if fallback_used is None:
             fallback_used = first_batch_check(jev, [encode(request_of(r), jev.tokenizer, jev.max_tokens) for r in records[: args.batch_size]])
         split_start = time.perf_counter()
-        results, encoded = evaluate_split(jev, split, records, args.batch_size)
+        shuffle = args.shuffle_questions is not None and (not args.shuffle_questions or split in args.shuffle_questions)
+        results, encoded = evaluate_split(jev, split, records, args.batch_size, shuffle_questions=shuffle)
         all_results += results
         metrics = split_report(results)
         split_results[split] = metrics
@@ -320,6 +368,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             probe_requests += [request_of(r) for r in records[:take]]
         overall = metrics["overall"]
         log(f"{split:20} {len(records):6} records  acc {overall['accuracy']:.4f}  ece {overall['ece']:.4f}  nll {overall['nll']:.4f}  ({time.perf_counter() - split_start:.1f}s)")
+        if "order_sensitivity" in metrics:
+            moved = metrics["order_sensitivity"]["overall"]
+            log(f"{'':20} questions reordered: acc {moved['accuracy']:.4f} -> {moved['accuracy_shuffled']:.4f}, prediction agreement {moved['prediction_agreement']:.4f}, mean max |dp| {moved['mean_max_abs_difference']:.4f}")
         plot_reliability(split, metrics, out_dir / "plots" / f"{split}.png")
 
     batching = batching_precision(jev, probe, args.batch_size)
@@ -335,6 +386,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "git": git,
         "created": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         "limit": args.limit,
+        "shuffle_questions": args.shuffle_questions,
         "device": str(jev.device),
         "precision": {"autocast": str(jev.autocast_dtype) if jev.autocast_dtype else None, "fp32_fallback_used": fallback_used},
         "temperature": jev.temperature,
