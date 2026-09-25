@@ -56,6 +56,7 @@ Learning level: this project covers a training objective the author has not done
 - A LocalDecider wrapper in delta-filing next to the existing LocalLLM wrapper.
 - Router, tool selection, retrieval rerank and completion check switched to jevmark, with confidence thresholds in one file.
 - The agent's own decision questions (its routes, its tools, its completion check) have no public dataset counterpart, so the v1 and v2 checkpoints meet them as unseen schemas. Before measurement, v3 therefore includes a fine-tuning pass on the agent's logged decisions: run the graph with the LLM deciding, log every decision point's state, question and the LLM's answer (checked against the reference where one exists), and fine-tune the adapter on those logs, with the measurement queries held out.
+- Design constraint on question order (API_SPEC section 4, usage note): in every request the agent sends, a question whose construction depends on the answer to another question in the same request comes after it, with at most one such dependent question per request; independent questions may be batched freely. Decision points that need a chain of dependent questions are split into separate requests. Violating the order cost about 6 points of noul accuracy and flipped about 9 percent of noul answers on test_indomain for 0.6B.
 - The same graph run in three configurations: all decisions by LLM, all by jevmark, cascade. Measure end-to-end latency, cost and accuracy on the same query set.
 
 ## How we measure
