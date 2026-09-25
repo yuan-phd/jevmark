@@ -53,10 +53,12 @@ def test_notebook_token_is_never_printed_or_put_on_a_command_line(name):
     assert "https://github.com/{REPO}.git" in clone and "@github.com" not in clone
 
 
-def test_notebook_runs_smoke_before_both_backbones_and_copies_runs():
+def test_notebook_runs_smoke_before_every_size_in_sizes_and_copies_runs():
     joined = "\n".join(CODE)
-    smoke = joined.index("--limit {LIMIT}")
-    assert smoke < joined.index("--config configs/base_06b.yaml --device cuda\n") < joined.index("configs/base_17b.yaml")
+    assert re.search(r'^SIZES = \["06b", "17b"\]', CODE[0], re.M)
+    smoke = joined.index("--config configs/base_{SIZES[0]}.yaml --limit {LIMIT}")
+    assert smoke < joined.index("for size in SIZES:") < joined.index("--ckpt base --config configs/base_{size}.yaml --device cuda")
+    assert "configs/base_06b.yaml" not in joined and "configs/base_17b.yaml" not in joined  # sizes come from SIZES only
     assert "requirements-kaggle.txt" in joined and "--no-deps" in joined
     assert "make data-build PY=python" in joined
     assert '"/kaggle/working/runs"' in joined
@@ -150,3 +152,12 @@ def test_train_notebook_fails_fast_and_evaluations_require_a_passed_training():
     assert "evaluate.py --ckpt runs/sft_{SIZE} --shuffle-questions test_indomain --device cuda" in evaluate_sft
     assert fast.index('evaluation_allowed("fast")') < fast.index("evaluate.py")
     assert "assert (WORK / \"runs\" / f\"sft_{SIZE}\" / \"train_summary.json\").exists()" not in full  # the old check that a stale file passed
+
+
+def test_train_notebook_skips_the_base_evaluation_when_eval_base_is_false():
+    cells = code_cells("kaggle_train.ipynb")
+    assert re.search(r"^EVAL_BASE = True", cells[0], re.M)
+    base = next(c for c in cells if c.startswith("# Re-evaluate the frozen base"))
+    assert "if not FAST and EVAL_BASE:" in base and base.index("if not FAST and EVAL_BASE:") < base.index("evaluate.py")
+    copy = next(c for c in cells if c.startswith("# Copy runs/"))
+    assert '[f"sft_{SIZE}"] + ([f"base_{SIZE}"] if EVAL_BASE else [])' in copy

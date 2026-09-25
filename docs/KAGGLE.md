@@ -33,6 +33,7 @@ The notebook passes the token to git through environment variables only, never o
 4. In the first code cell set:
    - `REPO` to the repository as `owner/name`.
    - `COMMIT` to the full 40-character sha to evaluate, normally the latest commit on `main` that you have pushed (`git rev-parse HEAD` locally, after `git push`).
+   - `SIZES` to the backbone sizes to evaluate, in order: `["06b", "17b"]` (the default) or one of them, for example `["17b"]` for session B of the 1.7B plan (section 7).
 
 ## 4. Which cells to run
 
@@ -40,13 +41,12 @@ Run the cells top to bottom:
 
 | Cell | What it does | Time on T4 (estimate; measure and update) |
 |---|---|---|
-| Parameters | `REPO`, `COMMIT`, `LIMIT` | |
+| Parameters | `REPO`, `COMMIT`, `LIMIT`, `SIZES` | |
 | Clone | fetches exactly `COMMIT` into `/tmp/jevmark` and checks the sha | seconds |
 | Install | uninstalls Kaggle's `torchao`, then `pip install -r requirements-kaggle.txt` (the seven Hugging Face packages) and jevmark with `--no-deps`; prints versions and GPU count | 1 to 2 min |
 | Data | `make data-build PY=python`; fails loudly if any build check fails (the leak probes and duplicate check run locally, section 8) | under 1 min |
-| Smoke | 30 records per split on 0.6B, writes `runs/base_06b_limit30/` | a few min, mostly downloads |
-| B0 0.6B | all nine splits, writes `runs/base_06b/` | about 0.4 GPU hours (measured 28 min with fp32 weights, 21 min with fp16) |
-| B0 1.7B | all nine splits, writes `runs/base_17b/` | about 1.0 GPU hours (measured 56 min) |
+| Smoke | `LIMIT` records per split (a seeded stratified sample) on the first size in `SIZES`, writes `runs/base_<size>_limit30/`; raises on a non-zero exit | a few min, mostly downloads |
+| B0 | every size in `SIZES`, all nine splits in full (decision 46), writes `runs/base_<size>/`; raises on a non-zero exit | 0.6B about 42 min (measured on v1.3); 1.7B about 1.5 hours (expected: on v1.2 the 1.7B base took twice as long as 0.6B, 56 against 28 min, and v1.3 records are longer) |
 | Copy | copies `runs/` to `/kaggle/working/runs` and prints each run's commit, dirty flag, fp32 fallback and wall clock | seconds |
 
 Check the smoke run before the full ones: it should end with `wrote .../metrics.json`. `requirements-kaggle.txt` pins only transformers, tokenizers, peft, datasets, accelerate, huggingface-hub and safetensors, at the versions in `uv.lock`; the image keeps its own torch, numpy, pandas, pyarrow and scipy (decision 23). The install cell first runs `pip uninstall -y torchao`: the Kaggle image ships torchao 0.10, and with it installed peft 0.21 raises an error when it injects LoRA adapters; jevmark does not use torchao. If the install cell reports a dependency conflict that names one of the pinned packages, or torch or numpy, stop there and report it; the pinned versions may need a lock change.
@@ -71,23 +71,30 @@ The smoke directory `runs/base_06b_limit30/` is for checking only; do not commit
 
 ## 7. Training: `notebooks/kaggle_train.ipynb` (task 1.7)
 
-One session trains one backbone size, then evaluates it and re-evaluates the frozen base of the same size with the same code version (decision 38). Token, secret, import and notebook settings are the same as in sections 1 to 3.
+One session trains one backbone size, then evaluates it and, with `EVAL_BASE = True` (the default), re-evaluates the frozen base of the same size with the same code version (decision 38). Token, secret, import and notebook settings are the same as in sections 1 to 3. Every evaluation runs all nine splits in full, train included (decision 46).
 
-### Two-session plan
+### Session plan and times
 
-| Session | `SIZE` | Training (estimate; measure and update) | Evaluations | Writes |
-|---|---|---|---|---|
-| 1 | `06b` | about 0.8 to 1.2 GPU hours (47 min measured on v1.2 at micro-batch 16; v1.3 uses micro-batch 8 x accumulation 4, not yet measured) | sft 0.6 h, base 0.6 h (36 min each measured on v1.3) | `runs/sft_06b/`, `runs/base_06b/` |
-| 2 | `17b` | about 1.5 to 2 GPU hours (gradient checkpointing on) | sft 1.0 h, base 1.0 h | `runs/sft_17b/`, `runs/base_17b/` |
+Measured for 0.6B on data v1.3 (commit a1dc2bf, one T4): install and data a few minutes, smoke training a few minutes, training 70.5 min for 1378 steps at micro-batch 8 x accumulation 4 (pre-flight peak 7.07 of 14.56 GiB), `sft_06b` evaluation 45 min (with `--shuffle-questions test_indomain`), `base_06b` evaluation 42 min: about 2.7 hours in one session.
 
-Both sessions use the same `COMMIT`, so the four runs share one code version. Set `REPO`, `COMMIT`, `SIZE`, `SMOKE_STEPS` (default 20) and `MAX_HOURS` (default 6.0, which leaves room for the two evaluations inside a 9 hour session) in the first code cell, then run the cells top to bottom:
+Expected for 1.7B, scaled from 0.6B and not yet measured: training about 3 to 3.5 hours (about 2.8 times the parameters, plus gradient checkpointing, which `configs/sft_17b.yaml` turns on at micro-batch 8), and about 1.5 hours per evaluation (on v1.2 the 1.7B base evaluation took twice as long as the 0.6B one, and v1.3 records are longer). Training plus both evaluations would come to about 6.5 hours, too close to the 9 hour session limit, so 1.7B takes two sessions:
+
+| Session | Notebook | Settings | Runs | Writes | Time (1.7B expected) |
+|---|---|---|---|---|---|
+| 0.6B (done) | `kaggle_train.ipynb` | `SIZE = "06b"`, `EVAL_BASE = True` | smoke, training, sft and base evaluation | `runs/sft_06b/`, `runs/base_06b/` | 2.7 h measured |
+| 1.7B A | `kaggle_train.ipynb` | `SIZE = "17b"`, `EVAL_BASE = False` | smoke, training, sft evaluation | `runs/sft_17b/` | about 5 h |
+| 1.7B B | `kaggle_eval.ipynb` | `SIZES = ["17b"]` | smoke evaluation, base evaluation | `runs/base_17b/` | about 1.7 h |
+
+Sessions A and B use the same `COMMIT`, so the two runs share one code version; B can run in parallel with A or after it. The pre-flight line at the start of the smoke training in session A shows the 1.7B peak memory within a minute; if it prints `PREFLIGHT FAIL`, stop and lower `training.micro_batch` in `configs/sft_17b.yaml` in a new commit. Update this table with the measured 1.7B times.
+
+In the training notebook set `REPO`, `COMMIT`, `SIZE`, `EVAL_BASE`, `SMOKE_STEPS` (default 20) and `MAX_HOURS` (default 6.0, a cap on training that leaves room for the evaluations in a 9 hour session) in the first code cell, then run the cells top to bottom:
 
 1. Clone, install and data: as in the evaluation notebook. With `FAST = True` the fast cycle cell runs next and every later cell is skipped (section 8).
 2. Smoke training: `SMOKE_STEPS` steps into `runs/sft_<size>_smoke/`, including the pre-flight memory check (`PREFLIGHT PASS` with the peak GPU memory of the worst-case micro-batch), one validation, the final valid pass and a `train_summary.json`. The cell ends with one line, `TRAINING PASS` or `TRAINING FAIL` with the reason, and raises on FAIL (decision 45).
 3. Full training into `runs/sft_<size>/`: refuses to start unless the smoke cell passed; runs the pre-flight check again, then logs every step to `training_log.jsonl`, validates every 200 steps on 1000 fixed valid records, keeps the best adapter by validation NLL in `adapter/`, and the resumable state in `last/`. The cell copies `runs/` to `/kaggle/working/runs` as soon as training returns, so the state survives a later failure, then prints `TRAINING PASS` or `TRAINING FAIL`: it passes only if `train_sft.py` exited with code 0 and `train_summary.json` was written after the cell started, names this run and has as many steps as planned (`jevmark/runcheck.py`). On FAIL it raises and no evaluation runs.
 4. Evaluate the trained adapter: `evaluate.py --ckpt runs/sft_<size> --shuffle-questions test_indomain`, only after full training passed; a non-zero exit raises.
-5. Re-evaluate the frozen base: `evaluate.py --ckpt base --config configs/base_<size>.yaml`, replacing the committed B0 run; it too runs only after full training passed.
-6. Copy `runs/` to `/kaggle/working/runs` and print each run's commit, dirty flag, fp32 fallback and test_indomain accuracy and ECE.
+5. Re-evaluate the frozen base: `evaluate.py --ckpt base --config configs/base_<size>.yaml`, replacing the committed B0 run; it too runs only after full training passed, and only when `EVAL_BASE` is True.
+6. Copy `runs/` to `/kaggle/working/runs` and print each run's commit, dirty flag, fp32 fallback and test_indomain accuracy and ECE (the base run only when `EVAL_BASE` is True).
 
 If training logs `WARNING: NaN or inf in first-batch slot logits`, it reloaded the model in fp32 and continued; `train_summary.json` records `"fp32_fallback_used": true`.
 
