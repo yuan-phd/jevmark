@@ -371,3 +371,66 @@ def test_form_nouls_are_kept_out_of_the_headline_metrics():
     report = split_report(results)
     assert report["symmetry"]["n"] == 2 and report["form"]["symmetry"]["n"] == 2
     assert "form" not in split_metrics(results[:2])
+
+
+def test_symmetry_is_also_reported_per_noul_kind():
+    from jevmark.metrics import split_report
+
+    results = [
+        QuestionResult("r1", "about_domain", "noul", (0.9, 0.1), 0, ("true", "false"), kind="about_domain", negated_p_yes=0.2),
+        QuestionResult("r2", "about_domain", "noul", (0.3, 0.7), 1, ("true", "false"), kind="about_domain", negated_p_yes=0.5),
+        QuestionResult("r3", "out_of_scope", "noul", (0.6, 0.4), 0, ("true", "false"), kind="out_of_scope", negated_p_yes=0.6),
+    ]
+    by_kind = split_report(results)["symmetry"]["by_kind"]
+    assert by_kind["about_domain"] == symmetry([(0.9, 0.2), (0.3, 0.5)])
+    assert by_kind["out_of_scope"] == symmetry([(0.6, 0.6)]) and by_kind["out_of_scope"]["argmax_consistent"] == 0.0
+
+
+def test_paired_deltas_by_hand(tmp_path):
+    import importlib.util
+    import json
+    import sys
+    from pathlib import Path
+
+    from jevmark.metrics import write_results
+
+    repo = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location("paired_deltas", repo / "scripts" / "paired_deltas.py")
+    paired = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = paired
+    spec.loader.exec_module(paired)
+
+    def run(name, probs):
+        d = tmp_path / name
+        d.mkdir()
+        results = [QuestionResult(f"r{i}", "about_domain", "noul", (p, 1 - p), 0, ("true", "false"), split="test_indomain", kind="about_domain") for i, p in enumerate(probs)]
+        results.append(QuestionResult("r0", "char_count_over", "noul", (0.9, 0.1), 0, ("true", "false"), split="test_indomain", kind="char_count_over"))
+        write_results(d / "results.jsonl.gz", results)
+        (d / "metrics.json").write_text(json.dumps({"git": {"commit": name}}))
+        return d
+
+    a = run("a", [0.9, 0.9, 0.9, 0.2])  # 3 of 4 right
+    b = run("b", [0.9, 0.2, 0.2, 0.2])  # 1 of 4 right
+    out = tmp_path / "paired.json"
+    assert paired.main(["--pair", str(a), str(b), "--out", str(out)]) == 0
+    block = json.loads(out.read_text())["pairs"]["a_vs_b"]["splits"]["test_indomain"]
+    overall = block["overall"]
+    assert overall["n"] == 4 and overall["delta"] == pytest.approx(0.5) and overall["prediction_disagreement"] == pytest.approx(0.5)
+    assert overall["delta_ci"][0] <= 0.5 <= overall["delta_ci"][1]
+    assert block["noul_by_kind"]["about_domain"]["delta"] == pytest.approx(0.5)
+    assert block["form"]["n"] == 1 and block["form"]["delta"] == 0.0
+
+
+def test_score_levels_by_position_by_hand():
+    from jevmark.metrics import score_levels_by_position
+
+    results = [
+        QuestionResult("r1", "sentiment", "score", (0.1, 0.8, 0.1), 1, ("0", "1", "2"), position=0),
+        QuestionResult("r2", "sentiment", "score", (0.7, 0.2, 0.1), 1, ("0", "1", "2"), position=0),
+        QuestionResult("r3", "sentiment", "score", (0.1, 0.2, 0.7), 2, ("0", "1", "2"), position=1),
+        QuestionResult("r4", "sentiment", "score", (0.1, 0.1, 0.1, 0.1, 0.6), 4, tuple("01234"), position=2),
+    ]
+    levels = score_levels_by_position(results)
+    assert levels["3"]["first"] == {"n": 2, "predicted_share": [0.5, 0.5, 0.0], "gold_share": [0.0, 1.0, 0.0]}
+    assert levels["3"]["later"] == {"n": 1, "predicted_share": [0.0, 0.0, 1.0], "gold_share": [0.0, 0.0, 1.0]}
+    assert set(levels["5"]) == {"later"} and levels["5"]["later"]["predicted_share"][4] == 1.0

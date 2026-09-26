@@ -300,6 +300,30 @@ def by_question_position(results: Sequence[QuestionResult]) -> dict[str, dict[st
     return out
 
 
+def score_levels_by_position(results: Sequence[QuestionResult]) -> dict[str, dict[str, Any]] | None:
+    """Score questions per scale (K) and position (first in the record versus later): share of each predicted and each gold level.
+
+    A score question is later only when a form noul precedes it (data v1.3), so this
+    shows whether a preceding question shifts the predicted levels, for example
+    towards neutral (TASKS 1.9). None without positions.
+    """
+    placed = [r for r in results if r.position is not None]
+    if not placed:
+        return None
+    out: dict[str, dict[str, Any]] = {}
+    for k in sorted({r.k for r in placed}):
+        entry = {}
+        for name, members in (("first", [r for r in placed if r.k == k and r.position == 0]), ("later", [r for r in placed if r.k == k and r.position > 0])):
+            if members:
+                entry[name] = {
+                    "n": len(members),
+                    "predicted_share": [sum(r.prediction == level for r in members) / len(members) for level in range(k)],
+                    "gold_share": [sum(r.gold == level for r in members) / len(members) for level in range(k)],
+                }
+        out[str(k)] = entry
+    return out
+
+
 def order_sensitivity(results: Sequence[QuestionResult]) -> dict[str, Any] | None:
     """Questions evaluated a second time with their record's questions reordered: how much the answers moved.
 
@@ -416,16 +440,20 @@ def split_report(results: Sequence[QuestionResult]) -> dict[str, Any]:
 
     Symmetry and order sensitivity follow the same split as split_metrics: the
     headline entries cover gold-dependent questions, and form nouls get their own
-    inside the "form" block.
+    inside the "form" block. Symmetry is also given per noul kind (symmetry.by_kind).
     """
     report = split_metrics(results)
     report["n_records"] = len({r.record_id for r in results})
     for members, target in ((gold_dependent(results), report), (form_nouls(results), report.get("form"))):
         if target is None:
             continue
-        pairs = [(r.probs[0], r.negated_p_yes) for r in members if r.qtype == "noul" and r.negated_p_yes is not None]
-        if pairs:
-            target["symmetry"] = symmetry(pairs)
+        negated = [r for r in members if r.qtype == "noul" and r.negated_p_yes is not None]
+        if negated:
+            target["symmetry"] = symmetry([(r.probs[0], r.negated_p_yes) for r in negated])
+            by_kind: dict[str, list[tuple[float, float]]] = defaultdict(list)
+            for r in negated:
+                by_kind[r.kind or "unknown"].append((r.probs[0], r.negated_p_yes))
+            target["symmetry"]["by_kind"] = {kind: symmetry(pairs) for kind, pairs in sorted(by_kind.items())}
         sensitivity = order_sensitivity(members)
         if sensitivity is not None:
             target["order_sensitivity"] = sensitivity
@@ -520,6 +548,9 @@ def split_metrics(results: Sequence[QuestionResult]) -> dict[str, Any]:
             metrics["letter_bias"] = letter_bias(of_type)
         if qtype == "score":
             block["mae"] = mean_absolute_error(of_type)
+            levels = score_levels_by_position(of_type)
+            if levels:
+                block["levels_by_position"] = levels
         by_position = by_question_position(of_type)
         if by_position:
             block["by_question_position"] = by_position

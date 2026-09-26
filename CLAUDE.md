@@ -66,6 +66,8 @@ jevmark/
     baseline_api.py
     make_baseline_subset.py  writes data/baseline_subset.json once
     compare_baselines.py     one table: jevmark runs and baselines on the subset
+    recompute_baseline_metrics.py  rebuilds a baseline's metrics from its replies
+    paired_deltas.py         paired accuracy differences between two runs
     serve.py          optional FastAPI wrapper
   notebooks/          thin Kaggle wrappers only: clone, install, run a script
   tests/
