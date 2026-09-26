@@ -439,3 +439,104 @@ def test_limit_sample_keeps_one_out_of_scope_when_its_share_rounds_to_zero():
     sample = evaluate.sample_records(records, 30, random.Random(0))
     assert sum(r["meta"]["gold_intent"] == "oos" for r in sample) == 1 and len(sample) == 30
     assert len({r["meta"]["gold_intent"] for r in sample}) == 21
+
+
+# Temperature scaling (task 2.1)
+
+
+def test_temperature_on_stored_probabilities_equals_the_model_with_that_temperature(tiny_model, tokenizer):
+    from jevmark.calibration import scale_probs
+    from jevmark.model import JevMark
+
+    request = evaluate.request_of({"state": "send money to savings", "questions": {
+        "intent": {"type": "choice", "instructions": "Which intent?", "criteria": {"transfer": "Move money", "balance": None, "other": None}},
+        "about": {"type": "noul", "instructions": "Is it about money?"},
+        "level": {"type": "score", "instructions": "How urgent?", "criteria": ["low", "mid", "high", "max"]},
+    }})
+    encoded = [evaluate.encode(request, tokenizer, 256)]
+    plain = JevMark(tiny_model, tokenizer, max_tokens=256)
+    base = [d.double().tolist() for d in plain.forward_distributions(encoded)]
+    for t in (0.5, 2.5):
+        hot = JevMark(tiny_model, tokenizer, max_tokens=256, temperature=t)
+        direct = [d.double().tolist() for d in hot.forward_distributions(encoded)]
+        for p, q in zip(base, direct):
+            assert scale_probs(p, t) == pytest.approx(q, abs=1e-6)
+
+
+def test_fitting_recovers_a_known_temperature_on_synthetic_logits():
+    import numpy as np
+
+    from jevmark.calibration import fit_temperature, mean_nll
+    from jevmark.metrics import QuestionResult
+
+    rng = np.random.default_rng(0)
+    true_t = 1.8
+    results = []
+    for i in range(20000):
+        k = int(rng.integers(2, 7))
+        z = rng.normal(0.0, 3.0, size=k)
+        p = np.exp(z - z.max()) / np.exp(z - z.max()).sum()
+        q = np.exp(z / true_t - (z / true_t).max()); q /= q.sum()
+        gold = int(rng.choice(k, p=q))  # labels drawn from the calibrated distribution
+        results.append(QuestionResult(f"r{i}", "q", "choice", tuple(p), gold, tuple(str(j) for j in range(k))))
+    fitted = fit_temperature(results)
+    assert fitted == pytest.approx(true_t, rel=0.03)
+    assert mean_nll(results, fitted) < mean_nll(results, 1.0)
+
+
+def test_scaled_metrics_equal_evaluate_metrics_at_temperature_one(run, tmp_path):
+    spec = importlib.util.spec_from_file_location("calibrate_script", REPO / "scripts" / "calibrate.py")
+    calibrate = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = calibrate
+    spec.loader.exec_module(calibrate)
+    out = tmp_path / "tiny_temp"
+    assert calibrate.main([str(run), "--temperature", "1.0", "--out", str(out)]) == 0
+    original = json.loads((run / "metrics.json").read_text())
+    scaled = json.loads((out / "metrics.json").read_text())
+
+    def close(a, b, path=""):
+        if isinstance(a, dict):
+            assert set(a) == set(b), path
+            for k in a:
+                close(a[k], b[k], f"{path}.{k}")
+        elif isinstance(a, list):
+            assert len(a) == len(b), path
+            for i, (x, y) in enumerate(zip(a, b)):
+                close(x, y, f"{path}[{i}]")
+        elif isinstance(a, float):
+            # stored probabilities are fp32 values that sum to 1 within fp32 rounding; T = 1 renormalises them
+            assert b == pytest.approx(a, rel=1e-6, abs=1e-6), path
+        else:
+            assert a == b, path
+
+    close(original["splits"], scaled["splits"])
+    assert scaled["temperature"] == 1.0 and scaled["calibration"]["fitted"] is False
+    assert json.loads((out / "calibration.json").read_text())["temperature"] == 1.0
+    assert (out / "config.yaml").read_text() == (run / "config.yaml").read_text()
+    assert (out / "source.txt").read_text().startswith(str(run))
+    oracle = json.loads((out / "metrics_oracle.json").read_text())
+    assert set(oracle["temperatures"]) == set(original["splits"]) and all(0.05 <= t <= 20 for t in oracle["temperatures"].values())
+
+
+def test_calibrate_fits_on_valid_and_never_touches_the_source(run, tmp_path):
+    import hashlib
+
+    spec = importlib.util.spec_from_file_location("calibrate_script2", REPO / "scripts" / "calibrate.py")
+    calibrate = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = calibrate
+    spec.loader.exec_module(calibrate)
+
+    def digest():
+        return {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in run.iterdir() if p.is_file()}
+
+    before = digest()
+    out = calibrate.calibrate(run, out_dir=tmp_path / "fit")
+    assert digest() == before
+    metrics = json.loads((out / "metrics.json").read_text())
+    cal = metrics["calibration"]
+    assert cal["fitted"] and cal["valid_nll_at_t"] <= cal["valid_nll_at_t1"] + 1e-12
+    assert set(cal["per_type_diagnostic"]) <= {"noul", "choice", "score"}
+    # accuracy never moves under a temperature
+    original = json.loads((run / "metrics.json").read_text())
+    for split, block in original["splits"].items():
+        assert metrics["splits"][split]["overall"]["accuracy"] == block["overall"]["accuracy"]

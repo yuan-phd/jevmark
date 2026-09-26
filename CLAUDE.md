@@ -41,6 +41,7 @@ jevmark/
     systemone.py      public function systemone(state, questions)
     config.py         YAML config loading with key=value overrides
     metrics.py        accuracy, ECE, Brier, NLL, coverage curves
+    calibration.py    temperature scaling on stored probabilities
     sampling.py       seeded stratified record samples (--limit, baseline subset)
     provenance.py     git commit and dirty flag for metrics.json
     baselines/        B1 and B2: shared prompt and parser, subset, metrics assembly
@@ -60,7 +61,8 @@ jevmark/
     build_data.py
     train_sft.py
     train_rlcd.py
-    calibrate.py
+    calibrate.py      temperature scaling of a finished run, CPU only
+    compare_calibration.py   SFT, SFT plus T and the oracle T in one table
     evaluate.py
     baseline_llm_json.py
     baseline_api.py

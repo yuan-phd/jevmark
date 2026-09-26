@@ -122,9 +122,9 @@ Datasets are referenced by Hugging Face id. Ids move; the first step of any data
 ## Phase 2: v2 RLCD
 
 ### 2.1 calibrate.py
-- [ ] Fit a single temperature on `valid` (in-domain only) by minimising NLL; write calibration.json.
-- [ ] Evaluate SFT+temperature on all splits, including unseen schemas, without refitting per split.
-- Acceptance: run `sft_clinc_v1_temp` metrics written. Under 0.5 GPU hours.
+- [x] Fit a single temperature on `valid` (in-domain only) by minimising NLL; write calibration.json. Done on CPU from each run's results.jsonl.gz (`scripts/calibrate.py`, `jevmark/calibration.py`, decision 50): T 1.266 (sft_06b), 1.321 (sft_17b), 1.114 (base_06b), 1.075 (base_17b). Proof: `runs/<run>_temp/calibration.json`; `tests/test_evaluate.py::test_fitting_recovers_a_known_temperature_on_synthetic_logits`, `::test_temperature_on_stored_probabilities_equals_the_model_with_that_temperature`, `::test_calibrate_fits_on_valid_and_never_touches_the_source`.
+- [x] Evaluate SFT+temperature on all splits, including unseen schemas, without refitting per split; per-split oracle temperatures as a diagnostic. Proof: `runs/sft_06b_temp/metrics.json`, `runs/sft_17b_temp/metrics.json` (and the base runs), `metrics_oracle.json` in each; `tests/test_evaluate.py::test_scaled_metrics_equal_evaluate_metrics_at_temperature_one`; `scripts/compare_calibration.py`; docs/RESULTS_v2.md section 1.
+- Acceptance: runs `sft_06b_temp` and `sft_17b_temp` (previously named `sft_clinc_v1_temp`) metrics written, on CPU in about a minute per run, no GPU.
 
 ### 2.2 train_rlcd.py
 Bandit simulation on the labeled training data, starting from the SFT adapter.
