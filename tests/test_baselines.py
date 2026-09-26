@@ -48,6 +48,14 @@ QUESTIONS = {
 }
 
 
+SHOWN = {"char_count_over": "q1", "intent": "q2", "sentiment": "q3", "about_intent": "q4"}  # the anonymous ids of QUESTIONS
+
+
+def reply_of(answers):
+    """A reply as the model sees the questions: real ids replaced by their anonymous ids (other keys kept)."""
+    return json.dumps({SHOWN.get(k, k): v for k, v in answers.items()})
+
+
 def record(rid="r1", state="send a hundred dollars to savings", questions=QUESTIONS, gold=None, source="clinc", split="test_indomain"):
     gold = gold or {"char_count_over": "true", "intent": "transfer", "sentiment": 1, "about_intent": "true"}
     return {"id": rid, "source": source, "split": split, "state": state, "questions": questions, "gold": gold, "meta": {}}
@@ -63,8 +71,11 @@ def request():
 def test_prompt_renders_state_and_every_question_in_order_with_options_and_levels():
     prompt = build_prompt(request())
     assert "### State\nsend a hundred dollars to savings" in prompt
-    order = [prompt.index(f"Question id: {qid}") for qid in QUESTIONS]
+    order = [prompt.index(f"Question id: q{i}\n") for i in range(1, len(QUESTIONS) + 1)]
     assert order == sorted(order)
+    assert prompt.index("Question id: q2\nType: choice\nQuestion: Which intent") > 0
+    for qid in QUESTIONS:
+        assert f"Question id: {qid}" not in prompt and f'"{qid}"' not in prompt  # real ids name the question kind; the model never sees them
     for line in (
         "Question: Which intent does this message express?",
         "- balance: How much money is in an account",
@@ -75,7 +86,7 @@ def test_prompt_renders_state_and_every_question_in_order_with_options_and_level
         "- true: yes\n- false: no",  # the default noul descriptions, as in the encoding
     ):
         assert line in prompt, line
-    assert prompt.rstrip().endswith('"about_intent": {"answer": ..., "confidence": ...}}')
+    assert prompt.rstrip().endswith('"q4": {"answer": ..., "confidence": ...}}')
 
 
 def test_prompt_renders_a_json_state_as_the_encoding_does():
@@ -86,11 +97,12 @@ def test_prompt_renders_a_json_state_as_the_encoding_does():
 
 def test_json_schema_restricts_every_answer_and_requires_every_question():
     schema = json_schema(request())
-    assert schema["required"] == list(QUESTIONS) and schema["additionalProperties"] is False
+    assert schema["required"] == ["q1", "q2", "q3", "q4"] and schema["additionalProperties"] is False
     props = schema["properties"]
-    assert props["intent"]["properties"]["answer"] == {"type": "string", "enum": ["balance", "transfer", "other"]}
-    assert props["sentiment"]["properties"]["answer"] == {"type": "integer", "enum": [0, 1, 2]}
-    assert props["about_intent"]["properties"]["answer"] == {"type": "boolean"}
+    assert props["q1"]["properties"]["answer"] == {"type": "boolean"}
+    assert props["q2"]["properties"]["answer"] == {"type": "string", "enum": ["balance", "transfer", "other"]}
+    assert props["q3"]["properties"]["answer"] == {"type": "integer", "enum": [0, 1, 2]}
+    assert props["q4"]["properties"]["answer"] == {"type": "boolean"}
     for entry in props.values():
         assert entry["required"] == ["answer", "confidence"] and entry["additionalProperties"] is False
 
@@ -99,7 +111,7 @@ def test_json_schema_restricts_every_answer_and_requires_every_question():
 
 
 def test_parser_reads_a_valid_reply():
-    reply = json.dumps({
+    reply = reply_of({
         "char_count_over": {"answer": True, "confidence": 0.9},
         "intent": {"answer": "transfer", "confidence": 0.75},
         "sentiment": {"answer": 2, "confidence": 1},
@@ -119,12 +131,12 @@ def test_a_reply_that_is_not_one_json_object_fails_every_question(reply):
 
 
 def test_a_single_code_fence_is_stripped():
-    reply = '```json\n{"intent": {"answer": "other", "confidence": 0.5}}\n```'
+    reply = '```json\n{"q2": {"answer": "other", "confidence": 0.5}}\n```'
     assert parse_reply(reply, request())["intent"] == ParsedAnswer("ok", 2, 0.5)
 
 
 def test_missing_and_out_of_set_answers_are_failures_apart_from_wrong_answers():
-    reply = json.dumps({
+    reply = reply_of({
         "intent": {"answer": "billing", "confidence": 0.9},  # not an option
         "sentiment": {"answer": 3},  # out of range
         "about_intent": {"answer": "yes"},  # not true or false
@@ -151,18 +163,18 @@ def test_missing_and_out_of_set_answers_are_failures_apart_from_wrong_answers():
     ],
 )
 def test_answer_formats(qid, value, expected):
-    parsed = parse_reply(json.dumps({qid: {"answer": value}}), request())[qid]
+    parsed = parse_reply(reply_of({qid: {"answer": value}}), request())[qid]
     assert parsed.answer == expected and parsed.status == ("ok" if expected is not None else "invalid_answer")
 
 
 @pytest.mark.parametrize("confidence, expected", [(0.3, 0.3), (1, 1.0), (1.2, None), (-0.1, None), ("0.8", None), (True, None), (None, None)])
 def test_an_invalid_confidence_is_dropped_but_the_answer_counts(confidence, expected):
-    parsed = parse_reply(json.dumps({"intent": {"answer": "balance", "confidence": confidence}}), request())["intent"]
+    parsed = parse_reply(reply_of({"intent": {"answer": "balance", "confidence": confidence}}), request())["intent"]
     assert parsed == ParsedAnswer("ok", 0, expected)
 
 
 def test_a_bare_answer_counts_without_confidence_and_an_empty_entry_fails():
-    parsed = parse_reply(json.dumps({"intent": "balance", "sentiment": {"confidence": 0.5}}), request())
+    parsed = parse_reply(reply_of({"intent": "balance", "sentiment": {"confidence": 0.5}}), request())
     assert parsed["intent"] == ParsedAnswer("ok", 0, None)
     assert parsed["sentiment"].status == "invalid_answer"
 
@@ -212,7 +224,7 @@ def test_metrics_without_any_confidence_or_parse():
 
 
 def test_answers_for_record_maps_gold_and_positions():
-    reply = json.dumps({"char_count_over": {"answer": True, "confidence": 0.9}, "intent": {"answer": "transfer", "confidence": 0.8}, "sentiment": {"answer": 0}})
+    reply = reply_of({"char_count_over": {"answer": True, "confidence": 0.9}, "intent": {"answer": "transfer", "confidence": 0.8}, "sentiment": {"answer": 0}})
     answers = answers_for_record(record(), "test_indomain", reply)
     assert [(a.question_id, a.position, a.gold, a.status, a.correct) for a in answers] == [
         ("char_count_over", 0, 0, "ok", True),
@@ -529,3 +541,33 @@ def b2_gold(question, gold):
     if question["type"] == "choice":
         return list(question["criteria"]).index(gold)
     return int(gold)
+
+
+def test_a_reply_keyed_by_the_real_ids_counts_as_missing():
+    reply = json.dumps({"intent": {"answer": "transfer", "confidence": 0.9}})
+    assert {p.status for p in parse_reply(reply, request()).values()} == {"missing"}
+
+
+def test_every_noul_of_every_subset_record_renders_both_options():
+    """Over the committed subset: each noul block lists true then false, and every question shows only its anonymous id."""
+    from jevmark.baselines.results import request_of
+    from jevmark.data.build import SPLITS
+
+    subset = load_subset()
+    data_dir = REPO / "data"
+    if not all((data_dir / f"{split}.jsonl").is_file() for split in SPLITS):
+        pytest.skip("data/ not built (make data)")
+    nouls = 0
+    for split in SPLITS:
+        for rec in subset_records(data_dir, subset, split)[0]:
+            req = request_of(rec)
+            prompt = build_prompt(req)
+            blocks = prompt.split("\n\nQuestion id: ")[1:]
+            assert len(blocks) == len(req.questions)
+            for i, (question, block) in enumerate(zip(req.questions, blocks), 1):
+                assert block.startswith(f"q{i}\n")
+                if question.type == "noul":
+                    nouls += 1
+                    options = [line for line in block.splitlines() if line.startswith("- ")]
+                    assert options == [f"- true: {question.true_description or 'yes'}", f"- false: {question.false_description or 'no'}"], (rec["id"], question.id)
+    assert nouls > 4000
