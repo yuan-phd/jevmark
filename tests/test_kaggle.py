@@ -176,3 +176,19 @@ def test_b1_notebook_runs_a_smoke_run_then_the_whole_subset_and_copies_runs():
     assert data < smoke < full < copy
     assert joined.count("raise RuntimeError(") >= 3  # smoke and full runs fail the cell on a non-zero exit
     assert 'WORK.glob("runs/b1_*")' in cells[1] and "requirements-kaggle.txt" in joined and "--no-deps" in joined
+
+
+def test_eval_notebook_deletes_the_committed_b0_runs_it_will_write_right_after_the_clone():
+    clone = code_cells("kaggle_eval.ipynb")[1]
+    deletion = 'for name in (f"base_{size}", f"base_{size}_limit{LIMIT}")'
+    assert "for size in SIZES" in clone and deletion in clone and "shutil.rmtree(path" in clone
+    assert clone.index('run(["git", "checkout"') < clone.index(deletion)
+
+
+def test_eval_notebook_summary_checks_only_the_runs_of_this_session():
+    """Session B failed here: the summary globbed every runs/*/metrics.json, and the committed base_06b of another commit failed the commit check."""
+    summary = code_cells("kaggle_eval.ipynb")[-1]
+    assert 'glob("*/metrics.json")' not in summary
+    assert 'for name in [f"base_{size}" for size in SIZES]:' in summary
+    assert summary.index("for name in") < summary.index('assert metrics["git"]["commit"] == COMMIT')
+    assert summary.index('shutil.copytree(WORK / "runs", "/kaggle/working/runs"') < summary.index("for name in")

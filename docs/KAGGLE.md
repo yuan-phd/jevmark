@@ -42,12 +42,12 @@ Run the cells top to bottom:
 | Cell | What it does | Time on T4 (estimate; measure and update) |
 |---|---|---|
 | Parameters | `REPO`, `COMMIT`, `LIMIT`, `SIZES` | |
-| Clone | fetches exactly `COMMIT` into `/tmp/jevmark` and checks the sha | seconds |
+| Clone | fetches exactly `COMMIT` into `/tmp/jevmark`, checks the sha, and deletes the committed run directories this session could be confused with: every `runs/sft_*` and `runs/fast_*`, and `runs/base_<size>/` and its smoke directory for every size in `SIZES` | seconds |
 | Install | uninstalls Kaggle's `torchao`, then `pip install -r requirements-kaggle.txt` (the seven Hugging Face packages) and jevmark with `--no-deps`; prints versions and GPU count | 1 to 2 min |
 | Data | `make data-build PY=python`; fails loudly if any build check fails (the leak probes and duplicate check run locally, section 8) | under 1 min |
 | Smoke | `LIMIT` records per split (a seeded stratified sample) on the first size in `SIZES`, writes `runs/base_<size>_limit30/`; raises on a non-zero exit | a few min, mostly downloads |
 | B0 | every size in `SIZES`, all nine splits in full (decision 46), writes `runs/base_<size>/`; raises on a non-zero exit | 0.6B about 42 min, 1.7B 83.5 min (both measured on v1.3) |
-| Copy | copies `runs/` to `/kaggle/working/runs` and prints each run's commit, dirty flag, fp32 fallback and wall clock | seconds |
+| Copy | copies `runs/` to `/kaggle/working/runs`, then for each size in `SIZES` only prints `base_<size>`'s commit, dirty flag, fp32 fallback and wall clock and asserts its commit is `COMMIT`; other committed runs in the clone come from other commits and are not checked (session B's last cell failed on the committed `base_06b` before this fix, after `base_17b` had been written) | seconds |
 
 Check the smoke run before the full ones: it should end with `wrote .../metrics.json`. `requirements-kaggle.txt` pins only transformers, tokenizers, peft, datasets, accelerate, huggingface-hub and safetensors, at the versions in `uv.lock`; the image keeps its own torch, numpy, pandas, pyarrow and scipy (decision 23). The install cell first runs `pip uninstall -y torchao`: the Kaggle image ships torchao 0.10, and with it installed peft 0.21 raises an error when it injects LoRA adapters; jevmark does not use torchao. If the install cell reports a dependency conflict that names one of the pinned packages, or torch or numpy, stop there and report it; the pinned versions may need a lock change.
 
@@ -100,7 +100,7 @@ If training logs `WARNING: NaN or inf in first-batch slot logits`, it reloaded t
 
 Memory: the clone cell sets `PYTORCH_ALLOC_CONF` (and `PYTORCH_CUDA_ALLOC_CONF` for PyTorch before 2.9) to `expandable_segments:True`. 0.6B trains at micro-batch 8 with accumulation 4 (effective batch 32): at micro-batch 16, v1.3 records (up to 392 tokens and four questions) ran out of memory on a T4 at step 392 (decision 45).
 
-Run directories committed to git are history, not state (decision 45). The clone cell deletes `runs/sft_<size>/`, `runs/sft_<size>_smoke/` and `runs/fast_<size>/` (the evaluation notebook deletes every `runs/sft_*` and `runs/fast_*`) before anything runs, and `train_sft.py` refuses a fresh start in a run directory that holds `train_summary.json`, `training_log.jsonl`, `adapter/` or `last/`. A crashed run therefore blocks a restart under the same name: resume it with `--resume` if `last/` exists, or delete the directory. The first v1.3 0.6B session evaluated a step-200 adapter because a committed v1.2 `train_summary.json` passed the old completion check.
+Run directories committed to git are history, not state (decision 45). The clone cell deletes `runs/sft_<size>/`, `runs/sft_<size>_smoke/` and `runs/fast_<size>/` (the evaluation notebook deletes every `runs/sft_*` and `runs/fast_*`, and `runs/base_<size>/` for every size in `SIZES`) before anything runs, and `train_sft.py` refuses a fresh start in a run directory that holds `train_summary.json`, `training_log.jsonl`, `adapter/` or `last/`. A crashed run therefore blocks a restart under the same name: resume it with `--resume` if `last/` exists, or delete the directory. The first v1.3 0.6B session evaluated a step-200 adapter because a committed v1.2 `train_summary.json` passed the old completion check.
 
 ### If training stops at MAX_HOURS
 
