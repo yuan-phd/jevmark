@@ -1,0 +1,503 @@
+{
+  "run_name": "advantage_simulation_06b",
+  "created": "2026-09-26T19:21:14+00:00",
+  "git": {
+    "commit": "aceefee33185b7536162b6ae297fd6f138e50569",
+    "dirty": true
+  },
+  "source": "runs/sft_06b/results.jsonl.gz",
+  "source_sha256": "55bfe05d26fb3d1c4b41e33c4937cd42d20eb6ff2da41851ac92caf342e64199",
+  "code_sha256": {
+    "simulate_advantages.py": "368513977c9261fb37d4358df2d25bcc78a7fefee8bed790f41b0a05342bb0b8",
+    "train_rlcd.py": "7b74dfd6f63a92f735a11d4b95903418c072881f9c60790fd522004c10a4860b"
+  },
+  "settings": {
+    "split": "train",
+    "group_size": 4,
+    "epsilon": 0.1,
+    "importance_clip": 5.0,
+    "normalize_std": false,
+    "seed": 0
+  },
+  "questions": {
+    "overall": 42422,
+    "noul": 20399,
+    "choice": 13482,
+    "score": 8541
+  },
+  "note": "Advantages of the REINFORCE rewards of scripts/train_rlcd.py on actions sampled from the stored probabilities; decision 52. brier and log are the known broken arms.",
+  "rewards": {
+    "outcome": {
+      "overall": {
+        "questions": 42422,
+        "gold_samples": 143319,
+        "wrong_samples": 26369,
+        "gold_negative_advantage": 0.0,
+        "wrong_positive_advantage": 0.0,
+        "mean_advantage_gold": 0.0830821454238447,
+        "mean_advantage_wrong": -0.451562440744814,
+        "mean_weighted_advantage_gold": 0.08822665498743851,
+        "mean_weighted_advantage_wrong": -0.20897238734218143,
+        "gold_logit_down": 0.0,
+        "gold_logit_up": 0.34856913865447176,
+        "mean_gold_logit_step": 0.034080642408141966,
+        "mixed_groups": {
+          "n": 14787,
+          "some_wrong_rewarded_below_gold": 1.0,
+          "all_rewards_equal": 0.0,
+          "gold_mean_advantage_negative": 0.0
+        }
+      },
+      "noul": {
+        "questions": 20399,
+        "gold_samples": 76064,
+        "wrong_samples": 5532,
+        "gold_negative_advantage": 0.0,
+        "wrong_positive_advantage": 0.0,
+        "mean_advantage_gold": 0.045139619267984855,
+        "mean_advantage_wrong": -0.6206616052060737,
+        "mean_weighted_advantage_gold": 0.04711541031260001,
+        "mean_weighted_advantage_wrong": -0.12009964529824771,
+        "gold_logit_down": 0.0,
+        "gold_logit_up": 0.21604000196088044,
+        "mean_gold_logit_step": 0.008201231506679544,
+        "mixed_groups": {
+          "n": 4407,
+          "some_wrong_rewarded_below_gold": 1.0,
+          "all_rewards_equal": 0.0,
+          "gold_mean_advantage_negative": 0.0
+        }
+      },
+      "choice": {
+        "questions": 13482,
+        "gold_samples": 48516,
+        "wrong_samples": 5412,
+        "gold_negative_advantage": 0.0,
+        "wrong_positive_advantage": 0.0,
+        "mean_advantage_gold": 0.06967804435650095,
+        "mean_advantage_wrong": -0.624630450849963,
+        "mean_weighted_advantage_gold": 0.07615869343611809,
+        "mean_weighted_advantage_wrong": -0.06331915676956404,
+        "gold_logit_down": 0.0,
+        "gold_logit_up": 0.31901794985907134,
+        "mean_gold_logit_step": 0.0070064278899254,
+        "mixed_groups": {
+          "n": 4301,
+          "some_wrong_rewarded_below_gold": 1.0,
+          "all_rewards_equal": 0.0,
+          "gold_mean_advantage_negative": 0.0
+        }
+      },
+      "score": {
+        "questions": 8541,
+        "gold_samples": 18739,
+        "wrong_samples": 15425,
+        "gold_negative_advantage": 0.0,
+        "wrong_positive_advantage": 0.0,
+        "mean_advantage_gold": 0.271799455680666,
+        "mean_advantage_wrong": -0.33019448946515395,
+        "mean_weighted_advantage_gold": 0.2863468821911775,
+        "mean_weighted_advantage_wrong": -0.29194932691080494,
+        "gold_logit_down": 0.0,
+        "gold_logit_up": 0.7117433555789721,
+        "mean_gold_logit_step": 0.13862679193554223,
+        "mixed_groups": {
+          "n": 6079,
+          "some_wrong_rewarded_below_gold": 1.0,
+          "all_rewards_equal": 0.0,
+          "gold_mean_advantage_negative": 0.0
+        }
+      }
+    },
+    "outcome_minus_p": {
+      "overall": {
+        "questions": 42422,
+        "gold_samples": 143319,
+        "wrong_samples": 26369,
+        "gold_negative_advantage": 0.0,
+        "wrong_positive_advantage": 0.05385111304941408,
+        "mean_advantage_gold": 0.02921141079334282,
+        "mean_advantage_wrong": -0.15876787832269343,
+        "mean_weighted_advantage_gold": 0.030150384740081505,
+        "mean_weighted_advantage_wrong": -0.16104490426033694,
+        "gold_logit_down": 0.0,
+        "gold_logit_up": 0.36330206025175615,
+        "mean_gold_logit_step": 0.02448708046256026,
+        "mixed_groups": {
+          "n": 14787,
+          "some_wrong_rewarded_below_gold": 1.0,
+          "all_rewards_equal": 0.0,
+          "gold_mean_advantage_negative": 0.0
+        }
+      },
+      "noul": {
+        "questions": 20399,
+        "gold_samples": 76064,
+        "wrong_samples": 5532,
+        "gold_negative_advantage": 0.0,
+        "wrong_positive_advantage": 0.0,
+        "mean_advantage_gold": 0.004883748248124679,
+        "mean_advantage_wrong": -0.06715065559388245,
+        "mean_weighted_advantage_gold": 0.0045819881178828905,
+        "mean_weighted_advantage_wrong": -0.06126743451561951,
+        "gold_logit_down": 0.0,
+        "gold_logit_up": 0.21604000196088044,
+        "mean_gold_logit_step": 0.0038346865532180308,
+        "mixed_groups": {
+          "n": 4407,
+          "some_wrong_rewarded_below_gold": 1.0,
+          "all_rewards_equal": 0.0,
+          "gold_mean_advantage_negative": 0.0
+        }
+      },
+      "choice": {
+        "questions": 13482,
+        "gold_samples": 48516,
+        "wrong_samples": 5412,
+        "gold_negative_advantage": 0.0,
+        "wrong_positive_advantage": 0.009793052475979305,
+        "mean_advantage_gold": 0.0034567056843494487,
+        "mean_advantage_wrong": -0.03098771858497748,
+        "mean_weighted_advantage_gold": 0.0036769331588844905,
+        "mean_weighted_advantage_wrong": -0.030222555101051884,
+        "gold_logit_down": 0.0,
+        "gold_logit_up": 0.32087227414330216,
+        "mean_gold_logit_step": 0.0028667799427215222,
+        "mixed_groups": {
+          "n": 4301,
+          "some_wrong_rewarded_below_gold": 1.0,
+          "all_rewards_equal": 0.0,
+          "gold_mean_advantage_negative": 0.0
+        }
+      },
+      "score": {
+        "questions": 8541,
+        "gold_samples": 18739,
+        "wrong_samples": 15425,
+        "gold_negative_advantage": 0.0,
+        "wrong_positive_advantage": 0.08862236628849271,
+        "mean_advantage_gold": 0.19464044099278643,
+        "mean_advantage_wrong": -0.23645816685665122,
+        "mean_weighted_advantage_gold": 0.20247657597676433,
+        "mean_weighted_advantage_wrong": -0.24272915166894984,
+        "gold_logit_down": 0.0,
+        "gold_logit_up": 0.7819927408968504,
+        "mean_gold_logit_step": 0.10794019777495213,
+        "mixed_groups": {
+          "n": 6079,
+          "some_wrong_rewarded_below_gold": 1.0,
+          "all_rewards_equal": 0.0,
+          "gold_mean_advantage_negative": 0.0
+        }
+      }
+    },
+    "brier": {
+      "overall": {
+        "questions": 42422,
+        "gold_samples": 143319,
+        "wrong_samples": 26369,
+        "gold_negative_advantage": 0.1723916577704282,
+        "wrong_positive_advantage": 0.6074557245250104,
+        "mean_advantage_gold": -0.0038378034148621757,
+        "mean_advantage_wrong": 0.020858968774493898,
+        "mean_weighted_advantage_gold": -0.003934828339304114,
+        "mean_weighted_advantage_wrong": 0.012715025936699131,
+        "gold_logit_down": 0.2396869548819009,
+        "gold_logit_up": 0.01826882278063269,
+        "mean_gold_logit_step": -0.0027735266444725605,
+        "mixed_groups": {
+          "n": 14787,
+          "some_wrong_rewarded_below_gold": 0.0,
+          "all_rewards_equal": 0.2980320551836072,
+          "gold_mean_advantage_negative": 0.7019679448163928
+        }
+      },
+      "noul": {
+        "questions": 20399,
+        "gold_samples": 76064,
+        "wrong_samples": 5532,
+        "gold_negative_advantage": 0.0,
+        "wrong_positive_advantage": 0.0,
+        "mean_advantage_gold": 2.919181280566777e-21,
+        "mean_advantage_wrong": 4.0138214917756924e-20,
+        "mean_weighted_advantage_gold": 2.938804473992859e-21,
+        "mean_weighted_advantage_wrong": 4.60109944269507e-20,
+        "gold_logit_down": 0.0,
+        "gold_logit_up": 0.0,
+        "mean_gold_logit_step": 2.5084346234011603e-21,
+        "mixed_groups": {
+          "n": 4407,
+          "some_wrong_rewarded_below_gold": 0.0,
+          "all_rewards_equal": 1.0,
+          "gold_mean_advantage_negative": 0.0
+        }
+      },
+      "choice": {
+        "questions": 13482,
+        "gold_samples": 48516,
+        "wrong_samples": 5412,
+        "gold_negative_advantage": 0.249237364992992,
+        "wrong_positive_advantage": 0.9198078344419808,
+        "mean_advantage_gold": -0.00026553813983077907,
+        "mean_advantage_wrong": 0.0023804228366648313,
+        "mean_weighted_advantage_gold": -0.0002774696027529128,
+        "mean_weighted_advantage_wrong": -0.001837723673431762,
+        "gold_logit_down": 0.3075211392968402,
+        "gold_logit_up": 0.0087524106215695,
+        "mean_gold_logit_step": -0.00010929516813318847,
+        "mixed_groups": {
+          "n": 4301,
+          "some_wrong_rewarded_below_gold": 0.0,
+          "all_rewards_equal": 0.0,
+          "gold_mean_advantage_negative": 1.0
+        }
+      },
+      "score": {
+        "questions": 8541,
+        "gold_samples": 18739,
+        "wrong_samples": 15425,
+        "gold_negative_advantage": 0.6731949410320721,
+        "wrong_positive_advantage": 0.7157212317666126,
+        "mean_advantage_gold": -0.028664672566444407,
+        "mean_advantage_wrong": 0.0348231636449011,
+        "mean_weighted_advantage_gold": -0.02937584436274971,
+        "mean_weighted_advantage_wrong": 0.022381087808455814,
+        "gold_logit_down": 0.7050696639737736,
+        "gold_logit_up": 0.07692307692307693,
+        "mean_gold_logit_step": -0.013603211550760259,
+        "mixed_groups": {
+          "n": 6079,
+          "some_wrong_rewarded_below_gold": 0.0,
+          "all_rewards_equal": 0.0,
+          "gold_mean_advantage_negative": 1.0
+        }
+      }
+    },
+    "log": {
+      "overall": {
+        "questions": 42422,
+        "gold_samples": 143319,
+        "wrong_samples": 26369,
+        "gold_negative_advantage": 0.1723916577704282,
+        "wrong_positive_advantage": 0.5999469073533316,
+        "mean_advantage_gold": -0.010030918213201788,
+        "mean_advantage_wrong": 0.05451936620265734,
+        "mean_weighted_advantage_gold": -0.01019714965120089,
+        "mean_weighted_advantage_wrong": 0.030452703084034288,
+        "gold_logit_down": 0.24027627174579227,
+        "gold_logit_up": 0.01914101173919193,
+        "mean_gold_logit_step": -0.006855505245191146,
+        "mixed_groups": {
+          "n": 14787,
+          "some_wrong_rewarded_below_gold": 0.0,
+          "all_rewards_equal": 0.2980320551836072,
+          "gold_mean_advantage_negative": 0.7019679448163928
+        }
+      },
+      "noul": {
+        "questions": 20399,
+        "gold_samples": 76064,
+        "wrong_samples": 5532,
+        "gold_negative_advantage": 0.0,
+        "wrong_positive_advantage": 0.0,
+        "mean_advantage_gold": -8.029708421100033e-20,
+        "mean_advantage_wrong": 2.0924592361788662e-18,
+        "mean_weighted_advantage_gold": -2.846725727850401e-20,
+        "mean_weighted_advantage_wrong": 2.2108135528359696e-18,
+        "gold_logit_down": 0.0,
+        "gold_logit_up": 0.0,
+        "mean_gold_logit_step": -3.298396063965926e-20,
+        "mixed_groups": {
+          "n": 4407,
+          "some_wrong_rewarded_below_gold": 0.0,
+          "all_rewards_equal": 1.0,
+          "gold_mean_advantage_negative": 0.0
+        }
+      },
+      "choice": {
+        "questions": 13482,
+        "gold_samples": 48516,
+        "wrong_samples": 5412,
+        "gold_negative_advantage": 0.249237364992992,
+        "wrong_positive_advantage": 0.9155580192165558,
+        "mean_advantage_gold": -0.00110107077971127,
+        "mean_advantage_wrong": 0.009870574639407272,
+        "mean_weighted_advantage_gold": -0.0011514485981100585,
+        "mean_weighted_advantage_wrong": -0.005882162759538172,
+        "gold_logit_down": 0.31071057706571725,
+        "gold_logit_up": 0.010161697077584929,
+        "mean_gold_logit_step": -0.00033018708324184464,
+        "mixed_groups": {
+          "n": 4301,
+          "some_wrong_rewarded_below_gold": 0.0,
+          "all_rewards_equal": 0.0,
+          "gold_mean_advantage_negative": 1.0
+        }
+      },
+      "score": {
+        "questions": 8541,
+        "gold_samples": 18739,
+        "wrong_samples": 15425,
+        "gold_negative_advantage": 0.6731949410320721,
+        "wrong_positive_advantage": 0.7043760129659643,
+        "mean_advantage_gold": -0.07386742181810091,
+        "mean_advantage_wrong": 0.08973754408099847,
+        "mean_weighted_advantage_gold": -0.07500835747236004,
+        "mean_weighted_advantage_wrong": 0.05412263160308078,
+        "gold_logit_down": 0.7029621824142372,
+        "gold_logit_up": 0.07903055848261328,
+        "mean_gold_logit_step": -0.03352917237504183,
+        "mixed_groups": {
+          "n": 6079,
+          "some_wrong_rewarded_below_gold": 0.0,
+          "all_rewards_equal": 0.0,
+          "gold_mean_advantage_negative": 1.0
+        }
+      }
+    }
+  },
+  "sign_check": {
+    "p": [
+      0.6,
+      0.3,
+      0.1
+    ],
+    "gold": 0,
+    "actions": [
+      0,
+      1,
+      2
+    ],
+    "beta": 0.0,
+    "arms": {
+      "outcome": {
+        "rewards": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "advantages": [
+          0.6666666666666667,
+          -0.3333333333333333,
+          -0.3333333333333333
+        ],
+        "loss": -0.2209482043981552,
+        "loss_by_hand": -0.22094814555024755,
+        "grad": [
+          -0.21301136910915375,
+          0.11966349184513092,
+          0.09334788471460342
+        ],
+        "grad_by_hand": [
+          -0.21301137580207344,
+          0.11966349175651499,
+          0.09334788404555845
+        ],
+        "max_abs_difference": 5.8847907657977316e-08,
+        "code_matches_hand": true,
+        "p_after_one_descent_step_lr_1": [
+          0.6751334429099787,
+          0.24203644718515818,
+          0.08283010990486314
+        ],
+        "gold_logit_lowered": false
+      },
+      "outcome_minus_p": {
+        "rewards": [
+          0.4,
+          -0.3,
+          -0.1
+        ],
+        "advantages": [
+          0.4,
+          -0.3,
+          -0.10000000000000002
+        ],
+        "loss": -0.11002828925848007,
+        "loss_by_hand": -0.11002826892139322,
+        "grad": [
+          -0.13137082755565643,
+          0.10298312455415726,
+          0.028387699276208878
+        ],
+        "grad_by_hand": [
+          -0.13137082904524763,
+          0.10298312623894017,
+          0.028387702806307463
+        ],
+        "max_abs_difference": 2.0337086847899144e-08,
+        "code_matches_hand": true,
+        "p_after_one_descent_step_lr_1": [
+          0.6503645657728051,
+          0.2572457730818858,
+          0.09238966114530915
+        ],
+        "gold_logit_lowered": false
+      },
+      "brier": {
+        "rewards": [
+          0.84,
+          0.91,
+          0.99
+        ],
+        "advantages": [
+          -0.07333333333333347,
+          -0.0033333333333334103,
+          0.07666666666666655
+        ],
+        "loss": 0.03332052007317543,
+        "loss_by_hand": 0.03332054337402924,
+        "grad": [
+          0.022005634382367134,
+          -0.0006889575161039829,
+          -0.02131667733192444
+        ],
+        "grad_by_hand": [
+          0.02200564991262664,
+          -0.0006889716192041822,
+          -0.021316678293422455
+        ],
+        "max_abs_difference": 2.3300853808916333e-08,
+        "code_matches_hand": true,
+        "p_after_one_descent_step_lr_1": [
+          0.5932877416802557,
+          0.3034530560171305,
+          0.10325920230261387
+        ],
+        "gold_logit_lowered": true
+      },
+      "log": {
+        "rewards": [
+          -0.5108256237659907,
+          -0.35667494393873245,
+          -0.10536051565782628
+        ],
+        "advantages": [
+          -0.18653859597847422,
+          -0.032387916151215945,
+          0.21892651212969022
+        ],
+        "loss": 0.09014695137739182,
+        "loss_by_hand": 0.09014694842495825,
+        "grad": [
+          0.05512382462620735,
+          0.005703464616090059,
+          -0.060827288776636124
+        ],
+        "grad_by_hand": [
+          0.05512383686394956,
+          0.005703451802728653,
+          -0.06082728866667821
+        ],
+        "max_abs_difference": 1.2813361406627255e-08,
+        "code_matches_hand": true,
+        "p_after_one_descent_step_lr_1": [
+          0.5839457706620376,
+          0.3067647905901354,
+          0.10928943874782707
+        ],
+        "gold_logit_lowered": true
+      }
+    }
+  }
+}
