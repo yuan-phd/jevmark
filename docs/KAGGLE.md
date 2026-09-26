@@ -143,7 +143,7 @@ Download `runs/b1_qwen06b_json/` and `runs/b1_qwen17b_json/`. Commit `metrics.js
 
 ## 10. RLCD: `notebooks/kaggle_rlcd.ipynb` (task 2.2)
 
-One session trains one RLCD arm at one size and seed from the SFT adapter, then evaluates it on all nine splits with the v1 protocol. Token, secret, import and notebook settings are as in sections 1 to 3. The SFT adapters are not in git (`runs/*/adapter/` is ignored), so they reach Kaggle as a private dataset.
+One session trains one or more RLCD arms (`ARMS`, in order) at one size and seed from the SFT adapter, and evaluates each on all nine splits with the v1 protocol before the next starts. Token, secret, import and notebook settings are as in sections 1 to 3. The SFT adapters are not in git (`runs/*/adapter/` is ignored), so they reach Kaggle as a private dataset.
 
 ### The adapter dataset (once)
 
@@ -158,53 +158,74 @@ One session trains one RLCD arm at one size and seed from the SFT adapter, then 
 2. On Kaggle: Datasets, New Dataset, upload the folder `jevmark-sft-adapters`, visibility Private, slug `jevmark-sft-adapters`. Kaggle may keep the `runs/` level or drop it; the notebook looks for `runs/sft_<size>/adapter` and `sft_<size>/adapter` under `ADAPTER_DATASET`.
 3. In the RLCD notebook: Add Input, Your Datasets, `jevmark-sft-adapters`. It appears under `/kaggle/input/jevmark-sft-adapters`, the default `ADAPTER_DATASET`.
 
-### Running one arm
+### Running a session
 
-Set `REPO`, `COMMIT`, `SIZE`, `ARM`, `SEED`, `ADAPTER_DATASET`, `SMOKE_STEPS` (20) and `MAX_HOURS` (6.0), then run top to bottom: clone (deletes any committed `runs/rlcd_<size>_<arm>_s<seed>` and its smoke directory), install, fail-fast helpers, data, adapter copy (prints the adapter's sha256), smoke run (`TRAINING PASS` or `FAIL`), the 500-step run (`TRAINING PASS` or `FAIL`; on FAIL no evaluation runs), evaluation (`evaluate.py --ckpt runs/<run> --shuffle-questions test_indomain`), and the copy cell, which checks the commit and that the evaluated run and the training summary name the same SFT adapter. The run name is `rlcd_<size>_<arm>_s<seed>`.
+Set `REPO`, `COMMIT`, `SIZE`, `ARMS` (a list, run in its order), `SEED`, `ADAPTER_DATASET`, `SMOKE_STEPS` (20) and `MAX_HOURS` (6.0, applied to each arm's training), then run top to bottom:
 
-Download `/kaggle/working/runs/rlcd_<size>_<arm>_s<seed>/`. Commit `config.yaml`, `model_id.txt`, `calibration.json`, `training_log.jsonl`, `train_summary.json`, `metrics.json` and `plots/`; keep `adapter/`, `adapter_last/`, `last/` and `results.jsonl.gz` outside git (all gitignored).
+1. Clone. This deletes any committed `runs/rlcd_<size>_<arm>_s<seed>` of every arm in `ARMS` and the smoke directory of the first arm.
+2. Install, the fail-fast helpers, the data build, and the adapter copy, which prints the adapter's sha256.
+3. The smoke run, once, on `ARMS[0]` (`TRAINING PASS` or `FAIL`).
+4. The arm loop. For each arm in order:
+   - the 500-step run (`TRAINING PASS` or `FAIL`);
+   - the evaluation (`evaluate.py --ckpt runs/<run> --shuffle-questions test_indomain`);
+   - an immediate copy of that run, including `adapter/`, `adapter_last/` and `last/`, to `/kaggle/working/runs/<run>`;
+   - one line, `ARM DONE <arm>: best step ..., test_indomain acc ... ece ..., test_emotion ece ..., wall clock ... min`, after checking the commit and that the evaluated run and its training summary name the same SFT adapter.
+5. A recap cell that prints the summary lines again and the headline splits of each finished run.
+
+A `TRAINING FAIL` or an evaluation error raises and stops the session, so no later arm starts. Every arm finished before it is already in the output, and a failed arm's directory is copied too, with its `last/` state. The run name of each arm is `rlcd_<size>_<arm>_s<seed>`.
+
+With several arms the Kaggle session limit binds before `MAX_HOURS`. At 0.6B an arm trains in about 45 minutes, so `MAX_HOURS = 1.5` keeps a stuck arm from taking the rest of the session and still leaves room for a normal one.
+
+Download `/kaggle/working/runs/rlcd_<size>_<arm>_s<seed>/` for each finished arm. Commit `config.yaml`, `model_id.txt`, `calibration.json`, `training_log.jsonl`, `train_summary.json`, `metrics.json` and `plots/`, one commit per run. Keep `adapter/`, `adapter_last/`, `last/` and `results.jsonl.gz` outside git (all gitignored).
 
 ### If an RLCD run stops at MAX_HOURS
 
-The training cell then prints `TRAINING FAIL` (fewer steps than planned) and raises on purpose, no evaluation runs, and `/kaggle/working/runs/rlcd_<size>_<arm>_s<seed>/last/` holds the adapter, optimizer, scheduler, scaler, torch RNG, the sampler's generator state and the step. To continue in a new session:
+The arm loop then prints `TRAINING FAIL` (fewer steps than planned) and raises on purpose: that arm is not evaluated, no later arm starts, and `/kaggle/working/runs/rlcd_<size>_<arm>_s<seed>/last/` holds the adapter, optimizer, scheduler, scaler, torch RNG, the sampler's generator state and the step. To continue in a new session:
 
 1. Download `runs/rlcd_<size>_<arm>_s<seed>/` from the output (it must include `last/` and `config.yaml`) and add it to the new session as a Kaggle dataset, next to the adapter dataset.
-2. In the new session, with the same `COMMIT`, `SIZE`, `ARM` and `SEED`, run the parameter, clone, install, fail-fast, data and adapter-copy cells. The clone cell deletes any `runs/<RUN>` in the clone, so copy the downloaded run directory to `/tmp/jevmark/runs/<RUN>/` only after it. The adapter-copy cell puts the SFT adapter back at `runs/sft_<size>/adapter`, the path the run's config.yaml names; `train_rlcd.py --resume` refuses to continue if that adapter's sha256 differs from the one recorded when the run started.
-3. Skip the smoke and full training cells and run instead, in one cell:
+2. In the new session, with the same `COMMIT`, `SIZE` and `SEED`, and `ARMS` set to the stopped arm followed by any arms that had not started, run the parameter, clone, install, fail-fast, data and adapter-copy cells. The clone cell deletes `runs/<run>` for every arm in `ARMS`, so copy the downloaded run directory to `/tmp/jevmark/runs/<run>/` only after it. The adapter-copy cell puts the SFT adapter back at `runs/sft_<size>/adapter`, the path the run's config.yaml names; `train_rlcd.py --resume` refuses to continue if that adapter's sha256 differs from the one recorded when the run started.
+3. Skip the smoke and arm-loop cells and run instead, in one cell, with `ARM` the stopped arm:
    ```
+   ARM = ARMS[0]
    started = datetime.datetime.now(datetime.timezone.utc)
    !python scripts/train_rlcd.py --config configs/rlcd_{SIZE}.yaml arm={ARM} seed={SEED} --resume --max-hours {MAX_HOURS} --device cuda
    training_exit = _exit_code
-   shutil.copytree(WORK / "runs", "/kaggle/working/runs", dirs_exist_ok=True)
-   require_training(WORK / "runs" / RUN, started, training_exit)
-   TRAINED["full"] = True
+   shutil.copytree(WORK / "runs" / RUNS[ARM], Path("/kaggle/working/runs") / RUNS[ARM], dirs_exist_ok=True)
+   require_training(WORK / "runs" / RUNS[ARM], started, training_exit)
+   !python scripts/evaluate.py --ckpt runs/{RUNS[ARM]} --shuffle-questions test_indomain --device cuda
+   check_exit("evaluate.py", _exit_code)
+   shutil.copytree(WORK / "runs" / RUNS[ARM], Path("/kaggle/working/runs") / RUNS[ARM], dirs_exist_ok=True)
    ```
-   `arm=` and `seed=` are required with `--resume`: they give the run name, and so the run directory; every other setting, including `--init`, comes from the run's own config.yaml. Set `TRAINED["full"] = True` only after `require_training` printed `TRAINING PASS`.
-4. Run the evaluation and copy cells as usual.
+   `arm=` and `seed=` are required with `--resume`: they give the run name, and so the run directory; every other setting, including `--init`, comes from the run's own config.yaml. Evaluate only after `require_training` printed `TRAINING PASS`.
+4. For any arms that had not started, set `ARMS` to them and run the smoke and arm-loop cells, or leave them for the next session.
 
 The resumed run continues at the saved step with the same data order and the same sampled actions as an uninterrupted run (`tests/test_train_rlcd.py::test_resume_matches_an_uninterrupted_run`).
 
 ### Stage 1 plan: five arms on 0.6B, seed 0
 
-| Session | ARM | Question it answers |
+| Arm | Question it answers | Status |
 |---|---|---|
-| 1 | `sft_cont` | the control: is any change just more training on the same records? |
-| 2 | `outcome` | plain REINFORCE with the outcome reward |
-| 3 | `outcome_minus_p` | a reward that penalises confidence on wrong answers |
-| 4 | `direct_brier` | a proper scoring rule, bounded, differentiated through p of the sampled action |
-| 5 | `direct_log` | a proper scoring rule, unbounded, differentiated through p of the sampled action |
+| `direct_brier` | a proper scoring rule, bounded, differentiated through p of the sampled action | done, one session: `runs/rlcd_06b_direct_brier_s0` |
+| `sft_cont` | the control: is any change just more training on the same records? | the multi-arm session |
+| `outcome` | plain REINFORCE with the outcome reward | the multi-arm session |
+| `outcome_minus_p` | a reward that penalises confidence on wrong answers | the multi-arm session |
+| `direct_log` | a proper scoring rule, unbounded, differentiated through p of the sampled action | the multi-arm session |
 
-Every session uses `SIZE = "06b"` and `SEED = 0`, and the same `COMMIT`.
+The remaining four run in one session with `ARMS = ["sft_cont", "outcome", "outcome_minus_p", "direct_log"]`, the notebook default, `SIZE = "06b"`, `SEED = 0` and one `COMMIT`. `sft_cont` goes first because `direct_brier` needs it to be read: that run sharpened the model on its training data, and only the control shows whether plain extra cross-entropy does the same.
 
-The REINFORCE arms `brier` and `log` are known broken (decision 52): used as a detached reward on the sampled action, a proper score never ranks a wrong action below gold, so the policy gradient lowers gold for K > 2 and is zero for K = 2. Their one run, `runs/rlcd_06b_brier_s0`, is committed as the negative result. The notebook does not offer them; to reproduce that run, set `ARM = "brier"`, drop the notebook's `ARM` assertion and add `rlcd.reinforce_proper_score=true` to both training commands. Compare each arm with `runs/sft_06b` and `runs/sft_06b_temp` on unseen-schema ECE (docs/RESULTS_v2.md section 1 states the target); the best arms then get seeds 1 and 2, and the best two and `sft_cont` repeat on 1.7B (task 2.3).
+The REINFORCE arms `brier` and `log` are known broken (decision 52): used as a detached reward on the sampled action, a proper score never ranks a wrong action below gold, so the policy gradient lowers gold for K > 2 and is zero for K = 2. Their one run, `runs/rlcd_06b_brier_s0`, is committed as the negative result. The notebook does not offer them; to reproduce that run, set `ARMS = ["brier"]`, drop the notebook's `ARMS` assertion and add `rlcd.reinforce_proper_score=true` to both training commands. Compare each arm with `runs/sft_06b` and `runs/sft_06b_temp` on unseen-schema ECE (docs/RESULTS_v2.md section 1 states the target); the best arms then get seeds 1 and 2, and the best two and `sft_cont` repeat on 1.7B (task 2.3).
 
-### Time estimates (to be measured on the first session)
+### Time estimates
 
-Scaled from SFT on data v1.3: 0.6B SFT took 70.5 minutes for 1378 steps (about 3.1 s per step at effective batch 32), and 1.7B 3.0 hours (about 7.9 s per step). An RLCD step adds a no-gradient forward pass of the reference and the sampling, estimated at 30 to 40 percent. Expected per session:
+Measured at 0.6B on the first two sessions (`runs/rlcd_06b_brier_s0`, `runs/rlcd_06b_direct_brier_s0`: `train_summary.json:wall_clock_seconds_this_session` and `metrics.json:wall_clock_seconds`):
 
-| Size | Training, 500 steps plus 6 validations and 2 full-valid passes | Evaluation | Session with install and smoke |
-|---|---|---|---|
-| 0.6B | 35 to 45 min | 45 min (measured for sft_06b) | about 1.7 h |
-| 1.7B | 90 to 110 min | 99 min (measured for sft_17b) | about 3.7 h |
+- **Training:** 43.1 and 46.3 minutes for 500 steps, including 6 validations and 2 full-valid passes.
+- **Evaluation:** 39.3 and 44.0 minutes.
 
-Measured on the first session (`runs/rlcd_06b_brier_s0/train_summary.json`): the 0.6B training script took 46.3 minutes, validations and both full-valid passes included. Stage 1 is therefore about 8.5 GPU hours for five sessions, a third of the weekly quota; two sessions can run in parallel. The pre-flight line in the smoke run shows peak memory for policy plus reference within a minute; at 1.7B the reference adds about 3.4 GB to the SFT peak of 4.02 GiB. Replace these estimates with the measured times after the first session.
+That makes about 1.5 hours per arm, against the 1.7 hours per session estimated before the first run.
+
+**A four-arm session at 0.6B is estimated at 6.5 hours:** about 5.8 hours for the four arms, plus clone, install, data build, adapter copy and the smoke run. That fits one Kaggle session with room to spare.
+
+1.7B is not measured yet. Scaled from SFT (3.0 hours for 1378 steps, about 7.9 s per step) plus the reference pass, estimate 90 to 110 minutes of training and 99 minutes of evaluation (measured for sft_17b) per arm, about 3.3 hours. At most two 1.7B arms fit one session.
+
+The pre-flight line in the smoke run shows peak memory for policy plus reference within a minute: 8.19 of 14.56 GiB at 0.6B (`runs/rlcd_06b_direct_brier_s0/training_log.jsonl`). At 1.7B the reference adds about 3.4 GB to the SFT peak of 4.02 GiB.
