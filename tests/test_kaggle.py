@@ -163,19 +163,36 @@ def test_train_notebook_skips_the_base_evaluation_when_eval_base_is_false():
     assert '[f"sft_{SIZE}"] + ([f"base_{SIZE}"] if EVAL_BASE else [])' in copy
 
 
-def test_b1_notebook_runs_a_smoke_run_then_the_whole_subset_and_copies_runs():
+def test_b1_notebook_runs_a_smoke_run_then_every_size_on_the_whole_subset_and_copies_runs():
     cells = code_cells("kaggle_baseline_b1.ipynb")
     params = cells[0]
     for name in ("REPO", "COMMIT", "LIMIT", "BATCH_SIZE"):
         assert re.search(rf"^{name} = ", params, re.M), name
+    assert re.search(r'^SIZES = \["06b", "17b"\]', params, re.M)
     joined = "\n".join(cells)
     data = joined.index("make data-build PY=python")
-    smoke = joined.index("baseline_llm_json.py --device cuda --limit {LIMIT} --latency-requests 10 --batch-size {BATCH_SIZE}")
-    full = joined.index("baseline_llm_json.py --device cuda --batch-size {BATCH_SIZE}\n")
+    smoke = joined.index("baseline_llm_json.py --size {SIZES[0]} --device cuda --limit {LIMIT} --latency-requests 10 --batch-size {BATCH_SIZE}")
+    loop = joined.index("for size in SIZES:\n    !python scripts/baseline_llm_json.py --size {size} --device cuda --batch-size {BATCH_SIZE}")
     copy = joined.index('shutil.copytree(WORK / "runs", "/kaggle/working/runs"')
-    assert data < smoke < full < copy
-    assert joined.count("raise RuntimeError(") >= 3  # smoke and full runs fail the cell on a non-zero exit
+    assert data < smoke < loop < copy
+    summary = cells[-1]
+    assert 'for name in [f"b1_qwen{size}_json" for size in SIZES]:' in summary and 'glob("' not in summary
+    assert summary.index("for name in") < summary.index('assert metrics["git"]["commit"] == COMMIT, name')
     assert 'WORK.glob("runs/b1_*")' in cells[1] and "requirements-kaggle.txt" in joined and "--no-deps" in joined
+
+
+def test_b1_sizes_pin_one_instruct_model_per_backbone_size():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("b1_sizes", REPO / "scripts" / "baseline_llm_json.py")
+    b1 = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(b1)
+    assert b1.SIZES["06b"][0] == "Qwen/Qwen3-0.6B" and b1.SIZES["17b"][0] == "Qwen/Qwen3-1.7B"
+    assert all(re.fullmatch(r"[0-9a-f]{40}", revision) for _, revision, _ in b1.SIZES.values())
+    assert [name for _, _, name in b1.SIZES.values()] == ["b1_qwen06b_json", "b1_qwen17b_json"]
+    args = b1.parse_args(["--size", "06b"])
+    assert (args.model, args.revision, args.run_name) == b1.SIZES["06b"]
+    assert b1.parse_args(["--size", "06b", "--model", "local/tiny"]).model == "local/tiny"
 
 
 def test_eval_notebook_deletes_the_committed_b0_runs_it_will_write_right_after_the_clone():

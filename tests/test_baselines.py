@@ -378,7 +378,7 @@ def test_b1_end_to_end_on_the_tiny_model(tiny_dir, baseline_data, tmp_path):
     replies = read_replies(run / "replies.jsonl")
     assert len(replies) == 8 and {k[0] for k in replies} == {"test_indomain", "test_sst5"}
     metrics = json.loads((run / "metrics.json").read_text())
-    assert metrics["baseline"] == "B1" and metrics["decoding"] == {"greedy": True, "max_new_tokens": 4, "batch_size": 3, "enable_thinking": False}
+    assert metrics["baseline"] == "B1" and metrics["size"] == "17b" and metrics["decoding"] == {"greedy": True, "max_new_tokens": 4, "batch_size": 3, "enable_thinking": False}
     assert set(metrics["splits"]) == {"test_indomain", "test_sst5"}
     indomain = metrics["splits"]["test_indomain"]
     assert indomain["choice"]["n"] == 4 and indomain["choice"]["parse_failure_rate"] == 1.0  # four random tokens are never valid JSON
@@ -466,7 +466,14 @@ def test_b2_run_records_tokens_cost_latency_and_metrics(baseline_data, tmp_path)
     metrics = json.loads((run / "metrics.json").read_text())
     assert metrics["complete"] and metrics["usage"]["cost_usd"] == pytest.approx(8 * row["cost_usd"])
     assert metrics["usage"]["cost_per_1000_requests_usd"] == pytest.approx(1000 * row["cost_usd"])
-    assert metrics["model"] == {"requested": "gpt-4.1-mini", "reported": ["fake-model-2026"]}
+    assert metrics["model"] == {"requested": "gpt-4.1-mini", "reported": ["fake-model-2026"], "reported_counts": {"fake-model-2026": 8}}
+    assert metrics["request"]["temperature"] == 0.0  # the default
+    assert all(len(r["requested_at"]) == 25 and r["requested_at"].endswith("+00:00") for r in rows.values())
+    assert metrics["request_dates_utc"] == {"first": min(r["requested_at"] for r in rows.values()), "last": max(r["requested_at"] for r in rows.values())}
+    assert row["prices_usd_per_million_tokens"] == {"input": 0.4, "cached_input": 0.4, "output": 1.6}
+    assert metrics["prices_usd_per_million_tokens"] == {"input": 0.4, "cached_input": 0.4, "output": 1.6}
+    assert metrics["prices_used_by_recorded_replies"] == [{"input": 0.4, "cached_input": 0.4, "output": 1.6}]
+    assert all(b["temperature"] == 0.0 for b in client.bodies)
     assert metrics["splits"]["test_indomain"]["choice"]["parse_failure_rate"] == 0.0
     assert metrics["splits"]["test_indomain"]["choice"]["n_with_confidence"] == 4
 
@@ -500,7 +507,7 @@ def test_b2_retries_transient_errors_and_stops_on_others(baseline_data, tmp_path
 
 def test_b2_refusal_is_a_parse_failure(baseline_data):
     body = b2.request_body(record(), "m", 0.0, 64)
-    row = b2.reply_row("test_indomain", "r1", fake_response(body, refusal="I cannot help"), 0.1, (0.4, 0.4, 1.6))
+    row = b2.reply_row("test_indomain", "r1", fake_response(body, refusal="I cannot help"), 0.1, (0.4, 0.4, 1.6), b2.utc_now())
     assert row["reply"] is None and row["refusal"] == "I cannot help"
     assert {a.status for a in answers_for_record(record(), "test_indomain", row["reply"])} == {"invalid_json"}
 
@@ -533,6 +540,13 @@ def test_compare_prints_one_row_per_split_and_type_for_every_run(baseline_data, 
     assert "1.000 / 0.100" in indomain  # jevmark: every gold at 0.9
     assert "  choice" in out and "  score" in out and "  noul" in out
     assert "missing" in out and "30.0 requests/s" in out and "USD per 1000 requests" in out
+    assert "B2 parse failures are near zero by construction" in out and "format reliability is read from B1" in out
+
+
+def test_compare_defaults_include_both_b1_sizes_next_to_their_jevmark_size():
+    runs = list(compare.DEFAULT_RUNS)
+    assert runs.index("runs/sft_06b") < runs.index("runs/b1_qwen06b_json") < runs.index("runs/sft_17b") < runs.index("runs/b1_qwen17b_json")
+    assert "runs/b2_gpt-4.1-mini" in runs
 
 
 def b2_gold(question, gold):

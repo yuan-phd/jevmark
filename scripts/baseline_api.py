@@ -13,8 +13,10 @@ defaults to --price-input. Runs on the fixed baseline subset
 (data/baseline_subset.json), 500 records per split, or with --sub on its 200-record
 sub-subset, the setting for a stronger and more expensive model.
 
-Every reply is appended to runs/b2_<model>/replies.jsonl as it arrives (reply,
-tokens, cost, latency, finish reason; gitignored), so an interrupted run continues
+Temperature is 0 (--temperature none leaves it to the API, for models that reject
+it). Every reply is appended to runs/b2_<model>/replies.jsonl as it arrives (reply,
+the model snapshot the API reports, the UTC time of the request, tokens, cost,
+latency, finish reason; gitignored), so an interrupted run continues
 where it stopped when started again with --resume. --max-usd (default 20) is a
 hard cap: before each request the spend so far plus a worst case for that request
 (prompt characters / 2 input tokens, --max-completion-tokens output tokens) must
@@ -36,6 +38,7 @@ import os
 import re
 import sys
 import time
+from collections import Counter
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
@@ -105,7 +108,11 @@ def call_with_retries(create: Callable[..., Any], body: dict[str, Any], retries:
     raise AssertionError("unreachable")
 
 
-def reply_row(split: str, record_id: str, response: Any, latency_s: float, prices: tuple[float, float, float]) -> dict[str, Any]:
+def utc_now() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+
+
+def reply_row(split: str, record_id: str, response: Any, latency_s: float, prices: tuple[float, float, float], requested_at: str) -> dict[str, Any]:
     choice = response.choices[0]
     usage = response.usage
     details = getattr(usage, "prompt_tokens_details", None)
@@ -119,10 +126,12 @@ def reply_row(split: str, record_id: str, response: Any, latency_s: float, price
         "finish_reason": choice.finish_reason,
         "finished": choice.finish_reason == "stop",
         "model": response.model,
+        "requested_at": requested_at,
         "input_tokens": usage.prompt_tokens,
         "cached_input_tokens": cached,
         "output_tokens": usage.completion_tokens,
         "cost_usd": cost_usd(usage.prompt_tokens, cached, usage.completion_tokens, *prices),
+        "prices_usd_per_million_tokens": dict(zip(("input", "cached_input", "output"), prices)),
         "latency_s": latency_s,
     }
 
@@ -206,8 +215,9 @@ def run(args: argparse.Namespace, records_by_split: dict[str, list[dict[str, Any
                 body = request_body(record, args.model, args.temperature, args.max_completion_tokens)
                 if spent + worst_case_usd(body, args.price_input, args.price_output) > args.max_usd:
                     raise SpendCapReached
+                requested_at = utc_now()
                 response, latency_s = call_with_retries(create, body, args.retries, sleep)
-                row = reply_row(split, record["id"], response, latency_s, prices)
+                row = reply_row(split, record["id"], response, latency_s, prices, requested_at)
                 append_reply(replies_path, row)
                 done[(split, record["id"])] = row
                 spent += row["cost_usd"]
@@ -226,12 +236,19 @@ def run(args: argparse.Namespace, records_by_split: dict[str, list[dict[str, Any
         overall = report["overall"]
         log(f"{split:20} acc {overall['accuracy'] or 0:.4f} (parsed)  acc_all {overall['accuracy_all']:.4f}  parse failures {overall['parse_failure_rate']:.4f}")
     total_cost = sum(r["cost_usd"] for r in rows)
+    dates = [r["requested_at"] for r in rows]
     expected = sum(len(rs) for rs in records_by_split.values())
     metrics = {
         "run_name": run_name,
         "baseline": "B2",
-        "model": {"requested": args.model, "reported": sorted({r["model"] for r in rows})},
+        "model": {
+            "requested": args.model,
+            "reported": sorted({r["model"] for r in rows}),
+            "reported_counts": dict(sorted(Counter(r["model"] for r in rows).items())),
+        },
+        "request_dates_utc": {"first": min(dates), "last": max(dates)} if dates else None,
         "prices_usd_per_million_tokens": {"input": args.price_input, "cached_input": args.price_cached_input, "output": args.price_output},
+        "prices_used_by_recorded_replies": [dict(t) for t in sorted({tuple(r["prices_usd_per_million_tokens"].items()) for r in rows})],
         "git": git,
         "created": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         "subset": {"path": "data/baseline_subset.json", "records": "sub_splits (200 per split)" if args.sub else "splits (500 per split)"},

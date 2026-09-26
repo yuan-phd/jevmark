@@ -15,7 +15,9 @@ dependent questions of each split, overall and per question type (decision 44);
 n is the number of questions in the subset. A baseline cell marked * covers fewer
 questions than the subset (an incomplete run). Below the table: batch-1 latency
 and throughput from each run's metrics.json, and the cost per 1000 requests for
-the API baseline.
+the API baseline. Each jevmark size has a same-size B1 column (b1_qwen06b_json,
+b1_qwen17b_json). A note under the table says that B2 parse failures are near zero
+by construction, so format reliability is read from B1.
 """
 
 from __future__ import annotations
@@ -36,7 +38,11 @@ from jevmark.baselines.subset import SUBSET_PATH, load_subset, subset_records  #
 from jevmark.data.build import SPLITS  # noqa: E402
 from jevmark.metrics import read_results, reports_by_split  # noqa: E402
 
-DEFAULT_RUNS = ("runs/base_06b", "runs/sft_06b", "runs/sft_17b", "runs/b1_qwen17b_json", "runs/b2_gpt-4.1-mini")
+DEFAULT_RUNS = ("runs/base_06b", "runs/sft_06b", "runs/b1_qwen06b_json", "runs/base_17b", "runs/sft_17b", "runs/b1_qwen17b_json", "runs/b2_gpt-4.1-mini")
+NOTE = (
+    "note: B2 parse failures are near zero by construction (a strict JSON schema with an enum or boolean per answer), "
+    "so format reliability is read from B1, which generates without constrained decoding."
+)
 BLOCKS = ("overall", "noul", "choice", "score")
 WIDTH = 23
 
@@ -118,7 +124,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     run_dirs = [Path(r) for r in args.runs]
     runs = [(d.name, *run_reports(d, subset, args.sub, Path(args.data_dir))) for d in run_dirs]
     print(f"baseline subset: {'200' if args.sub else subset['per_split']} records per split, gold-dependent questions")
-    print("\n".join(table(runs) + footer(run_dirs)))
+    print("\n".join(table(runs) + ["", NOTE] + footer(run_dirs)))
     return 0
 
 

@@ -1,9 +1,13 @@
 """B1 baseline: an instruct LLM of jevmark's size answers the same questions as generated JSON (task 1.8).
 
-    python scripts/baseline_llm_json.py --device cuda
-    python scripts/baseline_llm_json.py --device cuda --limit 5 --latency-requests 10   # smoke run
+    python scripts/baseline_llm_json.py --size 17b --device cuda
+    python scripts/baseline_llm_json.py --size 06b --device cuda --limit 5 --latency-requests 10   # smoke run
 
-Qwen/Qwen3-1.7B (the instruct release, revision pinned) reads the shared prompt
+--size picks the instruct release of the same size as one of jevmark's backbones,
+revision pinned (SIZES): 06b is Qwen/Qwen3-0.6B, written to runs/b1_qwen06b_json/,
+and 17b is Qwen/Qwen3-1.7B, written to runs/b1_qwen17b_json/, so each jevmark size
+has a same-size generate-JSON counterpart. --model and --revision override the
+model (the tests use a tiny local one). The model reads the shared prompt
 (jevmark/baselines/prompt.py) through its chat template with thinking disabled and
 answers with greedy decoding, at most --max-new-tokens new tokens, in batches of
 --batch-size (left padded, longest prompts first). It runs on the fixed baseline
@@ -48,9 +52,11 @@ from jevmark.sampling import sample_records
 
 REPO = Path(__file__).resolve().parents[1]
 
-MODEL_ID = "Qwen/Qwen3-1.7B"
-MODEL_REVISION = "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e"
-RUN_NAME = "b1_qwen17b_json"
+# size -> (instruct model id, pinned revision, run name)
+SIZES = {
+    "06b": ("Qwen/Qwen3-0.6B", "c1899de289a04d12100db370d81485cdf75e47ca", "b1_qwen06b_json"),
+    "17b": ("Qwen/Qwen3-1.7B", "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e", "b1_qwen17b_json"),
+}
 
 
 def log(message: str) -> None:
@@ -166,8 +172,9 @@ def generation_summary(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
 
 def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--model", default=MODEL_ID)
-    parser.add_argument("--revision", default=MODEL_REVISION)
+    parser.add_argument("--size", choices=sorted(SIZES), default="17b", help="which same-size instruct model; sets model, revision and run name")
+    parser.add_argument("--model", default=None, help="override the size's model id")
+    parser.add_argument("--revision", default=None, help="override the size's pinned revision")
     parser.add_argument("--splits", nargs="+", choices=SPLITS, default=list(SPLITS))
     parser.add_argument("--subset", default=str(SUBSET_PATH))
     parser.add_argument("--limit", type=int, default=None, help="a seeded stratified sample of N subset records per split, for smoke runs; writes runs/<run_name>_limit<N>/")
@@ -175,13 +182,17 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--max-new-tokens", type=int, default=256)
     parser.add_argument("--latency-requests", type=int, default=200)
     parser.add_argument("--device", default=None, help="cpu, cuda or cuda:N; default cuda when available")
-    parser.add_argument("--run-name", default=RUN_NAME)
+    parser.add_argument("--run-name", default=None, help="default b1_qwen<size>_json")
     parser.add_argument("--resume", action="store_true", help="continue a run whose replies.jsonl exists; otherwise such a run is never overwritten")
     parser.add_argument("--data-dir", default=str(REPO / "data"))
     parser.add_argument("--runs-dir", default=str(REPO / "runs"))
     args = parser.parse_args(argv)
     if args.limit is not None and args.limit < 1:
         parser.error("--limit must be at least 1")
+    model_id, revision, run_name = SIZES[args.size]
+    args.model = args.model or model_id
+    args.revision = args.revision or revision
+    args.run_name = args.run_name or run_name
     return args
 
 
@@ -247,6 +258,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     metrics = {
         "run_name": run_name,
         "baseline": "B1",
+        "size": args.size,
         "model": {"id": args.model, "revision": args.revision},
         "git": git,
         "created": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
@@ -263,7 +275,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "wall_clock_seconds": time.perf_counter() - started,
     }
     (out_dir / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n")
-    (out_dir / "config.yaml").write_text(yaml.safe_dump({"run_name": run_name, "baseline": "B1", "model": metrics["model"], "decoding": metrics["decoding"], "subset": metrics["subset"]}, sort_keys=False))
+    (out_dir / "config.yaml").write_text(yaml.safe_dump({"run_name": run_name, "baseline": "B1", "size": args.size, "model": metrics["model"], "decoding": metrics["decoding"], "subset": metrics["subset"]}, sort_keys=False))
     (out_dir / "model_id.txt").write_text(f"{args.model}@{args.revision}\n")
     log(f"wrote {out_dir}/metrics.json, replies.jsonl ({len(rows)} requests), config.yaml, model_id.txt")
     return 0
