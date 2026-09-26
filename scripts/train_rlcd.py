@@ -319,7 +319,7 @@ def resolve_run_name(config: dict[str, Any]) -> str:
 def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--config", required=True, help="RLCD config, for example configs/rlcd_06b.yaml")
-    parser.add_argument("overrides", nargs="*", help="key=value overrides, for example arm=log seed=1 (ignored with --resume, which uses the run's config.yaml)")
+    parser.add_argument("overrides", nargs="*", help="key=value overrides, for example arm=log seed=1; with --resume, arm= and seed= (and run_name= if it was set) are still required to locate the run directory, and every other setting comes from the run's own config.yaml")
     parser.add_argument("--init", default=None, help="run directory holding the SFT adapter/ to start from; default rlcd.init from the config")
     parser.add_argument("--resume", action="store_true", help="continue from runs/<run_name>/last with the run's own config.yaml")
     parser.add_argument("--max-hours", type=float, default=8.0, help="save last/ and exit cleanly after this much wall clock (default 8.0)")

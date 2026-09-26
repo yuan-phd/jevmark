@@ -164,6 +164,26 @@ Set `REPO`, `COMMIT`, `SIZE`, `ARM`, `SEED`, `ADAPTER_DATASET`, `SMOKE_STEPS` (2
 
 Download `/kaggle/working/runs/rlcd_<size>_<arm>_s<seed>/`. Commit `config.yaml`, `model_id.txt`, `calibration.json`, `training_log.jsonl`, `train_summary.json`, `metrics.json` and `plots/`; keep `adapter/`, `adapter_last/`, `last/` and `results.jsonl.gz` outside git (all gitignored).
 
+### If an RLCD run stops at MAX_HOURS
+
+The training cell then prints `TRAINING FAIL` (fewer steps than planned) and raises on purpose, no evaluation runs, and `/kaggle/working/runs/rlcd_<size>_<arm>_s<seed>/last/` holds the adapter, optimizer, scheduler, scaler, torch RNG, the sampler's generator state and the step. To continue in a new session:
+
+1. Download `runs/rlcd_<size>_<arm>_s<seed>/` from the output (it must include `last/` and `config.yaml`) and add it to the new session as a Kaggle dataset, next to the adapter dataset.
+2. In the new session, with the same `COMMIT`, `SIZE`, `ARM` and `SEED`, run the parameter, clone, install, fail-fast, data and adapter-copy cells. The clone cell deletes any `runs/<RUN>` in the clone, so copy the downloaded run directory to `/tmp/jevmark/runs/<RUN>/` only after it. The adapter-copy cell puts the SFT adapter back at `runs/sft_<size>/adapter`, the path the run's config.yaml names; `train_rlcd.py --resume` refuses to continue if that adapter's sha256 differs from the one recorded when the run started.
+3. Skip the smoke and full training cells and run instead, in one cell:
+   ```
+   started = datetime.datetime.now(datetime.timezone.utc)
+   !python scripts/train_rlcd.py --config configs/rlcd_{SIZE}.yaml arm={ARM} seed={SEED} --resume --max-hours {MAX_HOURS} --device cuda
+   training_exit = _exit_code
+   shutil.copytree(WORK / "runs", "/kaggle/working/runs", dirs_exist_ok=True)
+   require_training(WORK / "runs" / RUN, started, training_exit)
+   TRAINED["full"] = True
+   ```
+   `arm=` and `seed=` are required with `--resume`: they give the run name, and so the run directory; every other setting, including `--init`, comes from the run's own config.yaml. Set `TRAINED["full"] = True` only after `require_training` printed `TRAINING PASS`.
+4. Run the evaluation and copy cells as usual.
+
+The resumed run continues at the saved step with the same data order and the same sampled actions as an uninterrupted run (`tests/test_train_rlcd.py::test_resume_matches_an_uninterrupted_run`).
+
 ### Stage 1 plan: six arms on 0.6B, seed 0
 
 | Session | ARM | Question it answers |
