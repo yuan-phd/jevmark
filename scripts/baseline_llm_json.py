@@ -38,6 +38,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import torch
 import yaml
 from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig, PreTrainedModel, PreTrainedTokenizerBase
@@ -135,7 +136,7 @@ def _sync(device: torch.device) -> None:
 
 
 def latency(model: PreTrainedModel, tokenizer: PreTrainedTokenizerBase, prompts: Sequence[str], max_new_tokens: int, batch_size: int) -> dict[str, Any]:
-    """Batch-1 wall clock per request, median over the prompts, and requests per second at batch_size on the same prompts."""
+    """Batch-1 wall clock per request (median, p95 and every request's time and generated tokens), and requests per second at batch_size on the same prompts."""
     generate(model, tokenizer, prompts[:2], max_new_tokens, 1)  # warm-up
     times, tokens = [], []
     for prompt in prompts:
@@ -150,8 +151,9 @@ def latency(model: PreTrainedModel, tokenizer: PreTrainedTokenizerBase, prompts:
     _sync(model.device)
     elapsed = time.perf_counter() - start
     return {
-        "batch_1": timing_summary(times),
+        "batch_1": {**timing_summary(times), "p95_ms": 1000 * float(np.percentile(times, 95))},
         "batch_1_mean_output_tokens": sum(tokens) / len(tokens),
+        "batch_1_per_request": [{"ms": 1000 * t, "output_tokens": n} for t, n in zip(times, tokens)],
         f"batch_{batch_size}_requests_per_second": len(prompts) / elapsed,
         "requests": f"the first {len(prompts)} records of train.jsonl, as evaluate.py",
         "device": str(model.device),
@@ -264,7 +266,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "created": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         "subset": {"path": str(subset_path.relative_to(REPO)) if subset_path.is_relative_to(REPO) else str(subset_path), "per_split": subset["per_split"]},
         "limit": args.limit,
-        "device": str(device),
+        "device": str(model.device),
         "precision": {"dtype": str(model.dtype), "fp32_fallback_used": fp32_fallback},
         "decoding": {"greedy": True, "max_new_tokens": args.max_new_tokens, "batch_size": args.batch_size, "enable_thinking": False},
         "data_files_sha256": data_files,

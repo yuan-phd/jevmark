@@ -9,8 +9,9 @@ from its results.jsonl.gz (the restriction recompute_metrics.py --subset applies
 a baseline from its replies.jsonl with the shared parser. Nothing is written.
 
 jevmark columns show accuracy and ECE (top-1 probability). Baseline columns show
-accuracy counting parse failures as wrong, ECE on the verbalized confidence of the
-parsed answers that state one, and the parse failure rate. Rows are the gold-
+accuracy counting parse failures as wrong (the strict headline) with the lenient
+reading of decision 48 in brackets, ECE on the verbalized confidence of the parsed
+answers that state one, and the strict parse failure rate. Rows are the gold-
 dependent questions of each split, overall and per question type (decision 44);
 n is the number of questions in the subset. A baseline cell marked * covers fewer
 questions than the subset (an incomplete run). Below the table: batch-1 latency
@@ -44,7 +45,7 @@ NOTE = (
     "so format reliability is read from B1, which generates without constrained decoding."
 )
 BLOCKS = ("overall", "noul", "choice", "score")
-WIDTH = 23
+WIDTH = 32
 
 
 def run_reports(run_dir: Path, subset: dict[str, Any], sub: bool, data_dir: Path) -> tuple[str, dict[str, Any] | None]:
@@ -64,12 +65,14 @@ def cell(kind: str, block: dict[str, Any] | None, n_expected: int | None) -> str
         return f"{block['accuracy']:.3f} / {block['ece']:.3f}"
     ece = "n/a" if block["ece"] is None else f"{block['ece']:.3f}"
     mark = "*" if n_expected is not None and block["n"] < n_expected else ""
-    return f"{block['accuracy_all']:.3f} / {ece} / {block['parse_failure_rate']:.2f}{mark}"
+    lenient = block.get("lenient")
+    lenient_acc = f" ({lenient['accuracy_all']:.3f})" if lenient else ""
+    return f"{block['accuracy_all']:.3f}{lenient_acc} / {ece} / {block['parse_failure_rate']:.2f}{mark}"
 
 
 def table(runs: Sequence[tuple[str, str, dict[str, Any] | None]]) -> list[str]:
     header = f"{'split / type':28}{'n':>6}  " + "".join(f"{name[:WIDTH - 1]:<{WIDTH}}" for name, _, _ in runs)
-    legend = f"{'':36}" + "".join(f"{'acc / ECE' if kind == 'jevmark' else 'acc_all / ECE / fail' if kind == 'baseline' else 'missing':<{WIDTH}}" for _, kind, _ in runs)
+    legend = f"{'':36}" + "".join(f"{'acc / ECE' if kind == 'jevmark' else 'acc_all (lenient) / ECE / fail' if kind == 'baseline' else 'missing':<{WIDTH}}" for _, kind, _ in runs)
     lines = [header, legend]
     reference = next((reports for _, kind, reports in runs if kind == "jevmark"), None)
     splits = [s for s in SPLITS if any(reports and s in reports for _, _, reports in runs)]
@@ -99,7 +102,8 @@ def footer(run_dirs: Sequence[Path]) -> list[str]:
         latency = metrics.get("latency") or {}
         parts = []
         if latency.get("batch_1"):
-            parts.append(f"batch 1 median {latency['batch_1']['median_ms']:.1f} ms")
+            p95 = latency["batch_1"].get("p95_ms")
+            parts.append(f"batch 1 median {latency['batch_1']['median_ms']:.1f} ms, p95 " + (f"{p95:.1f} ms" if p95 is not None else "not recorded"))
         throughput = [(k, v) for k, v in latency.items() if k.endswith("_requests_per_second")]
         parts += [f"{k.removesuffix('_requests_per_second').replace('_', ' ')}: {v:.1f} requests/s" for k, v in throughput]
         first = latency.get("first_attempt")

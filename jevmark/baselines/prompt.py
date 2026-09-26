@@ -28,6 +28,12 @@ that is missing, not a number, or outside [0, 1] is recorded as None; the answer
 still counts. A bare answer in place of the object (for example
 {"q1": "billing"}) is accepted as an answer without a confidence. Keys for
 unknown question ids are ignored.
+
+parse_reply(..., lenient=True) is a secondary reading (decision 48): a string answer
+outside the allowed set is tried once more as the text before its first colon, so
+an echoed option line such as "other: None of the listed intents" or "true: yes"
+counts as its label. The strict reading is the headline; the lenient one is reported
+next to it.
 """
 
 from __future__ import annotations
@@ -166,8 +172,11 @@ def reply_object(reply: str | None) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
-def parse_reply(reply: str | None, request: Request) -> dict[str, ParsedAnswer]:
-    """One ParsedAnswer per real question id, in request order, read from the reply's anonymous ids. A reply of None (no reply at all) is invalid_json."""
+def parse_reply(reply: str | None, request: Request, lenient: bool = False) -> dict[str, ParsedAnswer]:
+    """One ParsedAnswer per real question id, in request order, read from the reply's anonymous ids. A reply of None (no reply at all) is invalid_json.
+
+    With lenient, a string answer outside the allowed set is read as the text before its first colon.
+    """
     obj = reply_object(reply)
     if obj is None:
         return {q.id: ParsedAnswer("invalid_json") for q in request.questions}
@@ -182,5 +191,7 @@ def parse_reply(reply: str | None, request: Request) -> dict[str, ParsedAnswer]:
         else:
             value, confidence = entry, None
         index = _answer_index(question, value)
+        if index is None and lenient and isinstance(value, str) and ":" in value:
+            index = _answer_index(question, value.split(":", 1)[0])
         parsed[question.id] = ParsedAnswer("invalid_answer") if index is None else ParsedAnswer("ok", index, confidence)
     return parsed

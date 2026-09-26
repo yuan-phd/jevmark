@@ -18,6 +18,10 @@ Every block reports:
   confidence field, and the coverage share is of those answers
 - 95 percent bootstrap intervals by record for accuracy, accuracy_all and ECE,
   with the same resampling as metrics.bootstrap_ci
+- a secondary "lenient" reading (decision 48): accuracy_all, parse failure rate
+  and the number of answers recovered when an echoed option line such as
+  "true: yes" counts as the label before its first colon; the strict numbers
+  above stay the headline
 """
 
 from __future__ import annotations
@@ -48,6 +52,18 @@ class BaselineAnswer:
     prediction: int | None
     confidence: float | None
     position: int
+    lenient_status: str | None = None  # the lenient reading (decision 48); None means the same as the strict one
+    lenient_prediction: int | None = None
+
+    @property
+    def lenient_correct(self) -> bool:
+        status = self.status if self.lenient_status is None else self.lenient_status
+        prediction = self.prediction if self.lenient_status is None else self.lenient_prediction
+        return status == "ok" and prediction == self.gold
+
+    @property
+    def lenient_parsed(self) -> bool:
+        return (self.status if self.lenient_status is None else self.lenient_status) == "ok"
 
     @property
     def parsed(self) -> bool:
@@ -83,10 +99,12 @@ def request_of(record: Mapping[str, Any]) -> Request:
 
 
 def answers_for_record(record: Mapping[str, Any], split: str, reply: str | None) -> list[BaselineAnswer]:
-    parsed = parse_reply(reply, request_of(record))
+    request = request_of(record)
+    parsed = parse_reply(reply, request)
+    lenient = parse_reply(reply, request, lenient=True)
     out = []
     for position, (qid, question) in enumerate(record["questions"].items()):
-        p = parsed[qid]
+        p, q = parsed[qid], lenient[qid]
         out.append(
             BaselineAnswer(
                 record_id=record["id"],
@@ -100,6 +118,8 @@ def answers_for_record(record: Mapping[str, Any], split: str, reply: str | None)
                 prediction=p.answer,
                 confidence=p.confidence,
                 position=position,
+                lenient_status=None if q == p else q.status,
+                lenient_prediction=None if q == p else q.answer,
             )
         )
     return out
@@ -159,6 +179,11 @@ def _accuracy_block(answers: Sequence[BaselineAnswer]) -> dict[str, Any]:
         "n_with_confidence": len(with_confidence),
         "ece": None,
         "ece_ci": None,
+    }
+    block["lenient"] = {
+        "accuracy_all": _mean([float(a.lenient_correct) for a in answers]),
+        "parse_failure_rate": 1 - sum(a.lenient_parsed for a in answers) / len(answers),
+        "recovered": sum(a.lenient_parsed and not a.parsed for a in answers),
     }
     if with_confidence:
         confidences = [a.confidence for a in with_confidence]

@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 import torch
 import yaml
@@ -386,6 +387,9 @@ def test_b1_end_to_end_on_the_tiny_model(tiny_dir, baseline_data, tmp_path):
     assert indomain["form"]["n"] == 4 and indomain["overall"]["n"] == 12
     assert metrics["splits"]["test_sst5"]["score"]["n"] == 4
     assert metrics["latency"]["batch_1"]["n"] == 3 and "batch_3_requests_per_second" in metrics["latency"]
+    per_request = metrics["latency"]["batch_1_per_request"]
+    assert len(per_request) == 3 and all(r["ms"] > 0 and 1 <= r["output_tokens"] <= 4 for r in per_request)
+    assert metrics["latency"]["batch_1"]["p95_ms"] == pytest.approx(float(np.percentile([r["ms"] for r in per_request], 95)))
     assert metrics["generation"]["overall"]["n_requests"] == 8 and metrics["precision"]["fp32_fallback_used"] is False
     assert set(metrics["git"]) == {"commit", "dirty"}
     assert b1.main(argv) == 1  # never overwrites a run without --resume
@@ -668,3 +672,51 @@ def test_b2_resume_refuses_any_other_config_difference(baseline_data, tmp_path, 
 def test_b2_resume_never_narrows_a_full_run_to_the_sub_subset(baseline_data, tmp_path):
     assert b2.main(b2_argv(baseline_data, tmp_path), create=FakeClient().create) == 0
     assert b2.main(b2_argv(baseline_data, tmp_path, "--resume", "--sub"), create=FakeClient().create) == 1
+
+
+# Lenient reading (decision 48)
+
+
+def test_lenient_reading_takes_the_label_before_the_first_colon():
+    reply = reply_of({
+        "char_count_over": {"answer": "true: yes", "confidence": 1.0},
+        "intent": {"answer": "transfer: Move money between accounts", "confidence": 0.9},
+        "sentiment": {"answer": "1: Neutral", "confidence": 0.8},
+        "about_intent": {"answer": "maybe: not sure"},
+    })
+    strict = parse_reply(reply, request())
+    lenient = parse_reply(reply, request(), lenient=True)
+    assert {p.status for p in strict.values()} == {"invalid_answer"}
+    assert lenient["char_count_over"] == ParsedAnswer("ok", 0, 1.0)
+    assert lenient["intent"] == ParsedAnswer("ok", 1, 0.9)
+    assert lenient["sentiment"] == ParsedAnswer("ok", 1, 0.8)
+    assert lenient["about_intent"].status == "invalid_answer"  # the text before the colon is still not an option
+
+
+def test_lenient_reading_never_changes_an_answer_the_strict_reading_accepts():
+    labels_with_colon = {"q": {"type": "choice", "instructions": "Pick one", "criteria": {"a: b": None, "a": None}}}
+    req = Request.from_dict({"state": "x", "questions": labels_with_colon})
+    reply = json.dumps({"q1": {"answer": "a: b"}})
+    assert parse_reply(reply, req)["q"] == parse_reply(reply, req, lenient=True)["q"] == ParsedAnswer("ok", 0, None)
+
+
+def test_metrics_report_the_lenient_reading_next_to_the_strict_headline():
+    reply = reply_of({"char_count_over": {"answer": "true: yes"}, "intent": {"answer": "transfer"}, "sentiment": {"answer": 1}, "about_intent": {"answer": "false: no"}})
+    metrics = baseline_split_metrics(answers_for_record(record(), "test_indomain", reply))
+    noul = metrics["noul"]  # about_intent, gold true, answered "false: no"
+    assert noul["parse_failure_rate"] == 1.0 and noul["accuracy_all"] == 0.0
+    assert noul["lenient"] == {"accuracy_all": 0.0, "parse_failure_rate": 0.0, "recovered": 1}
+    form = metrics["form"]  # char_count_over, gold true, answered "true: yes"
+    assert form["accuracy_all"] == 0.0 and form["lenient"] == {"accuracy_all": 1.0, "parse_failure_rate": 0.0, "recovered": 1}
+    assert metrics["overall"]["accuracy_all"] == pytest.approx(2 / 3) and metrics["overall"]["lenient"]["accuracy_all"] == pytest.approx(2 / 3)
+
+
+def test_recompute_baseline_metrics_rebuilds_the_splits_and_keeps_run_fields(baseline_data, tmp_path):
+    recompute_b = load_script("recompute_baseline_metrics")
+    root, data_dir = baseline_data
+    assert b2.main(b2_argv(baseline_data, tmp_path, "--sub"), create=FakeClient().create) == 0
+    run = tmp_path / "b2_gpt-4.1-mini"
+    before = json.loads((run / "metrics.json").read_text())
+    assert recompute_b.main([str(run), "--subset", str(root / "subset.json"), "--data-dir", str(data_dir), "--out", str(tmp_path / "re.json")]) == 0
+    after = json.loads((tmp_path / "re.json").read_text())
+    assert after["splits"] == before["splits"] and after["usage"] == before["usage"] and after["recomputed"]["requests"] == 4
