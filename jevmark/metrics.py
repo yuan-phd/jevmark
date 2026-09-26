@@ -133,21 +133,38 @@ def ece(confidences: Sequence[float], correct: Sequence[bool], n_bins: int = N_B
 def bootstrap_ci(
     results: Sequence[QuestionResult], n_resamples: int = BOOTSTRAP_RESAMPLES, seed: int = BOOTSTRAP_SEED, n_bins: int = N_BINS
 ) -> dict[str, list[float]]:
-    """95 percent percentile intervals for accuracy and ECE (top-1, n_bins bins), resampling records with replacement.
+    """95 percent percentile intervals for accuracy and ECE (top-1, n_bins bins), resampling records with replacement."""
+    if not results:
+        return {}
+    return bootstrap_intervals(
+        [r.record_id for r in results], [r.correct for r in results], [r.top1 for r in results], n_resamples, seed, n_bins
+    )
+
+
+def bootstrap_intervals(
+    record_ids: Sequence[str],
+    correct: Sequence[bool],
+    confidences: Sequence[float] | None,
+    n_resamples: int = BOOTSTRAP_RESAMPLES,
+    seed: int = BOOTSTRAP_SEED,
+    n_bins: int = N_BINS,
+) -> dict[str, list[float]]:
+    """bootstrap_ci on plain sequences, one entry per question; the baselines use it too (task 1.8).
 
     Each resample gives every record a multiplicity from a multinomial draw; a
     question's weight is its record's multiplicity. ECE with weights is
     sum over bins of |sum of weighted correct - sum of weighted confidence| / total weight.
+    Without confidences only the accuracy interval is returned.
     """
-    if not results:
+    if not record_ids:
         return {}
     record_index: dict[str, int] = {}
-    rec = np.array([record_index.setdefault(r.record_id, len(record_index)) for r in results])
-    correct = np.array([float(r.correct) for r in results])
-    top1 = np.array([r.top1 for r in results])
+    rec = np.array([record_index.setdefault(r, len(record_index)) for r in record_ids])
+    hit = np.array([float(c) for c in correct])
+    top1 = np.array(confidences if confidences is not None else np.zeros(len(hit)), dtype=float)
     bins = np.minimum((top1 * n_bins).astype(int), n_bins - 1)
-    one_hot = np.zeros((len(results), n_bins))
-    one_hot[np.arange(len(results)), bins] = 1.0
+    one_hot = np.zeros((len(hit), n_bins))
+    one_hot[np.arange(len(hit)), bins] = 1.0
     n_records = len(record_index)
     rng = np.random.default_rng(seed)
     accuracies, eces = [], []
@@ -156,15 +173,18 @@ def bootstrap_ci(
         weights = rng.multinomial(n_records, np.full(n_records, 1.0 / n_records), size=size)[:, rec].astype(float)
         total = weights.sum(axis=1)
         total[total == 0] = np.nan  # a resample that drew none of this block's records
-        accuracies.append((weights @ correct) / total)
-        gap = np.abs((weights * correct) @ one_hot - (weights * top1) @ one_hot).sum(axis=1)
+        accuracies.append((weights @ hit) / total)
+        gap = np.abs((weights * hit) @ one_hot - (weights * top1) @ one_hot).sum(axis=1)
         eces.append(gap / total)
     accuracy, calibration = np.concatenate(accuracies), np.concatenate(eces)
 
     def interval(values: np.ndarray) -> list[float]:
         return [float(v) for v in np.nanpercentile(values, [2.5, 97.5])]
 
-    return {"accuracy_ci": interval(accuracy), "ece_ci": interval(calibration)}
+    out = {"accuracy_ci": interval(accuracy)}
+    if confidences is not None:
+        out["ece_ci"] = interval(calibration)
+    return out
 
 
 def _with_ci(block: dict[str, Any], results: Sequence[QuestionResult], ece_too: bool = True) -> dict[str, Any]:

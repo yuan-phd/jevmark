@@ -28,8 +28,6 @@ import datetime
 import hashlib
 import json
 import random
-import subprocess
-from collections import defaultdict
 import sys
 import time
 from collections.abc import Sequence
@@ -50,6 +48,8 @@ from jevmark.data.negation import negate  # noqa: E402
 from jevmark.encode import Encoded, encode  # noqa: E402
 from jevmark.metrics import QuestionResult, max_abs_difference, split_report, timing_summary, write_results  # noqa: E402
 from jevmark.model import JevMark  # noqa: E402
+from jevmark.provenance import git_state  # noqa: E402
+from jevmark.sampling import sample_records  # noqa: E402
 from jevmark.schema import Request  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
@@ -73,68 +73,6 @@ def read_split(data_dir: Path, split: str, limit: int | None) -> tuple[list[dict
     raw = path.read_bytes()
     records = [json.loads(line) for line in raw.decode("utf-8").splitlines() if line.strip()]
     return (sample_records(records, limit, random.Random(f"limit:{split}")) if limit else records), hashlib.sha256(raw).hexdigest()
-
-
-def _allocate(sizes: dict[str, int], total: int) -> dict[str, int]:
-    """Split total across groups in proportion to their sizes (largest remainder), at least one per group while total allows."""
-    n = sum(sizes.values())
-    exact = {k: total * v / n for k, v in sizes.items()}
-    counts = {k: min(sizes[k], max(1, int(x))) for k, x in exact.items()}
-    for k in sorted(sizes, key=lambda k: exact[k] - int(exact[k]), reverse=True):
-        if sum(counts.values()) >= total:
-            break
-        if counts[k] < sizes[k]:
-            counts[k] += 1
-    while sum(counts.values()) > total:  # the "at least one" floor overshot
-        k = max(counts, key=lambda k: counts[k] - exact[k])
-        counts[k] -= 1
-    return counts
-
-
-def sample_records(records: list[dict[str, Any]], limit: int, rng: random.Random) -> list[dict[str, Any]]:
-    """A seeded sample of `limit` records, in file order (docs/KAGGLE.md section 8).
-
-    Records are dataset-ordered, so the first N would cover only a few CLINC intents
-    and no out-of-scope utterance. Instead the limit is split across sources in
-    proportion to their size; within CLINC, out-of-scope utterances get their
-    proportional share (at least one) and the rest is dealt round-robin over the
-    intents in a seeded order, so the sample holds as many intents as it can;
-    other sources are sampled uniformly.
-    """
-    if limit >= len(records):
-        return records
-    by_source: dict[str, list[int]] = defaultdict(list)
-    for i, record in enumerate(records):
-        by_source[record["source"]].append(i)
-    chosen: list[int] = []
-    for source, count in _allocate({s: len(ix) for s, ix in by_source.items()}, limit).items():
-        indices = by_source[source]
-        intents: dict[str, list[int]] = defaultdict(list)
-        for i in indices:
-            intent = records[i]["meta"].get("gold_intent")
-            if intent is not None:
-                intents[intent].append(i)
-        if not intents:
-            chosen += rng.sample(indices, count)
-            continue
-        oos = intents.pop("oos", [])
-        n_oos = min(len(oos), max(1, round(count * len(oos) / len(indices)))) if oos else 0
-        chosen += rng.sample(oos, n_oos)
-        pools = {k: rng.sample(v, len(v)) for k, v in sorted(intents.items())}
-        order = sorted(pools)
-        rng.shuffle(order)
-        taken, depth = 0, 0
-        while taken < count - n_oos:
-            progressed = False
-            for intent in order:
-                if depth < len(pools[intent]) and taken < count - n_oos:
-                    chosen.append(pools[intent][depth])
-                    taken += 1
-                    progressed = True
-            if not progressed:
-                break
-            depth += 1
-    return [records[i] for i in sorted(chosen)]
 
 
 def request_of(record: dict[str, Any]) -> Request:
@@ -338,24 +276,6 @@ def plot_reliability(split: str, metrics: dict[str, Any], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=120, facecolor=SURFACE)
     plt.close(fig)
-
-
-def git_state(repo: Path = REPO) -> dict[str, Any]:
-    """Commit and whether tracked code or docs differ from it, ignoring runs/.
-
-    Called before any output is written: a run that overwrites the tracked files
-    of an earlier run (for example a B0 re-run) must not report itself dirty.
-    """
-
-    def run(*args: str) -> str | None:
-        try:
-            return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=True).stdout.strip()
-        except (OSError, subprocess.CalledProcessError):
-            return None
-
-    commit = run("rev-parse", "HEAD")
-    status = run("status", "--porcelain", "--untracked-files=no", "--", ".", ":(exclude)runs")
-    return {"commit": commit, "dirty": bool(status) if status is not None else None}
 
 
 def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:

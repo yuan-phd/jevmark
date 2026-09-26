@@ -1,6 +1,9 @@
 # Generated datasets, repo root only. Never a bare data/ pattern: it would
 # also match jevmark/data/, which holds source code and checked-in descriptions.
-/data/
+# /data/* rather than /data/ so that the one committed file in it can be re-included:
+# the fixed baseline evaluation subset (record ids only, task 1.8).
+/data/*
+!/data/baseline_subset.json
 # Raw Kaggle output as downloaded; the reviewed run files are copied to runs/ and committed from there.
 /data/kaggle_output/
 
@@ -9,6 +12,7 @@
 /runs/*/adapter/
 /runs/*_limit*/
 /runs/*/results.jsonl.gz
+/runs/*/replies.jsonl
 /runs/*/last/
 /runs/*_smoke/
 /runs/fast_*/

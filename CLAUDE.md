@@ -41,6 +41,9 @@ jevmark/
     systemone.py      public function systemone(state, questions)
     config.py         YAML config loading with key=value overrides
     metrics.py        accuracy, ECE, Brier, NLL, coverage curves
+    sampling.py       seeded stratified record samples (--limit, baseline subset)
+    provenance.py     git commit and dirty flag for metrics.json
+    baselines/        B1 and B2: shared prompt and parser, subset, metrics assembly
     data/
       clinc.py        CLINC150 -> choice and noul records
       sst5.py         SST-5 -> score records
@@ -61,6 +64,8 @@ jevmark/
     evaluate.py
     baseline_llm_json.py
     baseline_api.py
+    make_baseline_subset.py  writes data/baseline_subset.json once
+    compare_baselines.py     one table: jevmark runs and baselines on the subset
     serve.py          optional FastAPI wrapper
   notebooks/          thin Kaggle wrappers only: clone, install, run a script
   tests/
@@ -91,8 +96,8 @@ jevmark/
 ## Conventions
 
 - Type hints and dataclasses; no global mutable state.
-- Configs are YAML under configs/. Training scripts take `--config` plus optional `key=value` overrides. Evaluation and baseline scripts take `--ckpt` (a run directory, or `base`) and `--splits`, plus `--config` to choose the backbone when `--ckpt` is `base`; the run name is then `base_06b` or `base_17b`. Every run has a seed and a run_name.
-- `.gitignore`: `/data/`, `/runs/*/adapter/`, `/runs/*_limit*/` (smoke runs), `/runs/*/results.jsonl.gz` (per-question results), `/runs/*/last/` (resume state), `/runs/*_smoke/` (smoke training runs), `/runs/fast_*/` (fast cycle runs), weight files (`*.safetensors`, `*.bin`, `*.pt`), `.env`, caches. Never a bare `data/` pattern, which would also match `jevmark/data/`.
+- Configs are YAML under configs/. Training scripts take `--config` plus optional `key=value` overrides. Evaluation scripts take `--ckpt` (a run directory, or `base`) and `--splits`, plus `--config` to choose the backbone when `--ckpt` is `base`; the run name is then `base_06b` or `base_17b`. Baseline scripts take `--splits` and their model as arguments and run on the committed baseline subset (task 1.8). Every run has a seed and a run_name.
+- `.gitignore`: `/data/*` with the one exception `!/data/baseline_subset.json` (the committed baseline subset), `/runs/*/adapter/`, `/runs/*_limit*/` (smoke runs), `/runs/*/results.jsonl.gz` (per-question results), `/runs/*/replies.jsonl` (baseline replies), `/runs/*/last/` (resume state), `/runs/*_smoke/` (smoke training runs), `/runs/fast_*/` (fast cycle runs), weight files (`*.safetensors`, `*.bin`, `*.pt`), `.env`, caches. Never a bare `data/` pattern, which would also match `jevmark/data/`.
 - Git: commit on `main` at least once per task, with the task id at the start of the message (`task 1.2: encode.py`). Tag `v1`, `v2`, `v3` at the end of each phase. No branches for a solo project unless the human asks.
 - The tiny test model uses the real Qwen3 tokenizer, fetched once from the HF Hub at a pinned revision and cached. Do not vendor tokenizer files into the repo.
 - Data files are JSONL, one record per line. Record schema is documented in docs/DATA.md.

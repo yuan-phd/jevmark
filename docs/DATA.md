@@ -568,3 +568,8 @@ v1.3 result: no exact match in any pair. 8-gram overlap, the share of test recor
 ## 9. Metrics: gold-dependent headline, form nouls apart
 
 In every split's `metrics.json` block, `overall` and the per-type blocks (`noul`, `choice`, `score`), with their symmetry and order sensitivity, cover the gold-dependent questions only: the questions whose answer depends on a gold label, the capability the model is for. Form nouls are reported in their own `form` block, with the same metrics (accuracy and ECE with bootstrap intervals, Brier, NLL, reliability, coverage, yes rate, `by_kind`, `by_question_position`, symmetry, order sensitivity), so they never move a split's headline numbers (decision 44).
+
+## 10. Baseline subset
+
+`data/baseline_subset.json` is the one file under `data/` that is committed (a `.gitignore` exception). It holds, for every split, the ids of 500 records drawn with the fast-cycle sampler and the `--limit` seed (the records `evaluate.py --limit 500` evaluates), the ids of a 200-record sub-subset drawn from those, and the sha256 of each data file they came from (data v1.3, identical to the hashes in `runs/sft_06b/metrics.json`). The generative baselines run on it, and `scripts/compare_baselines.py` restricts every jevmark run to it (task 1.8, decision 47). `scripts/make_baseline_subset.py` wrote it once and refuses to overwrite it without `--force`.
+

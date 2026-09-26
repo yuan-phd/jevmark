@@ -38,7 +38,7 @@ def code_cells(name):
     return ["".join(c["source"]) for c in notebook["cells"] if c["cell_type"] == "code"]
 
 
-@pytest.mark.parametrize("name", ["kaggle_eval.ipynb", "kaggle_train.ipynb"])
+@pytest.mark.parametrize("name", ["kaggle_eval.ipynb", "kaggle_train.ipynb", "kaggle_baseline_b1.ipynb"])
 def test_notebook_token_is_never_printed_or_put_on_a_command_line(name):
     cells = code_cells(name)
     clone = cells[1]
@@ -79,7 +79,7 @@ def test_train_notebook_runs_one_size_smoke_first_then_train_evaluate_and_copy()
     assert "make data-build PY=python" in joined and "requirements-kaggle.txt" in joined
 
 
-@pytest.mark.parametrize("name", ["kaggle_eval.ipynb", "kaggle_train.ipynb"])
+@pytest.mark.parametrize("name", ["kaggle_eval.ipynb", "kaggle_train.ipynb", "kaggle_baseline_b1.ipynb"])
 def test_notebooks_uninstall_torchao_before_installing(name):
     install = next(c for c in code_cells(name) if "requirements-kaggle.txt" in c)
     assert install.index("pip uninstall -y -q torchao") < install.index("pip install -q -r requirements-kaggle.txt")
@@ -161,3 +161,18 @@ def test_train_notebook_skips_the_base_evaluation_when_eval_base_is_false():
     assert "if not FAST and EVAL_BASE:" in base and base.index("if not FAST and EVAL_BASE:") < base.index("evaluate.py")
     copy = next(c for c in cells if c.startswith("# Copy runs/"))
     assert '[f"sft_{SIZE}"] + ([f"base_{SIZE}"] if EVAL_BASE else [])' in copy
+
+
+def test_b1_notebook_runs_a_smoke_run_then_the_whole_subset_and_copies_runs():
+    cells = code_cells("kaggle_baseline_b1.ipynb")
+    params = cells[0]
+    for name in ("REPO", "COMMIT", "LIMIT", "BATCH_SIZE"):
+        assert re.search(rf"^{name} = ", params, re.M), name
+    joined = "\n".join(cells)
+    data = joined.index("make data-build PY=python")
+    smoke = joined.index("baseline_llm_json.py --device cuda --limit {LIMIT} --latency-requests 10 --batch-size {BATCH_SIZE}")
+    full = joined.index("baseline_llm_json.py --device cuda --batch-size {BATCH_SIZE}\n")
+    copy = joined.index('shutil.copytree(WORK / "runs", "/kaggle/working/runs"')
+    assert data < smoke < full < copy
+    assert joined.count("raise RuntimeError(") >= 3  # smoke and full runs fail the cell on a non-zero exit
+    assert 'WORK.glob("runs/b1_*")' in cells[1] and "requirements-kaggle.txt" in joined and "--no-deps" in joined

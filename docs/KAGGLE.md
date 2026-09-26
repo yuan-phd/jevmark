@@ -127,3 +127,16 @@ A new data version, or any change to the builders, goes through three steps in t
 3. Full session: the same notebook with `FAST = False` (section 7), only after the fast cycle looks sound on that commit.
 
 What to check in the fast run's printout and `metrics.json` before a full session: no split with accuracy at or below the frozen base's; noul `by_kind` without a kind near 50 percent where the others have moved; `by_question_position` without a large gap between first and later questions; `order_sensitivity` on test_indomain with a high prediction agreement; symmetry `mean_sum` near 1.
+
+## 9. Baseline B1: `notebooks/kaggle_baseline_b1.ipynb` (task 1.8)
+
+B1 is Qwen/Qwen3-1.7B, the instruct release, answering the baseline subset (`data/baseline_subset.json`: 500 records per split, all nine splits, committed) as generated JSON (decision 47). Token, secret, import and notebook settings are as in sections 1 to 3; one T4 is used. In the first code cell set `REPO`, `COMMIT`, `LIMIT` (default 5) and `BATCH_SIZE` (default 16), then run the cells top to bottom:
+
+1. Clone, install and data, as in the evaluation notebook; the clone cell deletes any committed `runs/b1_*`. `baseline_llm_json.py` checks every split's sha256 against the one stored in the subset file and stops if the build differs.
+2. Smoke run: `LIMIT` subset records per split and 10 latency requests into `runs/b1_qwen17b_json_limit<LIMIT>/` (gitignored); raises on a non-zero exit.
+3. Full run: the whole subset, greedy, at most 256 new tokens, into `runs/b1_qwen17b_json/`: `replies.jsonl` (one line per request, appended as it goes), `metrics.json`, `config.yaml`, `model_id.txt`. Then batch-1 latency on the first 200 records of `train.jsonl` (the requests `evaluate.py` times) and throughput at `BATCH_SIZE`. Raises on a non-zero exit.
+4. Copy `runs/` to `/kaggle/working/runs` and print commit, dirty flag, fp32 fallback, wall clock, truncation rate and latency.
+
+Expected time, not yet measured: about 1 to 1.5 hours (4500 requests of mostly short JSON replies, then 200 sequential batch-1 generations for latency). If a session ends early, add the partial `runs/b1_qwen17b_json/` back as a dataset, copy it into place and run the script with `--resume`: requests already in `replies.jsonl` are not generated again.
+
+Download `runs/b1_qwen17b_json/`. Commit `metrics.json`, `config.yaml` and `model_id.txt`; keep `replies.jsonl` outside git (it is gitignored) but keep a copy, because `scripts/compare_baselines.py` recomputes the table from it. B2 (`scripts/baseline_api.py`) runs locally, not on Kaggle.
