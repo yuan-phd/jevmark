@@ -1,7 +1,7 @@
 """RLCD: bandit training of the letter readout from the SFT adapter (docs/TASKS.md 2.2).
 
-    python scripts/train_rlcd.py --config configs/rlcd_06b.yaml --init runs/sft_06b arm=brier seed=0
-    python scripts/train_rlcd.py --config configs/rlcd_06b.yaml arm=brier seed=0 --resume
+    python scripts/train_rlcd.py --config configs/rlcd_06b.yaml --init runs/sft_06b arm=direct_brier seed=0
+    python scripts/train_rlcd.py --config configs/rlcd_06b.yaml arm=direct_brier seed=0 --resume
 
 The trainable LoRA starts as the SFT adapter of --init (a run directory holding
 adapter/); a second copy of the backbone with that adapter merged is the frozen
@@ -17,19 +17,26 @@ question (form nouls are excluded from sampling and from the loss, decision 44):
 
 and the arm decides the loss:
 
-- outcome, outcome_minus_p, brier, log (policy gradient): the reward R(a) is
-  r_a, r_a - p_a, 1 - (r_a - p_a)^2, or r_a log p_a + (1 - r_a) log(1 - p_a) with p
-  clipped to [1e-6, 1 - 1e-6]; rewards use p detached. The advantage is R(a) minus
-  the mean over the G samples of that question (divided by their standard deviation
-  when rlcd.normalize_std), the importance weight w = p(a) / q(a) clipped at
-  rlcd.importance_clip corrects for sampling from q, and the loss is
-  mean over samples of -A w log p(a), plus beta KL(p || p_ref) summed over options.
-- direct_bandit: no policy gradient; the loss is the mean over the same samples of
-  (r_a - p_a)^2 with p_a differentiable (the negative Brier score of the sampled
-  action), plus beta KL(p || p_ref).
+- outcome, outcome_minus_p (policy gradient): the reward R(a) is r_a or r_a - p_a,
+  with p detached. The advantage is R(a) minus the mean over the G samples of that
+  question (divided by their standard deviation when rlcd.normalize_std), the
+  importance weight w = p(a) / q(a) clipped at rlcd.importance_clip corrects for
+  sampling from q, and the loss is mean over samples of -A w log p(a), plus
+  beta KL(p || p_ref) summed over options.
+- direct_brier, direct_log (pathwise proper score): no policy gradient; the loss is
+  the mean over the same samples of the sampled action's score with p_a
+  differentiable, (r_a - p_a)^2 or -(r_a log p_a + (1 - r_a) log(1 - p_a)) with p
+  clipped to [1e-6, 1 - 1e-6], plus beta KL(p || p_ref).
 - sft_cont: the control for extra training: cross-entropy on the gold option of the
   same gold-dependent questions, same records, steps, learning rate and schedule, no
   sampling and no KL term.
+
+Known broken, kept only to reproduce the negative result runs/rlcd_06b_brier_s0
+(decision 52): brier and log, the same proper scores as detached REINFORCE rewards,
+R(a) = 1 - (r_a - p_a)^2 or r_a log p_a + (1 - r_a) log(1 - p_a). A wrong action a
+has p_a <= 1 - p_gold, so it never scores below the gold action: the policy gradient
+moves probability away from gold for K > 2 and carries no signal for K = 2. They run
+only with rlcd.reinforce_proper_score: true.
 
 The loss is the mean over the micro-batch's gold-dependent questions. Sampling uses
 its own torch generator, seeded from the config seed and saved with the resume state.
@@ -38,7 +45,7 @@ Validation every training.eval_every steps (and at step 0, the SFT adapter itsel
 logged as the reference) on the same seeded 1000-record subset of valid as
 train_sft.py, gold-dependent questions only: accuracy, ECE, NLL, Brier, mean
 KL(p || p_ref), the mean expected reward under p (sum over a of p_a R(a); the Brier
-reward for direct_bandit and sft_cont) and the mean expected probability of the
+reward for sft_cont, the arm's own score otherwise) and the mean expected probability of the
 chosen action (sum of p_a squared). The best adapter by validation NLL among the
 trained steps goes to adapter/, the final one to adapter_last/; the final full-valid
 pass reports both. Pre-flight memory check, stale-state guard, --max-hours and
@@ -93,8 +100,10 @@ from jevmark.training import (
 )
 
 REPO = Path(__file__).resolve().parents[1]
-PG_ARMS = ("outcome", "outcome_minus_p", "brier", "log")
-ARMS = (*PG_ARMS, "direct_bandit", "sft_cont")
+PG_ARMS = ("outcome", "outcome_minus_p")
+DIRECT_ARMS = ("direct_brier", "direct_log")
+ARMS = ("sft_cont", *PG_ARMS, *DIRECT_ARMS)
+REINFORCE_PROPER_ARMS = ("brier", "log")  # known broken (decision 52); only with rlcd.reinforce_proper_score
 RL_STALE_STATE = (*STALE_STATE, "adapter_last")
 P_CLIP = 1e-6
 
@@ -108,12 +117,12 @@ def reward(arm: str, r: torch.Tensor, p_a: torch.Tensor) -> torch.Tensor:
         return r
     if arm == "outcome_minus_p":
         return r - p_a
-    if arm in ("brier", "direct_bandit", "sft_cont"):
+    if arm in ("brier", "direct_brier", "sft_cont"):
         return 1.0 - (r - p_a) ** 2
-    if arm == "log":
+    if arm in ("log", "direct_log"):
         p = p_a.clamp(P_CLIP, 1.0 - P_CLIP)
         return r * torch.log(p) + (1.0 - r) * torch.log(1.0 - p)
-    raise ValueError(f"unknown arm {arm!r}; expected one of {ARMS}")
+    raise ValueError(f"unknown arm {arm!r}; expected one of {ARMS + REINFORCE_PROPER_ARMS}")
 
 
 def advantages(rewards: torch.Tensor, normalize_std: bool) -> torch.Tensor:
@@ -182,7 +191,10 @@ class Settings:
     def from_config(cls, config: dict[str, Any]) -> Settings:
         rl = config["rlcd"]
         arm = config["arm"]
-        if arm not in ARMS:
+        if arm in REINFORCE_PROPER_ARMS:
+            if not rl.get("reinforce_proper_score", False):
+                raise ValueError(f"arm {arm!r} is the REINFORCE proper-score arm, known broken (decision 52); use direct_{arm}, or set rlcd.reinforce_proper_score=true to reproduce the negative result")
+        elif arm not in ARMS:
             raise ValueError(f"arm {arm!r}: expected one of {ARMS}")
         return cls(arm, int(rl["group_size"]), float(rl["epsilon"]), bool(rl["importance_weight"]), float(rl["importance_clip"]), bool(rl["normalize_std"]), float(rl["beta"]))
 
@@ -199,11 +211,12 @@ def question_loss(z: torch.Tensor, z_ref: torch.Tensor, gold: int, s: Settings, 
     actions = torch.multinomial(q.cpu(), s.group_size, replacement=True, generator=generator).to(z.device)
     r = (actions == gold).float()
     p_a = p.detach()[actions]
-    if s.arm == "direct_bandit":
+    rewards = reward(s.arm, r, p_a)
+    if s.arm == "direct_brier":
         loss = ((r - p[actions]) ** 2).mean() + s.beta * kl
-        rewards = reward("brier", r, p_a)
+    elif s.arm == "direct_log":
+        loss = -reward("log", r, p[actions]).mean() + s.beta * kl
     else:
-        rewards = reward(s.arm, r, p_a)
         weight = importance_weights(p_a, q[actions], s.importance_clip) if s.importance_weight else torch.ones_like(p_a)
         loss = -(advantages(rewards, s.normalize_std) * weight * logp[actions]).mean() + s.beta * kl
     return loss, {"kl": float(kl.detach()), "reward": float(rewards.mean()), "p_chosen": float(p_a.mean())}
@@ -239,7 +252,6 @@ def validate(jev: JevMark, ref: JevMark, records: list[dict[str, Any]], batch_si
     was_training = jev.model.training
     jev.model.eval()
     results, kls, rewards, chosen = [], [], [], []
-    reward_arm = arm if arm in PG_ARMS else "brier"
     with torch.no_grad():
         for start in range(0, len(records), batch_size):
             chunk = records[start : start + batch_size]
@@ -255,7 +267,7 @@ def validate(jev: JevMark, ref: JevMark, records: list[dict[str, Any]], batch_si
                     p = logp.exp()
                     kls.append(float((p * (logp - F.log_softmax(z_ref.float(), dim=-1))).sum()))
                     outcomes = (torch.arange(len(p), device=p.device) == target).float()
-                    rewards.append(float((p * reward(reward_arm, outcomes, p)).sum()))
+                    rewards.append(float((p * reward(arm, outcomes, p)).sum()))
                     chosen.append(float((p * p).sum()))
                     probs = tuple(float(x) for x in p.double().cpu())
                     labels = question.labels if isinstance(question, ChoiceQuestion) else tuple(str(i) for i in range(len(probs)))
@@ -319,7 +331,7 @@ def resolve_run_name(config: dict[str, Any]) -> str:
 def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--config", required=True, help="RLCD config, for example configs/rlcd_06b.yaml")
-    parser.add_argument("overrides", nargs="*", help="key=value overrides, for example arm=log seed=1; with --resume, arm= and seed= (and run_name= if it was set) are still required to locate the run directory, and every other setting comes from the run's own config.yaml")
+    parser.add_argument("overrides", nargs="*", help="key=value overrides, for example arm=direct_log seed=1; with --resume, arm= and seed= (and run_name= if it was set) are still required to locate the run directory, and every other setting comes from the run's own config.yaml")
     parser.add_argument("--init", default=None, help="run directory holding the SFT adapter/ to start from; default rlcd.init from the config")
     parser.add_argument("--resume", action="store_true", help="continue from runs/<run_name>/last with the run's own config.yaml")
     parser.add_argument("--max-hours", type=float, default=8.0, help="save last/ and exit cleanly after this much wall clock (default 8.0)")

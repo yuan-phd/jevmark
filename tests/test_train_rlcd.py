@@ -53,6 +53,8 @@ def test_rewards_by_hand():
     torch.testing.assert_close(rl.reward("outcome_minus_p", r, p), t(0.2, -0.3, 0.8, -0.9))
     torch.testing.assert_close(rl.reward("brier", r, p), t(1 - 0.04, 1 - 0.09, 1 - 0.64, 1 - 0.81))
     torch.testing.assert_close(rl.reward("log", r, p), t(math.log(0.8), math.log(0.7), math.log(0.2), math.log(0.1)))
+    torch.testing.assert_close(rl.reward("direct_brier", r, p), rl.reward("brier", r, p))
+    torch.testing.assert_close(rl.reward("direct_log", r, p), rl.reward("log", r, p))
 
 
 def test_log_reward_clips_probabilities():
@@ -110,21 +112,60 @@ def test_policy_gradient_loss_by_hand():
 
 def test_kl_term_is_zero_at_the_reference_and_sft_cont_is_cross_entropy():
     z = torch.tensor([1.0, -0.5, 0.2, 0.0], requires_grad=True)
-    _, stats = rl.question_loss(z, z.detach().clone(), 2, settings("brier"), torch.Generator().manual_seed(0))
+    _, stats = rl.question_loss(z, z.detach().clone(), 2, settings("outcome"), torch.Generator().manual_seed(0))
     assert stats["kl"] == pytest.approx(0.0, abs=1e-7)
     loss, _ = rl.question_loss(z, z.detach() + 1.0, 2, settings("sft_cont"), torch.Generator().manual_seed(0))
     assert float(loss.detach()) == pytest.approx(float(-torch.log_softmax(z.detach(), -1)[2]))
 
 
-def test_direct_bandit_differentiates_the_score_of_the_sampled_action():
+def test_direct_brier_differentiates_the_score_of_the_sampled_action():
     z = torch.tensor([0.5, 0.0], requires_grad=True)
-    s = settings("direct_bandit", beta=0.0)
+    s = settings("direct_brier", beta=0.0)
     loss, _ = rl.question_loss(z, z.detach(), 0, s, torch.Generator().manual_seed(1))
     actions = torch.multinomial(rl.behaviour(torch.softmax(z.detach(), -1), 0.1), 4, replacement=True, generator=torch.Generator().manual_seed(1))
     p = torch.softmax(z.detach(), -1)
     assert float(loss.detach()) == pytest.approx(float((((actions == 0).float() - p[actions]) ** 2).mean()), abs=1e-6)
     loss.backward()
     assert torch.any(z.grad != 0)
+
+
+def forced_loss(arm, monkeypatch):
+    """question_loss on K 3, p = (0.6, 0.3, 0.1), gold 0, with the sampled actions forced to (0, 1, 2), beta 0."""
+    monkeypatch.setattr(rl.torch, "multinomial", lambda *args, **kwargs: torch.tensor([0, 1, 2]))
+    z = torch.tensor([0.6, 0.3, 0.1], dtype=torch.float64).log().requires_grad_(True)
+    loss, _ = rl.question_loss(z, z.detach().clone(), 0, settings(arm, group_size=3, beta=0.0), torch.Generator())
+    loss.backward()
+    return float(loss.detach()), z.grad
+
+
+def test_direct_log_by_hand_on_three_options(monkeypatch):
+    loss, grad = forced_loss("direct_log", monkeypatch)
+    # Loss: -(log p_0 + log(1 - p_1) + log(1 - p_2)) / 3 = -(log 0.6 + log 0.7 + log 0.9) / 3.
+    assert loss == pytest.approx(-(math.log(0.6) + math.log(0.7) + math.log(0.9)) / 3, abs=1e-6)
+    # dL/dz = -(1/3) [(e_0 - p) - p_1 / (1 - p_1) (e_1 - p) - p_2 / (1 - p_2) (e_2 - p)]
+    #       = -(1/3) [(0.4, -0.3, -0.1) + (0.257143, -0.3, 0.042857) + (0.066667, 0.033333, -0.1)]
+    torch.testing.assert_close(grad, torch.tensor([-0.241270, 0.188889, 0.052381], dtype=torch.float64), atol=1e-6, rtol=0)
+    assert grad[0] < 0 < grad[1] and grad[2] > 0  # descent raises gold and lowers both wrong options
+
+
+def test_reinforce_brier_lowers_gold_on_three_options(monkeypatch):
+    """Decision 52: as a detached REINFORCE reward, 1 - (r - p_a)^2 ranks the wrong actions above gold (0.84 < 0.91 < 0.99)."""
+    _, grad = forced_loss("brier", monkeypatch)
+    torch.testing.assert_close(grad, torch.tensor([0.02201, -0.00069, -0.02132], dtype=torch.float64), atol=1e-5, rtol=0)
+    assert grad[0] > 0  # descent lowers the gold logit
+    _, grad = forced_loss("outcome", monkeypatch)
+    assert grad[0] < 0
+
+
+def test_reinforce_proper_score_arms_need_the_flag():
+    config = load_config(REPO / "configs" / "rlcd_06b.yaml", ["arm=brier"])
+    assert config["rlcd"]["reinforce_proper_score"] is False
+    with pytest.raises(ValueError, match="known broken"):
+        rl.Settings.from_config(config)
+    for arm in rl.REINFORCE_PROPER_ARMS:
+        config = load_config(REPO / "configs" / "rlcd_06b.yaml", [f"arm={arm}", "rlcd.reinforce_proper_score=true"])
+        assert rl.Settings.from_config(config).arm == arm
+    assert set(rl.ARMS) == {"sft_cont", "outcome", "outcome_minus_p", "direct_brier", "direct_log"}
 
 
 # The tiny model end to end
@@ -180,9 +221,9 @@ def adapter_tensors(path):
     return load_file(str(path / "adapter_model.safetensors"))
 
 
-@pytest.mark.parametrize("arm", rl.ARMS)
+@pytest.mark.parametrize("arm", [*rl.ARMS, "brier"])
 def test_ten_steps_of_every_arm_complete_on_cpu(setup, tmp_path, arm):
-    run_training(setup, tmp_path, f"arm={arm}")
+    run_training(setup, tmp_path, f"arm={arm}", *(["rlcd.reinforce_proper_score=true"] if arm in rl.REINFORCE_PROPER_ARMS else []))
     run_dir = tmp_path / f"rlcd_06b_{arm}_s0"
     summary = json.loads((run_dir / "train_summary.json").read_text())
     assert summary["steps"] == summary["total_steps"] == 10 and summary["arm"] == arm
@@ -219,7 +260,7 @@ def test_form_nouls_are_never_sampled_or_trained(setup, monkeypatch):
 
     monkeypatch.setattr(rl, "question_loss", spy)
     batch = with_form[:2]
-    rl.batch_loss(jev, jev, batch, settings("brier"), torch.Generator().manual_seed(0))
+    rl.batch_loss(jev, jev, batch, settings("direct_brier"), torch.Generator().manual_seed(0))
     assert len(seen) == sum(sum(e.gold_dependent) for e in batch) < sum(len(e.targets) for e in batch)
     record = next(r for r in train_records if any(q in FORM_KINDS for q in r["questions"]))
     mask = rl.gold_dependent_mask(record)
@@ -228,19 +269,19 @@ def test_form_nouls_are_never_sampled_or_trained(setup, monkeypatch):
 
 def test_resume_matches_an_uninterrupted_run(setup, tmp_path):
     uninterrupted = tmp_path / "a"
-    run_training(setup, uninterrupted, "arm=log")
+    run_training(setup, uninterrupted, "arm=direct_log")
     resumed = tmp_path / "b"
-    run_training(setup, resumed, "arm=log", "--limit-steps", "5")
-    run_dir = resumed / "rlcd_06b_log_s0"
-    run_training(setup, resumed, "arm=log", "--resume")
+    run_training(setup, resumed, "arm=direct_log", "--limit-steps", "5")
+    run_dir = resumed / "rlcd_06b_direct_log_s0"
+    run_training(setup, resumed, "arm=direct_log", "--resume")
     log = log_of(run_dir)
     assert [e["step"] for e in log if "loss" in e] == list(range(1, 11))
     assert any(e.get("event") == "resume" and e["step"] == 5 for e in log)
-    a = adapter_tensors(uninterrupted / "rlcd_06b_log_s0" / "adapter_last")
+    a = adapter_tensors(uninterrupted / "rlcd_06b_direct_log_s0" / "adapter_last")
     b = adapter_tensors(run_dir / "adapter_last")
     for key in a:
         torch.testing.assert_close(a[key], b[key], atol=1e-6, rtol=1e-5)
-    rewards_a = [e["reward"] for e in log_of(uninterrupted / "rlcd_06b_log_s0") if "loss" in e]
+    rewards_a = [e["reward"] for e in log_of(uninterrupted / "rlcd_06b_direct_log_s0") if "loss" in e]
     rewards_b = [e["reward"] for e in log if "loss" in e]
     assert rewards_a == pytest.approx(rewards_b)  # the same actions were sampled after the resume
 
@@ -260,8 +301,8 @@ def test_a_second_fresh_start_is_refused_and_a_changed_init_adapter_is_caught(se
 
 
 def test_run_name_and_overrides():
-    config = load_config(REPO / "configs" / "rlcd_17b.yaml", ["arm=direct_bandit", "seed=2"])
-    assert rl.resolve_run_name(config) == "rlcd_17b_direct_bandit_s2"
+    config = load_config(REPO / "configs" / "rlcd_17b.yaml", ["arm=direct_log", "seed=2"])
+    assert rl.resolve_run_name(config) == "rlcd_17b_direct_log_s2"
     assert config["training"]["gradient_checkpointing"] is True and config["training"]["steps"] == 500
     config6 = load_config(REPO / "configs" / "rlcd_06b.yaml")
     assert config6["training"]["lr"] == 5e-5 and config6["training"]["warmup_steps"] == 20 and config6["rlcd"]["beta"] == 0.02

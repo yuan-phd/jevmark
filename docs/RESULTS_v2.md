@@ -35,3 +35,24 @@ On `train`, which the models were fitted to, the global T makes ECE worse (.009 
 **Coverage.** A temperature above 1 lowers every confidence, so a threshold keeps fewer answers, each more accurate (`<run>:splits.<split>.<type>.coverage`, response confidence field). On test_indomain noul at threshold 0.95, sft_06b keeps 81.5 percent at .987 and sft_06b plus T keeps 76.1 percent at .993; on test_unseen_intents choice at 0.9, 78.3 percent at .954 against 69.9 percent at .974; on test_emotion choice at 0.9, 26.8 percent at .791 against 12.4 percent at .863 (1.7B: 29.5 percent at .786 against 14.6 percent at .884). Scaling trades coverage for accuracy at a fixed threshold; it moves the threshold at which a given accuracy is reached, and adds no information about which answers are right.
 
 **What a global temperature fixes, and what it does not.** Fitted on in-domain `valid` alone, one number brings in-domain ECE to .003 to .005 and SST-5 to .012 to .020, equal or close to the per-split oracle there, and it removes 11 to 45 percent of the ECE on unseen intents and unseen schemas (about a fifth on most; AG News .164 to .146, emotion .207 to .166, Yelp .218 to .169 at 1.7B), because the SFT models are overconfident everywhere and a temperature above 1 points the right way. It does not fix the unseen schemas: the temperatures they need range from 1.36 to 2.88, up to 2.2 times the 1.27 and 1.32 fitted on `valid`, and differ per schema, so no single number serves them all; even the oracle leaves Yelp at .10 to .12, a miscalibration in the shape of the distribution over an ordinal scale that no temperature can remove; and on emotion and Yelp at both sizes, and on AG News at 0.6B, the SFT model with the global T (.137 to .175) is still less calibrated than the frozen base it started from (.037 to .090, `runs/base_*/metrics.json`), with AG News at 1.7B level (.097 against .094). The gap RLCD has to close is therefore specific: calibration on schemas the model was not trained on, without knowing the schema's temperature, at in-domain accuracy. Concretely, an RLCD arm has to bring unseen-schema ECE below what SFT plus the global T reaches (.146, .166, .037 and .137 at 0.6B; .097, .175, .058 and .169 at 1.7B), towards the oracle, while keeping in-domain ECE near .005 and accuracy at the SFT level.
+
+## 2. RLCD (in progress)
+
+**Negative result: a proper score as a REINFORCE reward.** The first RLCD run used the Brier score of the sampled action, 1 - (r_a - p_a)^2 with p detached, as a policy-gradient reward with a group-mean baseline (0.6B, seed 0, 500 steps from `runs/sft_06b`). It degraded the model instead of calibrating it (`runs/sft_06b/metrics.json` against `runs/rlcd_06b_brier_s0/metrics.json`, key `splits.<split>.overall.accuracy` and `.ece`, `.score.accuracy` for score; the evaluated adapter is the best by validation NLL, step 100):
+
+| split | sft_06b acc / ECE | rlcd_06b_brier_s0 acc / ECE |
+|---|---|---|
+| valid | .916 / .020 | .844 / .054 |
+| test_indomain | .956 / .013 | .948 / .025 |
+| test_sst5 | .773 / .030 | .480 / .178 |
+| test_unseen_intents | .892 / .068 | .901 / .062 |
+| test_agnews | .788 / .164 | .777 / .078 |
+| test_emotion | .628 / .207 | .583 / .150 |
+| test_banking77 | .851 / .067 | .864 / .038 |
+| test_yelp | .505 / .169 | .044 / .287 |
+
+Score questions collapsed (score accuracy .636 to .111 on test_sst5, .505 to .044 on test_yelp). The lower ECE on AG News, emotion and Banking77 comes with a model that has moved away from its training signal, so it is not evidence for RLCD. Over training, validation NLL rose from .219 at step 0 to .872 at step 500 with KL to the SFT policy at .46, while the mean training reward stayed at about .95 (`runs/rlcd_06b_brier_s0/training_log.jsonl`, `train_summary.json`).
+
+**Why.** A sampled wrong action a has p_a at most 1 - p_gold, so its Brier reward 1 - p_a^2 is never below the gold reward 1 - (1 - p_gold)^2; the log score behaves the same way. The group-mean advantage therefore pushes probability away from gold whenever K > 2 and is exactly zero for K = 2 (every noul). A proper score grades a stated probability; as the reward for an action it measures whether p_a forecast r_a well, which a rarely chosen wrong option always did. Decision 52 records the proof, a CPU simulation of the sampler on the SFT model's train probabilities, and a sign check of the code, which was correct.
+
+**Corrected design** (decision 52). The arms are `sft_cont` (control), `outcome` and `outcome_minus_p` (REINFORCE), and `direct_brier` and `direct_log`, which minimise the sampled action's Brier or log score with p_a differentiable, so the update is a gradient of a proper score of p itself. The REINFORCE `brier` and `log` arms remain in the code behind `rlcd.reinforce_proper_score: true`, off by default, only to reproduce this result. Stage 1 runs the five arms on 0.6B with seed 0 (docs/KAGGLE.md section 10); results follow here.

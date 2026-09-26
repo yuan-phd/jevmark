@@ -184,18 +184,19 @@ The training cell then prints `TRAINING FAIL` (fewer steps than planned) and rai
 
 The resumed run continues at the saved step with the same data order and the same sampled actions as an uninterrupted run (`tests/test_train_rlcd.py::test_resume_matches_an_uninterrupted_run`).
 
-### Stage 1 plan: six arms on 0.6B, seed 0
+### Stage 1 plan: five arms on 0.6B, seed 0
 
 | Session | ARM | Question it answers |
 |---|---|---|
 | 1 | `sft_cont` | the control: is any change just more training on the same records? |
 | 2 | `outcome` | plain REINFORCE with the outcome reward |
 | 3 | `outcome_minus_p` | a reward that penalises confidence on wrong answers |
-| 4 | `brier` | a proper scoring rule, bounded |
-| 5 | `log` | a proper scoring rule, unbounded |
-| 6 | `direct_bandit` | the same proper score minimised directly, no policy gradient |
+| 4 | `direct_brier` | a proper scoring rule, bounded, differentiated through p of the sampled action |
+| 5 | `direct_log` | a proper scoring rule, unbounded, differentiated through p of the sampled action |
 
-Every session uses `SIZE = "06b"` and `SEED = 0`, and the same `COMMIT`. Compare each arm with `runs/sft_06b` and `runs/sft_06b_temp` on unseen-schema ECE (docs/RESULTS_v2.md section 1 states the target); the best arms then get seeds 1 and 2, and the best two and `sft_cont` repeat on 1.7B (task 2.3).
+Every session uses `SIZE = "06b"` and `SEED = 0`, and the same `COMMIT`.
+
+The REINFORCE arms `brier` and `log` are known broken (decision 52): used as a detached reward on the sampled action, a proper score never ranks a wrong action below gold, so the policy gradient lowers gold for K > 2 and is zero for K = 2. Their one run, `runs/rlcd_06b_brier_s0`, is committed as the negative result. The notebook does not offer them; to reproduce that run, set `ARM = "brier"`, drop the notebook's `ARM` assertion and add `rlcd.reinforce_proper_score=true` to both training commands. Compare each arm with `runs/sft_06b` and `runs/sft_06b_temp` on unseen-schema ECE (docs/RESULTS_v2.md section 1 states the target); the best arms then get seeds 1 and 2, and the best two and `sft_cont` repeat on 1.7B (task 2.3).
 
 ### Time estimates (to be measured on the first session)
 
@@ -206,4 +207,4 @@ Scaled from SFT on data v1.3: 0.6B SFT took 70.5 minutes for 1378 steps (about 3
 | 0.6B | 35 to 45 min | 45 min (measured for sft_06b) | about 1.7 h |
 | 1.7B | 90 to 110 min | 99 min (measured for sft_17b) | about 3.7 h |
 
-Stage 1 is therefore about 10 GPU hours for six sessions, a third of the weekly quota; two sessions can run in parallel. The pre-flight line in the smoke run shows peak memory for policy plus reference within a minute; at 1.7B the reference adds about 3.4 GB to the SFT peak of 4.02 GiB. Replace these estimates with the measured times after the first session.
+Measured on the first session (`runs/rlcd_06b_brier_s0/train_summary.json`): the 0.6B training script took 46.3 minutes, validations and both full-valid passes included. Stage 1 is therefore about 8.5 GPU hours for five sessions, a third of the weekly quota; two sessions can run in parallel. The pre-flight line in the smoke run shows peak memory for policy plus reference within a minute; at 1.7B the reference adds about 3.4 GB to the SFT peak of 4.02 GiB. Replace these estimates with the measured times after the first session.

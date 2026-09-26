@@ -1,10 +1,10 @@
 # RLCD from the SFT adapter on Qwen/Qwen3-0.6B-Base (task 2.2, scripts/train_rlcd.py).
-# Choose the arm and seed with overrides, for example: arm=log seed=1.
+# Choose the arm and seed with overrides, for example: arm=direct_log seed=1.
 # run_name null means rlcd_<size>_<arm>_s<seed>.
 
 run_name: null
 size: 06b
-arm: brier                  # outcome | outcome_minus_p | brier | log | direct_bandit | sft_cont
+arm: direct_brier           # sft_cont | outcome | outcome_minus_p | direct_brier | direct_log
 seed: 0
 
 backbone:
@@ -58,3 +58,6 @@ rlcd:
   importance_clip: 5.0
   normalize_std: false    # divide the advantage by the group's standard deviation
   beta: 0.02              # KL(p || p_ref) weight; p_ref is the frozen SFT policy
+  # Known broken (decision 52): true allows arm=brier or arm=log, the proper scores as detached
+  # REINFORCE rewards, only to reproduce the negative result runs/rlcd_06b_brier_s0.
+  reinforce_proper_score: false
