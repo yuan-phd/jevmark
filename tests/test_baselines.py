@@ -11,6 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 import torch
+import yaml
 
 from jevmark.baselines.prompt import ParsedAnswer, build_prompt, json_schema, parse_reply
 from jevmark.baselines.results import BaselineAnswer, answers_for_record, baseline_split_metrics, read_replies
@@ -476,6 +477,10 @@ def test_b2_run_records_tokens_cost_latency_and_metrics(baseline_data, tmp_path)
     assert all(b["temperature"] == 0.0 for b in client.bodies)
     assert metrics["splits"]["test_indomain"]["choice"]["parse_failure_rate"] == 0.0
     assert metrics["splits"]["test_indomain"]["choice"]["n_with_confidence"] == 4
+    assert row["retries"] == 0 and row["retry_errors"] == []
+    latency = metrics["latency"]
+    assert latency["first_attempt"]["n"] == 8 and latency["retried_requests"] == 0 and latency["timeout_s"] == 60.0
+    assert latency["first_attempt"]["median_ms"] <= latency["first_attempt"]["p95_ms"]
 
 
 def test_b2_stops_at_the_spend_cap_and_resumes(baseline_data, tmp_path):
@@ -486,8 +491,9 @@ def test_b2_stops_at_the_spend_cap_and_resumes(baseline_data, tmp_path):
     cap = 2 * each  # two requests fit; before a third, the spend plus its worst case is over the cap
     assert b2.main(b2_argv(baseline_data, tmp_path, "--max-usd", str(cap)), create=first.create) == 2
     run = tmp_path / "b2_gpt-4.1-mini"
-    metrics = json.loads((run / "metrics.json").read_text())
+    metrics = json.loads((run / "metrics_partial.json").read_text())
     assert len(first.bodies) == 2 and metrics["complete"] is False and metrics["spend"]["stopped_by_cap"] is True
+    assert not (run / "metrics.json").exists()  # metrics.json only for a complete run
     assert b2.main(b2_argv(baseline_data, tmp_path), create=FakeClient().create) == 1  # no overwrite without --resume
     assert b2.main(b2_argv(baseline_data, tmp_path, "--resume", "--sub"), create=FakeClient().create) == 1  # other settings
     second = FakeClient()
@@ -496,10 +502,20 @@ def test_b2_stops_at_the_spend_cap_and_resumes(baseline_data, tmp_path):
     assert json.loads((run / "metrics.json").read_text())["complete"] is True
 
 
-def test_b2_retries_transient_errors_and_stops_on_others(baseline_data, tmp_path):
-    flaky = FakeClient(fail_first=2)
-    assert b2.main(b2_argv(baseline_data, tmp_path / "a", "--retries", "3"), create=flaky.create) == 0
-    assert len(flaky.bodies) == 8
+def test_b2_retries_transient_errors_records_them_and_stops_on_others(baseline_data, tmp_path):
+    flaky = FakeClient(fail_first=2, error_name="APITimeoutError")
+    waits = []
+    assert b2.main(b2_argv(baseline_data, tmp_path / "a"), create=flaky.create, sleep=waits.append) == 0
+    assert len(flaky.bodies) == 8 and waits == [2, 4]
+    run = tmp_path / "a" / "b2_gpt-4.1-mini"
+    rows = list(read_replies(run / "replies.jsonl").values())
+    assert [r["retries"] for r in rows] == [2] + [0] * 7 and rows[0]["retry_errors"] == ["APITimeoutError", "APITimeoutError"]
+    latency = json.loads((run / "metrics.json").read_text())["latency"]
+    assert latency["first_attempt"]["n"] == 7 and latency["retried_requests"] == 1 and latency["retries_total"] == 2
+    assert latency["retry_errors"] == {"APITimeoutError": 2}
+    hopeless = FakeClient(fail_first=100)
+    assert b2.main(b2_argv(baseline_data, tmp_path / "c"), create=hopeless.create, sleep=lambda s: None) == 1  # three retries, then stop
+    assert hopeless.fail_first == 100 - 4
     broken = FakeClient(fail_first=100, error_name="BadRequestError")
     assert b2.main(b2_argv(baseline_data, tmp_path / "b"), create=broken.create) == 1
     assert not read_replies(tmp_path / "b" / "b2_gpt-4.1-mini" / "replies.jsonl")
@@ -585,3 +601,70 @@ def test_every_noul_of_every_subset_record_renders_both_options():
                     options = [line for line in block.splitlines() if line.startswith("- ")]
                     assert options == [f"- true: {question.true_description or 'yes'}", f"- false: {question.false_description or 'no'}"], (rec["id"], question.id)
     assert nouls > 4000
+
+
+def test_b2_latency_counts_old_rows_slower_than_the_timeout_as_retried():
+    rows = [{"latency_s": 0.5}, {"latency_s": 0.7}, {"latency_s": 601.8}, {"latency_s": 0.6, "retries": 0}, {"latency_s": 9.0, "retries": 1, "retry_errors": ["RateLimitError"]}]
+    latency = b2.latency_summary(rows, 60.0)
+    assert latency["first_attempt"]["n"] == 3 and latency["first_attempt"]["median_ms"] == pytest.approx(600.0)
+    assert latency["retried_requests"] == 2 and latency["retries_total"] == 1
+    assert latency["rows_without_retry_count"] == 3 and latency["rows_without_retry_count_over_timeout"] == 1
+
+
+def test_b2_client_has_a_60_second_timeout_and_no_retries_of_its_own(baseline_data, tmp_path, monkeypatch):
+    made = []
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            made.append(kwargs)
+            self.chat = SimpleNamespace(completions=SimpleNamespace(create=FakeClient().create))
+
+    monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(OpenAI=FakeOpenAI))
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
+    assert b2.main(b2_argv(baseline_data, tmp_path)) == 0
+    assert made == [{"timeout": 60.0, "max_retries": 0}]
+
+
+def test_b2_resume_widens_a_sub_run_and_keeps_its_metrics(baseline_data, tmp_path):
+    sub = FakeClient()
+    assert b2.main(b2_argv(baseline_data, tmp_path, "--sub"), create=sub.create) == 0
+    run = tmp_path / "b2_gpt-4.1-mini"
+    sub_metrics = (run / "metrics.json").read_text()
+    assert len(sub.bodies) == 4 and json.loads(sub_metrics)["subset"]["records"].startswith("sub_splits")
+    full = FakeClient()
+    assert b2.main(b2_argv(baseline_data, tmp_path, "--resume"), create=full.create) == 0
+    subset = load_subset(baseline_data[0] / "subset.json")
+    sent = {b["messages"][0]["content"] for b in full.bodies}
+    sub_prompts = {b["messages"][0]["content"] for b in sub.bodies}
+    assert len(full.bodies) == 4 and not sent & sub_prompts  # only the records the sub run did not have
+    assert (run / "metrics_sub200.json").read_text() == sub_metrics
+    metrics = json.loads((run / "metrics.json").read_text())
+    assert metrics["complete"] and metrics["n_requests"] == 8 and metrics["subset"]["records"].startswith("splits")
+    assert yaml.safe_load((run / "config.yaml").read_text())["sub"] is False
+    assert len(subset["sub_splits"]["test_indomain"]) == 2
+
+
+def test_b2_widening_that_stops_early_leaves_the_sub_metrics_in_place(baseline_data, tmp_path):
+    assert b2.main(b2_argv(baseline_data, tmp_path, "--sub"), create=FakeClient().create) == 0
+    run = tmp_path / "b2_gpt-4.1-mini"
+    sub_metrics = (run / "metrics.json").read_text()
+    broken = FakeClient(fail_first=100, error_name="BadRequestError")
+    assert b2.main(b2_argv(baseline_data, tmp_path, "--resume"), create=broken.create) == 1
+    assert (run / "metrics.json").read_text() == sub_metrics  # the full run's metrics.json waits for every reply
+    assert json.loads((run / "metrics_partial.json").read_text())["n_requests"] == 4
+    assert (run / "metrics_sub200.json").read_text() == sub_metrics
+    finish = FakeClient()
+    assert b2.main(b2_argv(baseline_data, tmp_path, "--resume"), create=finish.create) == 0  # now an ordinary full resume
+    assert len(finish.bodies) == 4 and json.loads((run / "metrics.json").read_text())["complete"]
+    assert (run / "metrics_sub200.json").read_text() == sub_metrics  # never overwritten
+
+
+@pytest.mark.parametrize("extra", [["--temperature", "0.5"], ["--max-completion-tokens", "512"], ["--model", "gpt-other", "--run-name", "b2_gpt-4.1-mini"]])
+def test_b2_resume_refuses_any_other_config_difference(baseline_data, tmp_path, extra):
+    assert b2.main(b2_argv(baseline_data, tmp_path, "--sub"), create=FakeClient().create) == 0
+    assert b2.main(b2_argv(baseline_data, tmp_path, "--resume", *extra), create=FakeClient().create) == 1
+
+
+def test_b2_resume_never_narrows_a_full_run_to_the_sub_subset(baseline_data, tmp_path):
+    assert b2.main(b2_argv(baseline_data, tmp_path), create=FakeClient().create) == 0
+    assert b2.main(b2_argv(baseline_data, tmp_path, "--resume", "--sub"), create=FakeClient().create) == 1

@@ -17,13 +17,28 @@ Temperature is 0 (--temperature none leaves it to the API, for models that rejec
 it). Every reply is appended to runs/b2_<model>/replies.jsonl as it arrives (reply,
 the model snapshot the API reports, the UTC time of the request, tokens, cost,
 latency, finish reason; gitignored), so an interrupted run continues
-where it stopped when started again with --resume. --max-usd (default 20) is a
-hard cap: before each request the spend so far plus a worst case for that request
-(prompt characters / 2 input tokens, --max-completion-tokens output tokens) must
-stay within it, else the run stops, writes metrics for what it has and exits with
-code 2. Transient API errors are retried with backoff; an error that persists, or a
-rejected request, stops the run with code 1 and nothing recorded for that request.
-Requests are sent one at a time, so latency is the wall clock of one call.
+where it stopped when started again with --resume. A --resume whose saved config
+differs only in the sub flag, a finished or partial --sub run resumed without
+--sub, widens that run to the full subset: the sub-subset is contained in the
+subset and the request bodies are identical, so its replies are reused and only
+the other records are sent. The sub run's metrics.json is first copied to
+metrics_sub200.json. Any other config difference is refused.
+
+metrics.json is written only when every expected reply exists; an incomplete run
+(stopped by the cap or by an error) writes metrics_partial.json instead, so a
+complete run's metrics are never replaced by a partial one. --max-usd (default 20)
+is a hard cap: before each request the spend so far plus a worst case for that
+request (prompt characters / 2 input tokens, --max-completion-tokens output tokens)
+must stay within it, else the run stops and exits with code 2.
+
+The client has a --timeout of 60 seconds per attempt and no retries of its own;
+the script retries transient errors (rate limit, connection, timeout, server
+error) up to --retries 3 times with backoff 2, 4, 8 seconds and records per request
+how many retries it took and which errors. An error that persists, or a rejected
+request, stops the run with code 1 and nothing recorded for that request. Requests
+are sent one at a time. Latency is the wall clock of the attempt that succeeded;
+metrics.json reports its median and p95 over requests answered at the first
+attempt, and states the retried requests separately.
 
 --dry-run prints three of the prompts with their schemas and the size of the run,
 and needs neither the key nor the openai package.
@@ -36,6 +51,8 @@ import datetime
 import json
 import os
 import re
+import shutil
+import statistics
 import sys
 import time
 from collections import Counter
@@ -43,13 +60,13 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import yaml
 
 from jevmark.baselines.prompt import build_prompt, json_schema
 from jevmark.baselines.results import CONFIDENCE_NOTE, answers_from_replies, append_reply, baseline_reports_by_split, read_replies, request_of
-from jevmark.baselines.subset import SUBSET_PATH, load_subset, subset_records
+from jevmark.baselines.subset import SUB_PER_SPLIT, SUBSET_PATH, load_subset, subset_records
 from jevmark.data.build import SPLITS
-from jevmark.metrics import timing_summary
 from jevmark.provenance import git_state
 
 REPO = Path(__file__).resolve().parents[1]
@@ -93,26 +110,67 @@ def cost_usd(input_tokens: int, cached_tokens: int, output_tokens: int, price_in
     return ((input_tokens - cached_tokens) * price_input + cached_tokens * price_cached_input + output_tokens * price_output) / 1e6
 
 
-def call_with_retries(create: Callable[..., Any], body: dict[str, Any], retries: int, sleep: Callable[[float], None] = time.sleep) -> tuple[Any, float]:
-    """The response and the wall clock of the attempt that succeeded; transient errors are retried with backoff 2, 4, 8 ... seconds."""
+def call_with_retries(
+    create: Callable[..., Any], body: dict[str, Any], retries: int, sleep: Callable[[float], None] = time.sleep
+) -> tuple[Any, float, list[str]]:
+    """The response, the wall clock of the attempt that succeeded, and the error names of the attempts that failed before it.
+
+    Transient errors are retried up to `retries` times with backoff 2, 4, 8 ... seconds.
+    """
+    errors: list[str] = []
     for attempt in range(retries + 1):
         start = time.perf_counter()
         try:
             response = create(**body)
-            return response, time.perf_counter() - start
+            return response, time.perf_counter() - start, errors
         except Exception as error:  # noqa: BLE001 - the openai error classes are matched by name so tests need no openai
             if type(error).__name__ not in RETRYABLE or attempt == retries:
                 raise
+            errors.append(type(error).__name__)
             log(f"  {type(error).__name__}, retry {attempt + 1} of {retries}")
             sleep(2 ** (attempt + 1))
     raise AssertionError("unreachable")
+
+
+def latency_summary(rows: Sequence[dict[str, Any]], timeout_s: float) -> dict[str, Any] | None:
+    """Median and p95 over requests answered at the first attempt; retried requests are counted apart.
+
+    Rows written before retries were recorded carry no "retries" field; those are
+    counted as retried when their latency exceeds the per-attempt timeout (the
+    client then retried on its own), and their number is stated.
+    """
+    if not rows:
+        return None
+
+    def retried(row: dict[str, Any]) -> bool:
+        return row["retries"] > 0 if "retries" in row else row["latency_s"] > timeout_s
+
+    first = sorted(r["latency_s"] for r in rows if not retried(r))
+    legacy = [r for r in rows if "retries" not in r]
+    return {
+        "first_attempt": {
+            "n": len(first),
+            "median_ms": 1000 * statistics.median(first) if first else None,
+            "p95_ms": 1000 * float(np.percentile(first, 95)) if first else None,
+            "mean_ms": 1000 * statistics.fmean(first) if first else None,
+        },
+        "retried_requests": sum(retried(r) for r in rows),
+        "retries_total": sum(r.get("retries", 0) for r in rows),
+        "retry_errors": dict(sorted(Counter(e for r in rows for e in r.get("retry_errors", [])).items())),
+        "rows_without_retry_count": len(legacy),
+        "rows_without_retry_count_over_timeout": sum(r["latency_s"] > timeout_s for r in legacy),
+        "timeout_s": timeout_s,
+        "note": "one call at a time, wall clock of the successful attempt, from the caller's network; rows recorded before retries were counted are treated as retried when slower than the timeout",
+    }
 
 
 def utc_now() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
 
 
-def reply_row(split: str, record_id: str, response: Any, latency_s: float, prices: tuple[float, float, float], requested_at: str) -> dict[str, Any]:
+def reply_row(
+    split: str, record_id: str, response: Any, latency_s: float, prices: tuple[float, float, float], requested_at: str, retry_errors: Sequence[str] = ()
+) -> dict[str, Any]:
     choice = response.choices[0]
     usage = response.usage
     details = getattr(usage, "prompt_tokens_details", None)
@@ -133,6 +191,8 @@ def reply_row(split: str, record_id: str, response: Any, latency_s: float, price
         "cost_usd": cost_usd(usage.prompt_tokens, cached, usage.completion_tokens, *prices),
         "prices_usd_per_million_tokens": dict(zip(("input", "cached_input", "output"), prices)),
         "latency_s": latency_s,
+        "retries": len(retry_errors),
+        "retry_errors": list(retry_errors),
     }
 
 
@@ -151,7 +211,8 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--subset", default=str(SUBSET_PATH))
     parser.add_argument("--temperature", default="0", help="sampling temperature, or 'none' to leave it to the API (models that reject it)")
     parser.add_argument("--max-completion-tokens", type=int, default=1024)
-    parser.add_argument("--retries", type=int, default=4)
+    parser.add_argument("--retries", type=int, default=3, help="retries of a transient error per request, with backoff 2, 4, 8 seconds")
+    parser.add_argument("--timeout", type=float, default=60.0, help="seconds per attempt; the client itself does not retry")
     parser.add_argument("--run-name", default=None, help="default b2_<model>")
     parser.add_argument("--resume", action="store_true", help="continue a run whose replies.jsonl exists; otherwise such a run is never overwritten")
     parser.add_argument("--dry-run", action="store_true", help="print three prompts and the size of the run; no API call")
@@ -196,9 +257,15 @@ def run(args: argparse.Namespace, records_by_split: dict[str, list[dict[str, Any
             log(f"{replies_path} exists; pass --resume to continue that run, or delete the directory")
             return 1
         previous = yaml.safe_load((out_dir / "config.yaml").read_text())
-        if previous != setting:
+        widening = previous.get("sub") is True and not args.sub and {**previous, "sub": False} == setting
+        if previous != setting and not widening:
             log(f"--resume with different settings: {previous} against {setting}")
             return 1
+        if widening:
+            sub_metrics = out_dir / f"metrics_sub{SUB_PER_SPLIT}.json"
+            if (out_dir / "metrics.json").is_file() and not sub_metrics.exists():
+                shutil.copyfile(out_dir / "metrics.json", sub_metrics)
+            log(f"widening a --sub run to the full subset: its replies are reused; its metrics are kept in {sub_metrics.name}")
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "config.yaml").write_text(yaml.safe_dump(setting, sort_keys=False))
     (out_dir / "model_id.txt").write_text(args.model + "\n")
@@ -216,8 +283,8 @@ def run(args: argparse.Namespace, records_by_split: dict[str, list[dict[str, Any
                 if spent + worst_case_usd(body, args.price_input, args.price_output) > args.max_usd:
                     raise SpendCapReached
                 requested_at = utc_now()
-                response, latency_s = call_with_retries(create, body, args.retries, sleep)
-                row = reply_row(split, record["id"], response, latency_s, prices, requested_at)
+                response, latency_s, retry_errors = call_with_retries(create, body, args.retries, sleep)
+                row = reply_row(split, record["id"], response, latency_s, prices, requested_at, retry_errors)
                 append_reply(replies_path, row)
                 done[(split, record["id"])] = row
                 spent += row["cost_usd"]
@@ -269,15 +336,16 @@ def run(args: argparse.Namespace, records_by_split: dict[str, list[dict[str, Any
             "refusals": sum(r["refusal"] is not None for r in rows),
         },
         "spend": {"max_usd": args.max_usd, "spent_usd": total_cost, "stopped_by_cap": stopped_by_cap},
-        "latency": {"per_request": timing_summary([r["latency_s"] for r in rows]) if rows else None, "note": "one call at a time, wall clock of the successful attempt, from the caller's network"},
+        "latency": latency_summary(rows, args.timeout),
         "wall_clock_seconds_this_session": time.perf_counter() - started,
     }
-    (out_dir / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n")
-    log(f"wrote {out_dir}/metrics.json: {len(rows)} of {expected} requests, {total_cost:.4f} USD ({metrics['usage']['cost_per_1000_requests_usd'] or 0:.4f} per 1000 requests)")
+    name = "metrics.json" if metrics["complete"] else "metrics_partial.json"
+    (out_dir / name).write_text(json.dumps(metrics, indent=2) + "\n")
+    log(f"wrote {out_dir}/{name}: {len(rows)} of {expected} requests, {total_cost:.4f} USD ({metrics['usage']['cost_per_1000_requests_usd'] or 0:.4f} per 1000 requests)")
     return exit_code
 
 
-def main(argv: Sequence[str] | None = None, create: Callable[..., Any] | None = None) -> int:
+def main(argv: Sequence[str] | None = None, create: Callable[..., Any] | None = None, sleep: Callable[[float], None] = time.sleep) -> int:
     args = parse_args(argv)
     subset = load_subset(Path(args.subset))
     records_by_split: dict[str, list[dict[str, Any]]] = {}
@@ -292,8 +360,8 @@ def main(argv: Sequence[str] | None = None, create: Callable[..., Any] | None = 
             return 1
         from openai import OpenAI
 
-        create = OpenAI().chat.completions.create
-    return run(args, records_by_split, data_files, create)
+        create = OpenAI(timeout=args.timeout, max_retries=0).chat.completions.create  # retries are the script's, and recorded
+    return run(args, records_by_split, data_files, create, sleep)
 
 
 if __name__ == "__main__":

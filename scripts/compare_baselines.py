@@ -102,8 +102,9 @@ def footer(run_dirs: Sequence[Path]) -> list[str]:
             parts.append(f"batch 1 median {latency['batch_1']['median_ms']:.1f} ms")
         throughput = [(k, v) for k, v in latency.items() if k.endswith("_requests_per_second")]
         parts += [f"{k.removesuffix('_requests_per_second').replace('_', ' ')}: {v:.1f} requests/s" for k, v in throughput]
-        if latency.get("per_request"):
-            parts.append(f"per request median {latency['per_request']['median_ms']:.0f} ms (API, sequential)")
+        first = latency.get("first_attempt")
+        if first and first.get("median_ms") is not None:
+            parts.append(f"first-attempt median {first['median_ms']:.0f} ms, p95 {first['p95_ms']:.0f} ms over {first['n']} requests; {latency['retried_requests']} retried (API, sequential)")
         usage = metrics.get("usage") or {}
         if usage.get("cost_per_1000_requests_usd") is not None:
             parts.append(f"{usage['cost_per_1000_requests_usd']:.4f} USD per 1000 requests ({usage['cost_usd']:.4f} USD total)")
