@@ -1,0 +1,24 @@
+run_name: base_06b
+seed: 0
+backbone:
+  id: Qwen/Qwen3-0.6B-Base
+  revision: da87bfb608c14b7cf20ba1ce41287e8de496c0cd
+tokenizer_reference:
+  id: Qwen/Qwen3-0.6B-Base
+  revision: da87bfb608c14b7cf20ba1ce41287e8de496c0cd
+max_tokens: 2048
+precision:
+  autocast: fp16
+  fp32_fallback: true
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  mlp: false
+calibration:
+  temperature: 1.0
