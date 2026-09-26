@@ -140,3 +140,50 @@ B1 is the instruct release of each jevmark size, Qwen/Qwen3-0.6B and Qwen/Qwen3-
 Expected time, not yet measured: about 1 to 1.5 hours for 1.7B and less for 0.6B (4500 requests of mostly short JSON replies each, then 200 sequential batch-1 generations for latency). If a session ends early, add the partial `runs/b1_qwen<size>_json/` back as a dataset, copy it into place and run the script with `--size <size> --resume`: requests already in `replies.jsonl` are not generated again.
 
 Download `runs/b1_qwen06b_json/` and `runs/b1_qwen17b_json/`. Commit `metrics.json`, `config.yaml` and `model_id.txt`; keep `replies.jsonl` outside git (it is gitignored) but keep a copy, because `scripts/compare_baselines.py` recomputes the table from it. B2 (`scripts/baseline_api.py`) runs locally, not on Kaggle.
+
+## 10. RLCD: `notebooks/kaggle_rlcd.ipynb` (task 2.2)
+
+One session trains one RLCD arm at one size and seed from the SFT adapter, then evaluates it on all nine splits with the v1 protocol. Token, secret, import and notebook settings are as in sections 1 to 3. The SFT adapters are not in git (`runs/*/adapter/` is ignored), so they reach Kaggle as a private dataset.
+
+### The adapter dataset (once)
+
+1. Locally, collect the two adapters in one folder with the repository's layout:
+   ```
+   mkdir -p ~/jevmark-sft-adapters/runs/sft_06b ~/jevmark-sft-adapters/runs/sft_17b
+   cp -R runs/sft_06b/adapter ~/jevmark-sft-adapters/runs/sft_06b/
+   cp -R runs/sft_17b/adapter ~/jevmark-sft-adapters/runs/sft_17b/
+   shasum -a 256 runs/sft_06b/adapter/adapter_model.safetensors runs/sft_17b/adapter/adapter_model.safetensors
+   ```
+   Keep the two sha256 values: every RLCD run records the sha256 of the adapter it started from (`rlcd.init_adapter_sha256` in its config.yaml, `init_adapter_sha256` in train_summary.json and metrics.json), and they must match.
+2. On Kaggle: Datasets, New Dataset, upload the folder `jevmark-sft-adapters`, visibility Private, slug `jevmark-sft-adapters`. Kaggle may keep the `runs/` level or drop it; the notebook looks for `runs/sft_<size>/adapter` and `sft_<size>/adapter` under `ADAPTER_DATASET`.
+3. In the RLCD notebook: Add Input, Your Datasets, `jevmark-sft-adapters`. It appears under `/kaggle/input/jevmark-sft-adapters`, the default `ADAPTER_DATASET`.
+
+### Running one arm
+
+Set `REPO`, `COMMIT`, `SIZE`, `ARM`, `SEED`, `ADAPTER_DATASET`, `SMOKE_STEPS` (20) and `MAX_HOURS` (6.0), then run top to bottom: clone (deletes any committed `runs/rlcd_<size>_<arm>_s<seed>` and its smoke directory), install, fail-fast helpers, data, adapter copy (prints the adapter's sha256), smoke run (`TRAINING PASS` or `FAIL`), the 500-step run (`TRAINING PASS` or `FAIL`; on FAIL no evaluation runs), evaluation (`evaluate.py --ckpt runs/<run> --shuffle-questions test_indomain`), and the copy cell, which checks the commit and that the evaluated run and the training summary name the same SFT adapter. The run name is `rlcd_<size>_<arm>_s<seed>`.
+
+Download `/kaggle/working/runs/rlcd_<size>_<arm>_s<seed>/`. Commit `config.yaml`, `model_id.txt`, `calibration.json`, `training_log.jsonl`, `train_summary.json`, `metrics.json` and `plots/`; keep `adapter/`, `adapter_last/`, `last/` and `results.jsonl.gz` outside git (all gitignored).
+
+### Stage 1 plan: six arms on 0.6B, seed 0
+
+| Session | ARM | Question it answers |
+|---|---|---|
+| 1 | `sft_cont` | the control: is any change just more training on the same records? |
+| 2 | `outcome` | plain REINFORCE with the outcome reward |
+| 3 | `outcome_minus_p` | a reward that penalises confidence on wrong answers |
+| 4 | `brier` | a proper scoring rule, bounded |
+| 5 | `log` | a proper scoring rule, unbounded |
+| 6 | `direct_bandit` | the same proper score minimised directly, no policy gradient |
+
+Every session uses `SIZE = "06b"` and `SEED = 0`, and the same `COMMIT`. Compare each arm with `runs/sft_06b` and `runs/sft_06b_temp` on unseen-schema ECE (docs/RESULTS_v2.md section 1 states the target); the best arms then get seeds 1 and 2, and the best two and `sft_cont` repeat on 1.7B (task 2.3).
+
+### Time estimates (to be measured on the first session)
+
+Scaled from SFT on data v1.3: 0.6B SFT took 70.5 minutes for 1378 steps (about 3.1 s per step at effective batch 32), and 1.7B 3.0 hours (about 7.9 s per step). An RLCD step adds a no-gradient forward pass of the reference and the sampling, estimated at 30 to 40 percent. Expected per session:
+
+| Size | Training, 500 steps plus 6 validations and 2 full-valid passes | Evaluation | Session with install and smoke |
+|---|---|---|---|
+| 0.6B | 35 to 45 min | 45 min (measured for sft_06b) | about 1.7 h |
+| 1.7B | 90 to 110 min | 99 min (measured for sft_17b) | about 3.7 h |
+
+Stage 1 is therefore about 10 GPU hours for six sessions, a third of the weekly quota; two sessions can run in parallel. The pre-flight line in the smoke run shows peak memory for policy plus reference within a minute; at 1.7B the reference adds about 3.4 GB to the SFT peak of 4.02 GiB. Replace these estimates with the measured times after the first session.

@@ -127,22 +127,25 @@ Datasets are referenced by Hugging Face id. Ids move; the first step of any data
 - Acceptance: runs `sft_06b_temp` and `sft_17b_temp` (previously named `sft_clinc_v1_temp`) metrics written, on CPU in about a minute per run, no GPU.
 
 ### 2.2 train_rlcd.py
-Bandit simulation on the labeled training data, starting from the SFT adapter.
+Bandit simulation on the labeled training data, starting from the SFT adapter (`scripts/train_rlcd.py`, `configs/rlcd_06b.yaml`, `configs/rlcd_17b.yaml`, decision 51). Tests are in `tests/test_train_rlcd.py`.
 
-- [ ] For each record, compute the policy distribution p over its K options from the current model.
-- [ ] Sample G actions (G 4) from the behaviour distribution q = (1 - epsilon) p + epsilon uniform, epsilon 0.1. Store log pi(a) under p, not q. Multiply the advantage by the importance weight p(a)/q(a), clipped at 5 (config `importance_weight`, default true).
-- [ ] Reveal r_a = 1 if a is the gold option else 0, for sampled actions only.
-- [ ] Reward function selected by config `reward`:
+- [x] For each gold-dependent question (form nouls excluded from sampling and loss), compute the policy distribution p over its K options from the current model. Proof: `::test_form_nouls_are_never_sampled_or_trained`.
+- [x] Sample G actions (G 4) from the behaviour distribution q = (1 - epsilon) p + epsilon uniform, epsilon 0.1. Store log pi(a) under p, not q. Multiply the advantage by the importance weight p(a)/q(a), clipped at 5 (`rlcd.importance_weight`, default true). Proof: `::test_behaviour_mixes_in_uniform_and_the_importance_weight_is_clipped`, `::test_policy_gradient_loss_by_hand`.
+- [x] Reveal r_a = 1 if a is the gold option else 0, for sampled actions only. Proof: `::test_policy_gradient_loss_by_hand`.
+- [x] Reward function selected by the config key `arm`:
   - `outcome`: r_a
   - `outcome_minus_p`: r_a - p_a
   - `brier`: 1 - (r_a - p_a)^2
   - `log`: r_a log p_a + (1 - r_a) log(1 - p_a), probabilities clipped to [1e-6, 1 - 1e-6]
-- [ ] Advantage: reward minus the group mean over the G samples of the same record; optional division by group std (config).
-- [ ] Loss: mean of -advantage * log pi(a), rewards detached, plus beta * KL(pi || pi_ref) with pi_ref the frozen SFT policy, beta starting at 0.02.
-- [ ] Contrast arm `direct_bandit`: minimise the negative proper score of p_a differentiably, no policy gradient.
-- [ ] Score questions use the same machinery with K levels; ranked probability score reward is a v2.4 option.
-- [ ] Logging every step: mean reward, mean p_chosen, KL; every N steps: accuracy and ECE on `valid`. Checkpoint and resume as in 1.7.
-- Acceptance: `tests/test_rlcd.py` checks each reward function on hand-computed examples and checks that the advantage has zero group mean; a 20-step smoke run on the tiny model completes on CPU.
+
+  Proof: `::test_rewards_by_hand`, `::test_log_reward_clips_probabilities`, `::test_unknown_arm_is_rejected`.
+- [x] Advantage: reward minus the group mean over the G samples of the same question; optional division by group std (`rlcd.normalize_std`). Proof: `::test_advantages_have_zero_group_mean`.
+- [x] Loss: mean of -advantage * importance weight * log pi(a), rewards detached, plus beta * KL(pi || pi_ref) summed over the question's options, with pi_ref the frozen SFT policy, beta 0.02. Proof: `::test_policy_gradient_loss_by_hand`, `::test_kl_term_is_zero_at_the_reference_and_sft_cont_is_cross_entropy`.
+- [x] Contrast arm `direct_bandit`: minimise the negative proper score (Brier) of the sampled p_a differentiably, no policy gradient, same sampling. Control arm `sft_cont`: cross-entropy on the gold option, same records, steps, learning rate and schedule. Proof: `::test_direct_bandit_differentiates_the_score_of_the_sampled_action`, `::test_kl_term_is_zero_at_the_reference_and_sft_cont_is_cross_entropy`.
+- [x] Score questions use the same machinery with K levels; ranked probability score reward is a v2.4 option.
+- [x] Logging every step: loss, mean reward, mean p_chosen, KL, learning rate; every 100 steps and at step 0: accuracy, ECE, NLL, Brier, KL to pi_ref, expected reward and expected p_chosen on the fixed 1000-record `valid` subset; best adapter by validation NLL in `adapter/`, the final one in `adapter_last/`; pre-flight, stale-state guard, `--max-hours` and `--resume` as in 1.7; the SFT adapter's sha256 in config.yaml, train_summary.json and the evaluation's metrics.json. Proof: `::test_ten_steps_of_every_arm_complete_on_cpu` (six arms), `::test_resume_matches_an_uninterrupted_run`, `::test_a_second_fresh_start_is_refused_and_a_changed_init_adapter_is_caught`, `::test_run_name_and_overrides`.
+- [x] `notebooks/kaggle_rlcd.ipynb`: one size, arm and seed per session; adapter dataset, smoke run, 500-step run with fail-fast checks, evaluation on all nine splits with the v1 protocol. Proof: `tests/test_kaggle.py::test_rlcd_notebook_copies_the_adapter_runs_smoke_then_full_then_evaluates_with_the_v1_protocol`, `::test_rlcd_smoke_runs_are_gitignored`; docs/KAGGLE.md section 10.
+- Acceptance: `tests/test_train_rlcd.py` checks each reward function on hand-computed examples and that the advantage has zero group mean; a 10-step run of every arm and a resumed run on the tiny model complete on CPU. The Kaggle runs are the human's (task 2.3).
 
 ### 2.3 Ablation runs and v2 report
 - [ ] Runs: `rlcd_outcome`, `rlcd_outcome_minus_p`, `rlcd_brier`, `rlcd_log`, `rlcd_direct`, each 500 steps from the SFT adapter. Sweep all five arms with three seeds on 0.6B first (roughly 0.5 GPU hours per run), then repeat the best two arms and SFT on 1.7B (roughly 1 to 2 GPU hours per run). Measure and update.

@@ -38,7 +38,7 @@ def code_cells(name):
     return ["".join(c["source"]) for c in notebook["cells"] if c["cell_type"] == "code"]
 
 
-@pytest.mark.parametrize("name", ["kaggle_eval.ipynb", "kaggle_train.ipynb", "kaggle_baseline_b1.ipynb"])
+@pytest.mark.parametrize("name", ["kaggle_eval.ipynb", "kaggle_train.ipynb", "kaggle_baseline_b1.ipynb", "kaggle_rlcd.ipynb"])
 def test_notebook_token_is_never_printed_or_put_on_a_command_line(name):
     cells = code_cells(name)
     clone = cells[1]
@@ -79,7 +79,7 @@ def test_train_notebook_runs_one_size_smoke_first_then_train_evaluate_and_copy()
     assert "make data-build PY=python" in joined and "requirements-kaggle.txt" in joined
 
 
-@pytest.mark.parametrize("name", ["kaggle_eval.ipynb", "kaggle_train.ipynb", "kaggle_baseline_b1.ipynb"])
+@pytest.mark.parametrize("name", ["kaggle_eval.ipynb", "kaggle_train.ipynb", "kaggle_baseline_b1.ipynb", "kaggle_rlcd.ipynb"])
 def test_notebooks_uninstall_torchao_before_installing(name):
     install = next(c for c in code_cells(name) if "requirements-kaggle.txt" in c)
     assert install.index("pip uninstall -y -q torchao") < install.index("pip install -q -r requirements-kaggle.txt")
@@ -107,7 +107,7 @@ def test_fast_runs_are_gitignored():
     assert ignored.returncode == 0
 
 
-@pytest.mark.parametrize("name", ["kaggle_eval.ipynb", "kaggle_train.ipynb"])
+@pytest.mark.parametrize("name", ["kaggle_eval.ipynb", "kaggle_train.ipynb", "kaggle_rlcd.ipynb"])
 def test_notebooks_set_expandable_segments_before_any_training_or_evaluation(name):
     cells = code_cells(name)
     joined = "\n".join(cells)
@@ -209,3 +209,32 @@ def test_eval_notebook_summary_checks_only_the_runs_of_this_session():
     assert 'for name in [f"base_{size}" for size in SIZES]:' in summary
     assert summary.index("for name in") < summary.index('assert metrics["git"]["commit"] == COMMIT')
     assert summary.index('shutil.copytree(WORK / "runs", "/kaggle/working/runs"') < summary.index("for name in")
+
+
+def test_rlcd_notebook_copies_the_adapter_runs_smoke_then_full_then_evaluates_with_the_v1_protocol():
+    cells = code_cells("kaggle_rlcd.ipynb")
+    params = cells[0]
+    for name in ("REPO", "COMMIT", "SIZE", "ARM", "SEED", "ADAPTER_DATASET", "SMOKE_STEPS", "MAX_HOURS"):
+        assert re.search(rf"^{name} = ", params, re.M), name
+    joined = "\n".join(cells)
+    order = [
+        joined.index("make data-build PY=python"),
+        joined.index('target = WORK / "runs" / f"sft_{SIZE}" / "adapter"'),
+        joined.index("train_rlcd.py --config configs/rlcd_{SIZE}.yaml --init runs/sft_{SIZE} arm={ARM} seed={SEED} run_name={RUN}_smoke --limit-steps {SMOKE_STEPS}"),
+        joined.index("train_rlcd.py --config configs/rlcd_{SIZE}.yaml --init runs/sft_{SIZE} arm={ARM} seed={SEED} --max-hours {MAX_HOURS}"),
+        joined.index("evaluate.py --ckpt runs/{RUN} --shuffle-questions test_indomain --device cuda"),
+        joined.rindex('shutil.copytree(WORK / "runs", "/kaggle/working/runs"'),
+    ]
+    assert order == sorted(order)
+    assert joined.count("require_training(") == 2 and 'evaluation_allowed("full")' in joined
+    assert 'RUN = f"rlcd_{SIZE}_{ARM}_s{SEED}"' in cells[1] and "shutil.rmtree(WORK / \"runs\" / stale" in cells[1]
+    assert 'metrics["git"]["commit"] == COMMIT, RUN' in cells[-1]
+
+
+def test_rlcd_smoke_runs_are_gitignored():
+    import subprocess
+
+    ignored = subprocess.run(["git", "check-ignore", "--no-index", "-q", "runs/rlcd_06b_brier_s0_smoke/train_summary.json"], cwd=REPO)
+    assert ignored.returncode == 0
+    for path in ("runs/rlcd_06b_brier_s0/adapter_last/adapter_config.json", "runs/rlcd_06b_brier_s0/adapter/adapter_config.json", "runs/rlcd_06b_brier_s0/last/state.pt"):
+        assert subprocess.run(["git", "check-ignore", "--no-index", "-q", path], cwd=REPO).returncode == 0, path

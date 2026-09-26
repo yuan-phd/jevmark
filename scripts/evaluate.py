@@ -378,6 +378,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "precision": {"autocast": str(jev.autocast_dtype) if jev.autocast_dtype else None, "fp32_fallback_used": fallback_used},
         "temperature": jev.temperature,
         "lora_merged": lora_merged,
+        "adapter_sha256": hashlib.sha256((checkpoint / "adapter" / "adapter_model.safetensors").read_bytes()).hexdigest() if checkpoint is not None else None,
+        "init_adapter_sha256": config.get("rlcd", {}).get("init_adapter_sha256") if isinstance(config.get("rlcd"), dict) else None,
         "data_files_sha256": data_files,
         "confidence_note": "ECE and reliability use the top-1 probability; coverage uses the response confidence field (1 - H/ln K for choice and score, max(p, 1 - p) for noul).",
         "splits": split_results,

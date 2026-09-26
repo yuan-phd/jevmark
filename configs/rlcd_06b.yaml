@@ -1,0 +1,60 @@
+# RLCD from the SFT adapter on Qwen/Qwen3-0.6B-Base (task 2.2, scripts/train_rlcd.py).
+# Choose the arm and seed with overrides, for example: arm=log seed=1.
+# run_name null means rlcd_<size>_<arm>_s<seed>.
+
+run_name: null
+size: 06b
+arm: brier                  # outcome | outcome_minus_p | brier | log | direct_bandit | sft_cont
+seed: 0
+
+backbone:
+  id: Qwen/Qwen3-0.6B-Base
+  revision: da87bfb608c14b7cf20ba1ce41287e8de496c0cd
+
+# Pinned reference tokenizer. The tiny test model uses it, and every backbone's
+# tokenizer must produce the same ids on a probe string (encode.load_tokenizer).
+tokenizer_reference:
+  id: Qwen/Qwen3-0.6B-Base
+  revision: da87bfb608c14b7cf20ba1ce41287e8de496c0cd
+
+# Encoded length limit at inference (API_SPEC section 1). Training uses training.max_tokens.
+max_tokens: 2048
+
+precision:
+  autocast: fp16          # T4 has no bf16; fp32 is used on CPU
+  fp32_fallback: true     # first-batch NaN or inf check in slot logits
+
+# The LoRA shape of the SFT adapter this run starts from (runs/sft_06b); the adapter's own
+# adapter_config.json is what is loaded, this section documents it.
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj]
+  mlp: false
+
+calibration:
+  temperature: 1.0
+
+training:
+  data_dir: data
+  max_tokens: 1024        # records encoding longer are dropped, never truncated
+  steps: 500              # optimizer steps
+  lr: 5.0e-5
+  weight_decay: 0.0
+  warmup_steps: 20        # linear warmup, then linear decay to 0 at the last step
+  effective_batch: 32
+  micro_batch: 8          # the SFT micro-batch of this size; x accumulation 4
+  grad_clip: 1.0
+  eval_every: 100
+  valid_subset: 1000      # the same seeded 1000-record subset of valid.jsonl as train_sft.py
+  gradient_checkpointing: false
+
+rlcd:
+  init: runs/sft_06b   # a run directory holding the SFT adapter/; --init overrides
+  group_size: 4           # G actions sampled per question
+  epsilon: 0.1            # behaviour q = (1 - epsilon) p + epsilon uniform
+  importance_weight: true # multiply the advantage by p(a) / q(a)
+  importance_clip: 5.0
+  normalize_std: false    # divide the advantage by the group's standard deviation
+  beta: 0.02              # KL(p || p_ref) weight; p_ref is the frozen SFT policy
