@@ -46,7 +46,7 @@ Run the cells top to bottom:
 | Install | uninstalls Kaggle's `torchao`, then `pip install -r requirements-kaggle.txt` (the seven Hugging Face packages) and jevmark with `--no-deps`; prints versions and GPU count | 1 to 2 min |
 | Data | `make data-build PY=python`; fails loudly if any build check fails (the leak probes and duplicate check run locally, section 8) | under 1 min |
 | Smoke | `LIMIT` records per split (a seeded stratified sample) on the first size in `SIZES`, writes `runs/base_<size>_limit30/`; raises on a non-zero exit | a few min, mostly downloads |
-| B0 | every size in `SIZES`, all nine splits in full (decision 46), writes `runs/base_<size>/`; raises on a non-zero exit | 0.6B about 42 min (measured on v1.3); 1.7B about 1.5 hours (expected: on v1.2 the 1.7B base took twice as long as 0.6B, 56 against 28 min, and v1.3 records are longer) |
+| B0 | every size in `SIZES`, all nine splits in full (decision 46), writes `runs/base_<size>/`; raises on a non-zero exit | 0.6B about 42 min, 1.7B 83.5 min (both measured on v1.3) |
 | Copy | copies `runs/` to `/kaggle/working/runs` and prints each run's commit, dirty flag, fp32 fallback and wall clock | seconds |
 
 Check the smoke run before the full ones: it should end with `wrote .../metrics.json`. `requirements-kaggle.txt` pins only transformers, tokenizers, peft, datasets, accelerate, huggingface-hub and safetensors, at the versions in `uv.lock`; the image keeps its own torch, numpy, pandas, pyarrow and scipy (decision 23). The install cell first runs `pip uninstall -y torchao`: the Kaggle image ships torchao 0.10, and with it installed peft 0.21 raises an error when it injects LoRA adapters; jevmark does not use torchao. If the install cell reports a dependency conflict that names one of the pinned packages, or torch or numpy, stop there and report it; the pinned versions may need a lock change.
@@ -77,15 +77,15 @@ One session trains one backbone size, then evaluates it and, with `EVAL_BASE = T
 
 Measured for 0.6B on data v1.3 (commit a1dc2bf, one T4): install and data a few minutes, smoke training a few minutes, training 70.5 min for 1378 steps at micro-batch 8 x accumulation 4 (pre-flight peak 7.07 of 14.56 GiB), `sft_06b` evaluation 45 min (with `--shuffle-questions test_indomain`), `base_06b` evaluation 42 min: about 2.7 hours in one session.
 
-Expected for 1.7B, scaled from 0.6B and not yet measured: training about 3 to 3.5 hours (about 2.8 times the parameters, plus gradient checkpointing, which `configs/sft_17b.yaml` turns on at micro-batch 8), and about 1.5 hours per evaluation (on v1.2 the 1.7B base evaluation took twice as long as the 0.6B one, and v1.3 records are longer). Training plus both evaluations would come to about 6.5 hours, too close to the 9 hour session limit, so 1.7B takes two sessions:
+Measured for 1.7B on data v1.3 (commit 3a7169c, one T4): training 3.0 hours for 1378 steps at micro-batch 8 x accumulation 4 with gradient checkpointing, which `configs/sft_17b.yaml` turns on (175.3 min to the last step, pre-flight peak 4.02 of 14.56 GiB), `sft_17b` evaluation 98.6 min (with `--shuffle-questions test_indomain`), `base_17b` evaluation 83.5 min. Training plus both evaluations comes to about 6.3 hours before install and smoke runs, too close to the 9 hour session limit, so 1.7B takes two sessions:
 
 | Session | Notebook | Settings | Runs | Writes | Time (1.7B expected) |
 |---|---|---|---|---|---|
 | 0.6B (done) | `kaggle_train.ipynb` | `SIZE = "06b"`, `EVAL_BASE = True` | smoke, training, sft and base evaluation | `runs/sft_06b/`, `runs/base_06b/` | 2.7 h measured |
-| 1.7B A | `kaggle_train.ipynb` | `SIZE = "17b"`, `EVAL_BASE = False` | smoke, training, sft evaluation | `runs/sft_17b/` | about 5 h |
-| 1.7B B | `kaggle_eval.ipynb` | `SIZES = ["17b"]` | smoke evaluation, base evaluation | `runs/base_17b/` | about 1.7 h |
+| 1.7B A | `kaggle_train.ipynb` | `SIZE = "17b"`, `EVAL_BASE = False` | smoke, training, sft evaluation | `runs/sft_17b/` | 4.7 h measured (training 3.0 h, evaluation 98.6 min), plus install and smoke |
+| 1.7B B | `kaggle_eval.ipynb` | `SIZES = ["17b"]` | smoke evaluation, base evaluation | `runs/base_17b/` | 83.5 min evaluation measured, plus install and smoke |
 
-Sessions A and B use the same `COMMIT`, so the two runs share one code version; B can run in parallel with A or after it. The pre-flight line at the start of the smoke training in session A shows the 1.7B peak memory within a minute; if it prints `PREFLIGHT FAIL`, stop and lower `training.micro_batch` in `configs/sft_17b.yaml` in a new commit. Update this table with the measured 1.7B times.
+Sessions A and B use the same `COMMIT`, so the two runs share one code version; B can run in parallel with A or after it. The pre-flight line at the start of the smoke training in session A shows the 1.7B peak memory within a minute; if it prints `PREFLIGHT FAIL`, stop and lower `training.micro_batch` in `configs/sft_17b.yaml` in a new commit.
 
 In the training notebook set `REPO`, `COMMIT`, `SIZE`, `EVAL_BASE`, `SMOKE_STEPS` (default 20) and `MAX_HOURS` (default 6.0, a cap on training that leaves room for the evaluations in a 9 hour session) in the first code cell, then run the cells top to bottom:
 
