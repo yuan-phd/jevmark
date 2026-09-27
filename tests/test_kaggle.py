@@ -214,60 +214,61 @@ def test_eval_notebook_summary_checks_only_the_runs_of_this_session():
 def test_rlcd_notebook_copies_the_adapter_runs_smoke_then_full_then_evaluates_with_the_v1_protocol():
     cells = code_cells("kaggle_rlcd.ipynb")
     params = cells[0]
-    for name in ("REPO", "COMMIT", "SIZE", "ARMS", "SEED", "ADAPTER_DATASET", "SMOKE_STEPS", "MAX_HOURS"):
+    for name in ("REPO", "COMMIT", "SIZE", "ARMS", "SEEDS", "ADAPTER_DATASET", "SMOKE_STEPS", "MAX_HOURS"):
         assert re.search(rf"^{name} = ", params, re.M), name
-    assert not re.search(r"^ARM = ", params, re.M)
+    assert not re.search(r"^ARM = ", params, re.M) and not re.search(r"^SEED = ", params, re.M)
     joined = "\n".join(cells)
     order = [
         joined.index("make data-build PY=python"),
         joined.index('target = WORK / "runs" / f"sft_{SIZE}" / "adapter"'),
-        joined.index("train_rlcd.py --config configs/rlcd_{SIZE}.yaml --init runs/sft_{SIZE} arm={ARMS[0]} seed={SEED} run_name={SMOKE_RUN} --limit-steps {SMOKE_STEPS}"),
-        joined.index("train_rlcd.py --config configs/rlcd_{SIZE}.yaml --init runs/sft_{SIZE} arm={arm} seed={SEED} --max-hours {MAX_HOURS}"),
+        joined.index("train_rlcd.py --config configs/rlcd_{SIZE}.yaml --init runs/sft_{SIZE} arm={PAIRS[0][0]} seed={PAIRS[0][1]} run_name={SMOKE_RUN} --limit-steps {SMOKE_STEPS}"),
+        joined.index("train_rlcd.py --config configs/rlcd_{SIZE}.yaml --init runs/sft_{SIZE} arm={arm} seed={seed} --max-hours {MAX_HOURS}"),
         joined.index("evaluate.py --ckpt runs/{run_name} --shuffle-questions test_indomain --device cuda"),
     ]
     assert order == sorted(order)
-    assert joined.count("require_training(") == 2 and "evaluation_allowed(arm)" in joined
+    assert joined.count("require_training(") == 2 and "evaluation_allowed((arm, seed))" in joined
     clone = cells[1]
-    assert 'RUNS = {arm: f"rlcd_{SIZE}_{arm}_s{SEED}" for arm in ARMS}' in clone and 'SMOKE_RUN = f"{RUNS[ARMS[0]]}_smoke"' in clone
+    assert "PAIRS = [(arm, seed) for seed in SEEDS for arm in ARMS]" in clone  # every arm at one seed before the next seed
+    assert 'RUNS = {(arm, seed): f"rlcd_{SIZE}_{arm}_s{seed}" for arm, seed in PAIRS}' in clone and 'SMOKE_RUN = f"{RUNS[PAIRS[0]]}_smoke"' in clone
     assert "for stale in (*RUNS.values(), SMOKE_RUN):" in clone and "shutil.rmtree(WORK / \"runs\" / stale" in clone
     assert clone.index('run(["git", "checkout"') < clone.index("shutil.rmtree")
-    assert "all(arm in ARM_CHOICES for arm in ARMS)" in clone and "len(set(ARMS)) == len(ARMS)" in clone
+    assert "all(arm in ARM_CHOICES for arm in ARMS)" in clone and "len(set(ARMS)) == len(ARMS)" in clone and "len(set(SEEDS)) == len(SEEDS)" in clone
 
 
-def test_rlcd_notebook_runs_each_arm_in_order_and_copies_it_before_the_next():
+def test_rlcd_notebook_runs_each_arm_and_seed_in_order_and_copies_it_before_the_next():
     cells = code_cells("kaggle_rlcd.ipynb")
-    loop = next(c for c in cells if "for arm in ARMS:" in c)
-    body = loop[loop.index("for arm in ARMS:") :]
-    assert 'if not TRAINED.get("smoke"):' in loop and loop.index('if not TRAINED.get("smoke"):') < loop.index("for arm in ARMS:")
+    loop = next(c for c in cells if "for arm, seed in PAIRS:" in c)
+    body = loop[loop.index("for arm, seed in PAIRS:") :]
+    assert 'if not TRAINED.get("smoke"):' in loop and loop.index('if not TRAINED.get("smoke"):') < loop.index("for arm, seed in PAIRS:")
     steps = [
-        "run_name = RUNS[arm]",
+        "run_name = RUNS[(arm, seed)]",
         "!python scripts/train_rlcd.py",
         "training_exit = _exit_code",
         "copy_run(run_name)  # keep the state even if the check fails",
-        "summary = require_training(WORK / \"runs\" / run_name, arm_started, training_exit)",
-        "evaluation_allowed(arm)",
+        "summary = require_training(WORK / \"runs\" / run_name, run_started, training_exit)",
+        "evaluation_allowed((arm, seed))",
         "!python scripts/evaluate.py --ckpt runs/{run_name}",
         'check_exit(f"evaluate.py for {run_name}", _exit_code)',
         "copy_run(run_name)\n",
-        "DONE.append(arm_summary(arm, run_name, summary, arm_started))",
+        "DONE.append(run_summary(arm, seed, run_name, summary, run_started))",
         "print(DONE[-1], flush=True)",
     ]
     positions = [body.index(step) for step in steps]
     assert positions == sorted(positions)
-    # Every step is inside the loop body (indented), so each arm is trained, evaluated, copied and summarised before the next starts.
+    # Every step is inside the loop body (indented), so each run is trained, evaluated, copied and summarised before the next starts.
     for step in steps:
         line = next(l for l in body.splitlines() if step.strip() in l)
         assert line.startswith("    "), line
     # The copy is of that one run, to the notebook output, never of the whole runs/ directory.
     assert 'shutil.copytree(WORK / "runs" / run_name, OUT / run_name, dirs_exist_ok=True)' in loop and 'OUT = Path("/kaggle/working/runs")' in loop
     assert 'shutil.copytree(WORK / "runs", ' not in "\n".join(cells)
-    # One summary line per arm: arm, best step, test_indomain accuracy and ECE, test_emotion ECE, wall clock; the commit and SFT adapter are checked.
-    summary = loop[loop.index("def arm_summary") : loop.index("for arm in ARMS:")]
-    for field in ("summary['best_step']", 'metrics["splits"]["test_indomain"]["overall"]', 'metrics["splits"]["test_emotion"]["overall"]', "indomain['accuracy']", "indomain['ece']", "emotion['ece']", "wall clock {minutes:.1f} min"):
+    # One summary line per run: arm, seed, best step, test_indomain accuracy and ECE, test_emotion ECE, wall clock; the commit and SFT adapter are checked.
+    summary = loop[loop.index("def run_summary") : loop.index("for arm, seed in PAIRS:")]
+    for field in ("{arm} seed {seed}", "summary['best_step']", 'metrics["splits"]["test_indomain"]["overall"]', 'metrics["splits"]["test_emotion"]["overall"]', "indomain['accuracy']", "indomain['ece']", "emotion['ece']", "wall clock {minutes:.1f} min"):
         assert field in summary, field
     assert 'metrics["git"]["commit"] == COMMIT' in summary and 'metrics["init_adapter_sha256"] == summary["init_adapter_sha256"]' in summary
-    # MAX_HOURS applies to each arm's training command.
-    assert "--max-hours {MAX_HOURS}" in body
+    # MAX_HOURS applies to each run's training command, with the pair's own seed.
+    assert "arm={arm} seed={seed} --max-hours {MAX_HOURS}" in body
 
 
 def test_rlcd_smoke_runs_are_gitignored():

@@ -151,7 +151,10 @@ Bandit simulation on the labeled training data, starting from the SFT adapter (`
 
 ### 2.3 Ablation runs and v2 report
 - [x] First run, REINFORCE `brier` on 0.6B seed 0: a negative result that changed the arm design (decision 52). Proof: `runs/rlcd_06b_brier_s0` (the training script took 46.3 min for 500 steps with its validations and both full-valid passes, `train_summary.json:wall_clock_seconds_this_session`).
-- [ ] Stage 1: the five arms `sft_cont`, `outcome`, `outcome_minus_p`, `direct_brier` and `direct_log` on 0.6B, seed 0, each 500 steps from the SFT adapter (`rlcd_06b_<arm>_s0`; docs/KAGGLE.md section 10). Then the best arms get seeds 1 and 2 on 0.6B, and the best two arms and `sft_cont` repeat on 1.7B (roughly 1 to 2 GPU hours per run). Measure and update.
+- [x] Stage 1 (interim): the five arms `sft_cont`, `outcome`, `outcome_minus_p`, `direct_brier` and `direct_log` on 0.6B, seed 0, each 500 steps from the SFT adapter, evaluated on all splits and compared with SFT and SFT+temperature, with a temperature ablation per arm. Proof: `runs/rlcd_06b_<arm>_s0/`, `runs/rlcd_06b_<arm>_s0_temp/`, `runs/rlcd_stage1_06b/metrics.json` (`scripts/compare_rlcd.py --size 06b --seeds 0`; `tests/test_compare_rlcd.py`); docs/RESULTS_v2.md section 3, marked interim pending stages 2 and 3.
+- [ ] Stage 2a (decision 53): seeds 1 and 2 for the five arms on 0.6B, in sessions of at most four runs (`ARMS` and `SEEDS` in `notebooks/kaggle_rlcd.ipynb`; docs/KAGGLE.md section 10); temperature per run; `scripts/compare_rlcd.py --size 06b --stage 2`.
+- [ ] Stage 2b (decision 53): the five arms at seed 0 on 1.7B with `MAX_HOURS = 3.0`; temperature per run; `scripts/compare_rlcd.py --size 17b --stage 2`.
+- [ ] Stage 3 (decision 53): specified in a separate task.
 - [ ] Evaluate every arm on all splits. Compare against SFT and SFT+temperature.
 - [ ] `docs/RESULTS_v2.md`: table of accuracy and ECE per arm per split; the cascade figure (coverage vs accuracy) for SFT, SFT+temperature and the best RLCD arm; reliability diagrams on unseen schemas; a plain statement of whether the core claim held.
 - Acceptance: report written; if no arm beats SFT+temperature on unseen-schema ECE, the report says so and lists the hypotheses tested.
