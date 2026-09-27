@@ -18,7 +18,7 @@ Read docs/PLAN.md first, then docs/API_SPEC.md, then docs/TASKS.md. Work on exac
 ## Environment and constraints
 
 - Training runs on Kaggle: 2x T4 (16 GB each), fp16 only (T4 has no bf16), about 30 GPU hours per week. Every training script must fit one run in a single Kaggle session (under 9 hours) and must resume from a checkpoint.
-- Local development is CPU only. All unit tests run on CPU in under 2 minutes using a tiny randomly initialised Qwen3 config, never real weights.
+- Local development is CPU only. All unit tests run on CPU in under 3 minutes using a tiny randomly initialised Qwen3 config, never real weights.
 - Main backbone: Qwen/Qwen3-1.7B-Base. Development backbone for pipeline debugging and RLCD sweeps: Qwen/Qwen3-0.6B-Base. Both are config switches, never hard-coded. Qwen3-4B-Base is allowed only as an optional 4-bit QLoRA experiment, never as the default.
 - Precision: fp16 autocast with GradScaler and fp32 LoRA weights. Every training and evaluation script checks the first batch for NaN or inf in the slot logits and, on failure, restarts in fp32 automatically and logs that it did. fp32 fits both 0.6B and 1.7B on a T4; it does not fit 4B, which is one reason 4B is not the default.
 - Where work happens: tasks 0.1 through 1.5 run locally on CPU (tests use the tiny model; data building and description generation need only the API key and dataset downloads). Tasks 1.6 onward run on Kaggle through the thin notebooks. Run every GPU stage on 0.6B first, then repeat on 1.7B.
