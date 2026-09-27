@@ -43,6 +43,7 @@ jevmark/
     metrics.py        accuracy, ECE, Brier, NLL, coverage curves
     calibration.py    temperature scaling on stored probabilities
     training.py       shared training helpers: data, pre-flight, resume state
+    environment.py    stochastic-outcome environment of RLCD stage 3 and its metrics
     sampling.py       seeded stratified record samples (--limit, baseline subset)
     provenance.py     git commit and dirty flag for metrics.json
     baselines/        B1 and B2: shared prompt and parser, subset, metrics assembly
@@ -73,6 +74,8 @@ jevmark/
     paired_deltas.py         paired accuracy differences between two runs
     simulate_advantages.py   RLCD advantages per reward from stored probabilities (decision 52)
     compare_rlcd.py          RLCD arms against SFT and SFT plus T, per size and seeds, with a temperature ablation
+    evaluate_env.py          a run against the stage 3 environment's theta, with post-hoc temperatures
+    compare_env.py           the stage 3 table: SFT, its temperatures and the noisy RLCD arms
     serve.py          optional FastAPI wrapper
   notebooks/          thin Kaggle wrappers only: clone, install, run a script
   tests/

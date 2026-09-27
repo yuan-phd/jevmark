@@ -309,3 +309,93 @@ def test_run_name_and_overrides():
     assert config6["training"]["micro_batch"] == load_config(REPO / "configs" / "sft_06b.yaml")["training"]["micro_batch"]
     with pytest.raises(ValueError):
         rl.Settings.from_config({**config6, "arm": "ppo"})
+
+
+# The stochastic-outcome environment (task 2.5, decision 54)
+
+
+@pytest.mark.parametrize("arm", rl.NOISY_ARMS)
+def test_ten_noisy_steps_of_every_arm_complete_on_cpu(setup, tmp_path, arm):
+    run_training(setup, tmp_path, "--env", "noisy", f"arm={arm}", "noisy.steps=10")
+    run_dir = tmp_path / f"rlcd_06b_noisy_{arm}_s0"
+    summary = json.loads((run_dir / "train_summary.json").read_text())
+    assert summary["steps"] == summary["total_steps"] == 10 and summary["arm"] == arm and summary["env"] == "noisy"
+    assert summary["beta"] == 0.0 and summary["best_by"] == "cross_entropy_theta" and "best_subset_cross_entropy_theta" in summary
+    config = yaml.safe_load((run_dir / "config.yaml").read_text())
+    assert config["env"] == "noisy" and config["rlcd"]["beta"] == 0.0 and config["training"]["steps"] == 10
+    valids = [e for e in log_of(run_dir) if e.get("event") == "valid"]
+    assert [e["step"] for e in valids] == [0, 5, 10]
+    for key in ("expected_brier_theta", "cross_entropy_theta", "kl_theta", "accuracy", "expected_reward"):
+        assert all(math.isfinite(e[key]) for e in valids), key
+    assert all(e["cross_entropy_theta"] >= e["kl_theta"] for e in valids)
+    best = next(e for e in valids if e["step"] == summary["best_step"])
+    assert best["cross_entropy_theta"] == min(e["cross_entropy_theta"] for e in valids if e["step"] > 0)
+    assert summary["final_valid"]["cross_entropy_theta"] > 0
+    state = torch.load(run_dir / "last" / "state.pt", weights_only=False)
+    assert "env_state" in state["progress"]
+
+
+def test_the_noisy_environment_refuses_other_arms_and_direct_overrides(setup, tmp_path):
+    for arm, extra in (("sft_cont", []), ("brier", ["rlcd.reinforce_proper_score=true"])):
+        with pytest.raises(ValueError, match="does not run in the noisy environment"):
+            run_training(setup, tmp_path / arm, "--env", "noisy", f"arm={arm}", "noisy.steps=2", *extra)
+    for override in ("rlcd.beta=0.02", "training.steps=5"):
+        with pytest.raises(SystemExit, match="noisy.beta or noisy.steps"):
+            run_training(setup, tmp_path / "o", "--env", "noisy", "arm=direct_brier", override)
+    config = load_config(REPO / "configs" / "rlcd_06b.yaml", ["arm=direct_log"])
+    config["env"] = "noisy"
+    assert rl.resolve_run_name(config) == "rlcd_06b_noisy_direct_log_s0"
+    assert load_config(REPO / "configs" / "rlcd_06b.yaml")["noisy"] == {"beta": 0.0, "steps": 1000}
+
+
+def test_noisy_outcomes_come_from_the_environment(setup):
+    """batch_loss asks the environment for each gold-dependent question's accepted answer and scores the samples against it."""
+    from jevmark.model import JevMark
+
+    jev = JevMark.load(load_config(setup.config_path), device="cpu")
+    train_records = [json.loads(line) for line in (setup.data_dir / "train.jsonl").read_text().splitlines()]
+    examples, _ = rl.epoch_examples(train_records, jev, 1024, 0, 0)
+    batch = examples[:2]
+
+    class Recording:
+        def __init__(self):
+            self.calls = []
+
+        def accepted(self, gold, k):
+            self.calls.append((gold, k))
+            return (gold + 1) % k  # never gold
+
+    env = Recording()
+    seen = []
+    real = rl.question_loss
+
+    def spy(z, z_ref, target, s, generator):
+        seen.append(target)
+        return real(z, z_ref, target, s, generator)
+
+    rl.question_loss, original = spy, rl.question_loss
+    try:
+        rl.batch_loss(jev, jev, batch, settings("direct_brier"), torch.Generator().manual_seed(0), env)
+    finally:
+        rl.question_loss = original
+    golds = [t for e in batch for t, keep in zip(e.targets, e.gold_dependent) if keep]
+    assert [g for g, _ in env.calls] == golds and seen == [(g + 1) % k for g, k in env.calls]
+
+
+def test_noisy_resume_matches_an_uninterrupted_run(setup, tmp_path):
+    args = ("--env", "noisy", "arm=direct_brier", "noisy.steps=10")
+    uninterrupted = tmp_path / "a"
+    run_training(setup, uninterrupted, *args)
+    resumed = tmp_path / "b"
+    run_training(setup, resumed, *args, "--limit-steps", "5")
+    run_training(setup, resumed, "--env", "noisy", "arm=direct_brier", "--resume")
+    name = "rlcd_06b_noisy_direct_brier_s0"
+    rewards_a = [e["reward"] for e in log_of(uninterrupted / name) if "loss" in e]
+    rewards_b = [e["reward"] for e in log_of(resumed / name) if "loss" in e]
+    assert rewards_a == pytest.approx(rewards_b)  # the same actions and the same accepted answers after the resume
+    a = adapter_tensors(uninterrupted / name / "adapter_last")
+    b = adapter_tensors(resumed / name / "adapter_last")
+    for key in a:
+        torch.testing.assert_close(a[key], b[key], atol=1e-6, rtol=1e-5)
+    with pytest.raises(SystemExit, match="trained with --env noisy"):
+        rl.main(["--config", str(setup.config_path), "--data-dir", str(setup.data_dir), "--runs-dir", str(resumed), "--device", "cpu", "arm=direct_brier", "run_name=" + name, "--resume"])

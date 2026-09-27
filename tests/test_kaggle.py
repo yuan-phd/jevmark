@@ -214,22 +214,23 @@ def test_eval_notebook_summary_checks_only_the_runs_of_this_session():
 def test_rlcd_notebook_copies_the_adapter_runs_smoke_then_full_then_evaluates_with_the_v1_protocol():
     cells = code_cells("kaggle_rlcd.ipynb")
     params = cells[0]
-    for name in ("REPO", "COMMIT", "SIZE", "ARMS", "SEEDS", "ADAPTER_DATASET", "SMOKE_STEPS", "MAX_HOURS"):
+    for name in ("REPO", "COMMIT", "SIZE", "ENV", "ARMS", "SEEDS", "ADAPTER_DATASET", "SMOKE_STEPS", "MAX_HOURS"):
         assert re.search(rf"^{name} = ", params, re.M), name
     assert not re.search(r"^ARM = ", params, re.M) and not re.search(r"^SEED = ", params, re.M)
     joined = "\n".join(cells)
     order = [
         joined.index("make data-build PY=python"),
         joined.index('target = WORK / "runs" / f"sft_{SIZE}" / "adapter"'),
-        joined.index("train_rlcd.py --config configs/rlcd_{SIZE}.yaml --init runs/sft_{SIZE} arm={PAIRS[0][0]} seed={PAIRS[0][1]} run_name={SMOKE_RUN} --limit-steps {SMOKE_STEPS}"),
-        joined.index("train_rlcd.py --config configs/rlcd_{SIZE}.yaml --init runs/sft_{SIZE} arm={arm} seed={seed} --max-hours {MAX_HOURS}"),
+        joined.index("train_rlcd.py --config configs/rlcd_{SIZE}.yaml --env {ENV} --init runs/sft_{SIZE} arm={PAIRS[0][0]} seed={PAIRS[0][1]} run_name={SMOKE_RUN} --limit-steps {SMOKE_STEPS}"),
+        joined.index("train_rlcd.py --config configs/rlcd_{SIZE}.yaml --env {ENV} --init runs/sft_{SIZE} arm={arm} seed={seed} --max-hours {MAX_HOURS}"),
         joined.index("evaluate.py --ckpt runs/{run_name} --shuffle-questions test_indomain --device cuda"),
     ]
     assert order == sorted(order)
     assert joined.count("require_training(") == 2 and "evaluation_allowed((arm, seed))" in joined
     clone = cells[1]
     assert "PAIRS = [(arm, seed) for seed in SEEDS for arm in ARMS]" in clone  # every arm at one seed before the next seed
-    assert 'RUNS = {(arm, seed): f"rlcd_{SIZE}_{arm}_s{seed}" for arm, seed in PAIRS}' in clone and 'SMOKE_RUN = f"{RUNS[PAIRS[0]]}_smoke"' in clone
+    assert 'PREFIX = f"rlcd_{SIZE}_noisy" if ENV == "noisy" else f"rlcd_{SIZE}"' in clone  # the names train_rlcd.py gives
+    assert 'RUNS = {(arm, seed): f"{PREFIX}_{arm}_s{seed}" for arm, seed in PAIRS}' in clone and 'SMOKE_RUN = f"{RUNS[PAIRS[0]]}_smoke"' in clone
     assert "for stale in (*RUNS.values(), SMOKE_RUN):" in clone and "shutil.rmtree(WORK / \"runs\" / stale" in clone
     assert clone.index('run(["git", "checkout"') < clone.index("shutil.rmtree")
     assert "all(arm in ARM_CHOICES for arm in ARMS)" in clone and "len(set(ARMS)) == len(ARMS)" in clone and "len(set(SEEDS)) == len(SEEDS)" in clone
@@ -278,3 +279,20 @@ def test_rlcd_smoke_runs_are_gitignored():
     assert ignored.returncode == 0
     for path in ("runs/rlcd_06b_brier_s0/adapter_last/adapter_config.json", "runs/rlcd_06b_brier_s0/adapter/adapter_config.json", "runs/rlcd_06b_brier_s0/last/state.pt"):
         assert subprocess.run(["git", "check-ignore", "--no-index", "-q", path], cwd=REPO).returncode == 0, path
+
+
+def test_rlcd_notebook_env_matches_train_rlcd():
+    """ENV is passed to every training command, its default is stage 1's, and noisy sessions refuse sft_cont as train_rlcd.py does."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("train_rlcd_for_notebook", REPO / "scripts" / "train_rlcd.py")
+    rl = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = rl
+    spec.loader.exec_module(rl)
+    cells = code_cells("kaggle_rlcd.ipynb")
+    assert re.search(r'^ENV = "deterministic"', cells[0], re.M)
+    joined = "\n".join(cells)
+    assert joined.count("train_rlcd.py --config configs/rlcd_{SIZE}.yaml --env {ENV}") == 2
+    noisy_choices = re.search(r'else \((.*)\)\n', cells[1].split("ARM_CHOICES = ")[1]).group(1)
+    assert tuple(a.strip().strip('"') for a in noisy_choices.split(",")) == rl.NOISY_ARMS
+    assert rl.ENVS == ("deterministic", "noisy") and 'assert ENV in ("deterministic", "noisy")' in cells[1]

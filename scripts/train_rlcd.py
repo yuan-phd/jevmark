@@ -2,6 +2,7 @@
 
     python scripts/train_rlcd.py --config configs/rlcd_06b.yaml --init runs/sft_06b arm=direct_brier seed=0
     python scripts/train_rlcd.py --config configs/rlcd_06b.yaml arm=direct_brier seed=0 --resume
+    python scripts/train_rlcd.py --config configs/rlcd_06b.yaml --env noisy arm=direct_brier seed=0
 
 The trainable LoRA starts as the SFT adapter of --init (a run directory holding
 adapter/); a second copy of the backbone with that adapter merged is the frozen
@@ -13,7 +14,21 @@ order and per-epoch option reshuffles as train_sft.py). For every gold-dependent
 question (form nouls are excluded from sampling and from the loss, decision 44):
 
     p = softmax(letter logits), q = (1 - epsilon) p + epsilon / K
-    G actions a ~ q; only r_a = 1[a is gold] is revealed, for sampled actions only
+    G actions a ~ q; only r_a = 1[a is the accepted answer] is revealed, for sampled actions only
+
+The accepted answer depends on --env (decision 54):
+
+- deterministic (the default, stages 1 and 2): the gold option.
+- noisy (stage 3): drawn on each visit by jevmark.environment.NoisyEnvironment from
+  theta, 1 - eta(K) on gold and eta(K) / (K - 1) on each other option, with
+  eta(K) = min(0.40, 0.05 + 0.03 (K - 2)); the environment's generator is seeded
+  from the run seed and saved with the resume state. Only outcome,
+  outcome_minus_p, direct_brier and direct_log run here (sft_cont is refused: its
+  cross-entropy on gold is not an answer to noisy outcomes, and the known broken
+  arms are refused too). A fresh noisy run takes rlcd.beta and training.steps from
+  the config's noisy section (beta 0, 1000 steps); overriding rlcd.beta or
+  training.steps directly is refused, use noisy.beta and noisy.steps. The run name
+  is rlcd_<size>_noisy_<arm>_s<seed> unless set.
 
 and the arm decides the loss:
 
@@ -46,13 +61,17 @@ logged as the reference) on the same seeded 1000-record subset of valid as
 train_sft.py, gold-dependent questions only: accuracy, ECE, NLL, Brier, mean
 KL(p || p_ref), the mean expected reward under p (sum over a of p_a R(a); the Brier
 reward for sft_cont, the arm's own score otherwise) and the mean expected probability of the
-chosen action (sum of p_a squared). The best adapter by validation NLL among the
-trained steps goes to adapter/, the final one to adapter_last/; the final full-valid
+chosen action (sum of p_a squared). In noisy mode validation also reports, against
+theta, the expected Brier score and the cross-entropy (and its excess over theta's
+entropy), the expected reward uses outcomes distributed as theta, and accuracy stays
+against gold. The best adapter by validation NLL (deterministic) or by cross-entropy
+against theta (noisy) among the trained steps goes to adapter/, the final one to adapter_last/; the final full-valid
 pass reports both. Pre-flight memory check, stale-state guard, --max-hours and
 --resume behave as in train_sft.py (decision 45); the first-batch NaN check runs on
 the backbone before the adapter is attached.
 
-Run directory runs/<run_name>/ (run_name rlcd_<size>_<arm>_s<seed> unless set):
+Run directory runs/<run_name>/ (run_name rlcd_<size>_<arm>_s<seed>, or
+rlcd_<size>_noisy_<arm>_s<seed>, unless set):
 config.yaml, model_id.txt, training_log.jsonl, adapter/, adapter_last/, last/,
 train_summary.json, calibration.json.
 """
@@ -71,6 +90,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 import yaml
@@ -80,6 +100,10 @@ from transformers import get_linear_schedule_with_warmup
 from jevmark.config import load_config
 from jevmark.data.form import FORM_KINDS
 from jevmark.encode import Encoded, encode
+from jevmark.environment import NoisyEnvironment
+from jevmark.environment import cross_entropy as theta_cross_entropy
+from jevmark.environment import expected_brier as theta_expected_brier
+from jevmark.environment import theta
 from jevmark.metrics import QuestionResult, split_metrics
 from jevmark.model import JevMark, keep_lora_fp32
 from jevmark.schema import ChoiceQuestion, Request
@@ -104,6 +128,8 @@ PG_ARMS = ("outcome", "outcome_minus_p")
 DIRECT_ARMS = ("direct_brier", "direct_log")
 ARMS = ("sft_cont", *PG_ARMS, *DIRECT_ARMS)
 REINFORCE_PROPER_ARMS = ("brier", "log")  # known broken (decision 52); only with rlcd.reinforce_proper_score
+ENVS = ("deterministic", "noisy")
+NOISY_ARMS = ("outcome", "outcome_minus_p", "direct_brier", "direct_log")  # decision 54
 RL_STALE_STATE = (*STALE_STATE, "adapter_last")
 P_CLIP = 1e-6
 
@@ -191,6 +217,9 @@ class Settings:
     def from_config(cls, config: dict[str, Any]) -> Settings:
         rl = config["rlcd"]
         arm = config["arm"]
+        if config.get("env", "deterministic") == "noisy" and arm not in NOISY_ARMS:
+            reason = "sft_cont's cross-entropy on gold is not a response to noisy outcomes" if arm == "sft_cont" else "it is not a stage 3 arm"
+            raise ValueError(f"arm {arm!r} does not run in the noisy environment ({reason}); expected one of {NOISY_ARMS} (decision 54)")
         if arm in REINFORCE_PROPER_ARMS:
             if not rl.get("reinforce_proper_score", False):
                 raise ValueError(f"arm {arm!r} is the REINFORCE proper-score arm, known broken (decision 52); use direct_{arm}, or set rlcd.reinforce_proper_score=true to reproduce the negative result")
@@ -222,8 +251,8 @@ def question_loss(z: torch.Tensor, z_ref: torch.Tensor, gold: int, s: Settings, 
     return loss, {"kl": float(kl.detach()), "reward": float(rewards.mean()), "p_chosen": float(p_a.mean())}
 
 
-def batch_loss(jev: JevMark, ref: JevMark, batch: Sequence[RLExample], s: Settings, generator: torch.Generator) -> tuple[torch.Tensor, dict[str, float]]:
-    """Mean loss over the micro-batch's gold-dependent questions, and the mean of their statistics."""
+def batch_loss(jev: JevMark, ref: JevMark, batch: Sequence[RLExample], s: Settings, generator: torch.Generator, env: NoisyEnvironment | None = None) -> tuple[torch.Tensor, dict[str, float]]:
+    """Mean loss over the micro-batch's gold-dependent questions, and the mean of their statistics; with env, each question's outcome is the environment's accepted answer."""
     encoded = [e.encoded for e in batch]
     logits = jev.slot_logits(encoded)
     with torch.no_grad():
@@ -235,6 +264,8 @@ def batch_loss(jev: JevMark, ref: JevMark, batch: Sequence[RLExample], s: Settin
             z, z_ref = next(flat)
             if not keep:
                 continue
+            if env is not None:
+                target = env.accepted(target, len(z))
             loss, stat = question_loss(z, z_ref, target, s, generator)
             losses.append(loss)
             stats.append(stat)
@@ -247,11 +278,11 @@ def batch_loss(jev: JevMark, ref: JevMark, batch: Sequence[RLExample], s: Settin
 # Validation
 
 
-def validate(jev: JevMark, ref: JevMark, records: list[dict[str, Any]], batch_size: int, max_tokens: int, arm: str) -> dict[str, Any]:
-    """Accuracy, ECE, NLL, Brier, mean KL to p_ref, expected reward and expected p of the chosen action, on gold-dependent questions."""
+def validate(jev: JevMark, ref: JevMark, records: list[dict[str, Any]], batch_size: int, max_tokens: int, arm: str, noisy: bool = False) -> dict[str, Any]:
+    """Accuracy, ECE, NLL, Brier, mean KL to p_ref, expected reward and expected p of the chosen action, on gold-dependent questions; with noisy, also the expected Brier and cross-entropy against theta."""
     was_training = jev.model.training
     jev.model.eval()
-    results, kls, rewards, chosen = [], [], [], []
+    results, kls, rewards, chosen, briers, ces, entropies = [], [], [], [], [], [], []
     with torch.no_grad():
         for start in range(0, len(records), batch_size):
             chunk = records[start : start + batch_size]
@@ -266,17 +297,27 @@ def validate(jev: JevMark, ref: JevMark, records: list[dict[str, Any]], batch_si
                     logp = F.log_softmax(z.float() / jev.temperature, dim=-1)
                     p = logp.exp()
                     kls.append(float((p * (logp - F.log_softmax(z_ref.float(), dim=-1))).sum()))
-                    outcomes = (torch.arange(len(p), device=p.device) == target).float()
-                    rewards.append(float((p * reward(arm, outcomes, p)).sum()))
-                    chosen.append(float((p * p).sum()))
                     probs = tuple(float(x) for x in p.double().cpu())
+                    if noisy:
+                        target_dist = theta(len(p), target)
+                        rate = torch.tensor(target_dist, dtype=p.dtype, device=p.device)
+                        ones, zeros = torch.ones_like(p), torch.zeros_like(p)
+                        rewards.append(float((p * (rate * reward(arm, ones, p) + (1 - rate) * reward(arm, zeros, p))).sum()))
+                        dist = np.asarray(probs)
+                        briers.append(theta_expected_brier(dist, target_dist))
+                        ces.append(theta_cross_entropy(dist, target_dist))
+                        entropies.append(theta_cross_entropy(target_dist, target_dist))
+                    else:
+                        outcomes = (torch.arange(len(p), device=p.device) == target).float()
+                        rewards.append(float((p * reward(arm, outcomes, p)).sum()))
+                    chosen.append(float((p * p).sum()))
                     labels = question.labels if isinstance(question, ChoiceQuestion) else tuple(str(i) for i in range(len(probs)))
                     results.append(QuestionResult(record["id"], question.id, question.type, probs, target, labels, kind=question.id if question.type == "noul" else None))
     if was_training:
         jev.model.train()
     overall = split_metrics(results)["overall"]
     n = len(kls)
-    return {
+    out = {
         "n": overall["n"],
         "accuracy": overall["accuracy"],
         "ece": overall["ece"],
@@ -286,6 +327,11 @@ def validate(jev: JevMark, ref: JevMark, records: list[dict[str, Any]], batch_si
         "expected_reward": sum(rewards) / n,
         "expected_p_chosen": sum(chosen) / n,
     }
+    if noisy:
+        out["expected_brier_theta"] = sum(briers) / n
+        out["cross_entropy_theta"] = sum(ces) / n
+        out["kl_theta"] = (sum(ces) - sum(entropies)) / n
+    return out
 
 
 # Setup
@@ -322,7 +368,17 @@ def load_reference(config: dict[str, Any], init_dir: Path, device: torch.device,
 
 
 def resolve_run_name(config: dict[str, Any]) -> str:
-    return config.get("run_name") or f"rlcd_{config['size']}_{config['arm']}_s{config['seed']}"
+    env = "noisy_" if config.get("env", "deterministic") == "noisy" else ""
+    return config.get("run_name") or f"rlcd_{config['size']}_{env}{config['arm']}_s{config['seed']}"
+
+
+def apply_noisy_defaults(config: dict[str, Any], overrides: Sequence[str]) -> None:
+    """A fresh noisy run takes rlcd.beta and training.steps from the noisy section; overriding them directly would be silently replaced, so it is refused."""
+    direct = [o.partition("=")[0] for o in overrides if o.partition("=")[0] in ("rlcd.beta", "training.steps")]
+    if direct:
+        raise SystemExit(f"--env noisy takes beta and steps from the noisy section; override noisy.beta or noisy.steps instead of {', '.join(direct)}")
+    config["rlcd"]["beta"] = float(config["noisy"]["beta"])
+    config["training"]["steps"] = int(config["noisy"]["steps"])
 
 
 # Main
@@ -334,6 +390,7 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("overrides", nargs="*", help="key=value overrides, for example arm=direct_log seed=1; with --resume, arm= and seed= (and run_name= if it was set) are still required to locate the run directory, and every other setting comes from the run's own config.yaml")
     parser.add_argument("--init", default=None, help="run directory holding the SFT adapter/ to start from; default rlcd.init from the config")
     parser.add_argument("--resume", action="store_true", help="continue from runs/<run_name>/last with the run's own config.yaml")
+    parser.add_argument("--env", choices=ENVS, default="deterministic", help="where outcomes come from: the gold option (deterministic, default) or the stochastic-outcome environment (noisy, decision 54); also required with --resume, since it names the run")
     parser.add_argument("--max-hours", type=float, default=8.0, help="save last/ and exit cleanly after this much wall clock (default 8.0)")
     parser.add_argument("--limit-steps", type=int, default=None, help="stop after this many optimizer steps in total, for smoke runs")
     parser.add_argument("--device", default=None, help="cpu, cuda or cuda:N; default cuda when available")
@@ -346,13 +403,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     started = time.perf_counter()
     config = load_config(args.config, args.overrides)
+    config["env"] = args.env
     config["run_name"] = resolve_run_name(config)
     run_dir = Path(args.runs_dir) / config["run_name"]
     if args.resume:
         if not (run_dir / "last" / "state.pt").is_file():
             raise SystemExit(f"--resume: no saved state at {run_dir / 'last'}")
         config = load_config(run_dir / "config.yaml")
+        if config.get("env", "deterministic") != args.env:
+            raise SystemExit(f"--resume: {run_dir} was trained with --env {config.get('env', 'deterministic')}, not {args.env}")
     else:
+        if args.env == "noisy":
+            apply_noisy_defaults(config, args.overrides)
         stale = [name for name in RL_STALE_STATE if (run_dir / name).exists()]
         if stale:
             raise SystemExit(f"{run_dir} already holds a training run ({', '.join(stale)}); use --resume, or delete the directory, or another run_name")
@@ -379,9 +441,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     data_dir = Path(args.data_dir) if args.data_dir else REPO / train_cfg["data_dir"]
     torch.manual_seed(seed)
     generator = torch.Generator().manual_seed(seed)
+    noisy = config.get("env", "deterministic") == "noisy"
+    env = NoisyEnvironment(seed) if noisy else None
+    select = "cross_entropy_theta" if noisy else "nll"  # the validation metric that picks adapter/
 
     jev = JevMark.load(config, device=args.device)
-    say(f"run {config['run_name']}: arm {settings.arm}, backbone {config['backbone']['id']} on {jev.device}, autocast {jev.autocast_dtype}, init {init_dir}")
+    say(f"run {config['run_name']}: arm {settings.arm}, env {config['env']}, backbone {config['backbone']['id']} on {jev.device}, autocast {jev.autocast_dtype}, init {init_dir}")
     train_records, dropped_train, train_lengths = fits(read_jsonl(data_dir / "train.jsonl"), jev, max_tokens)
     valid_all, dropped_valid, _ = fits(read_jsonl(data_dir / "valid.jsonl"), jev, max_tokens)
     subset_size = min(int(train_cfg["valid_subset"]), len(valid_all))
@@ -398,7 +463,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             fallback_used = True
             if not first_batch_finite(jev, first[:micro]):
                 raise RuntimeError("first-batch slot logits still contain NaN or inf after the fp32 fallback")
-        log_line(log_path, {"event": "start", "arm": settings.arm, "init": str(init_dir), "init_adapter_sha256": config["rlcd"]["init_adapter_sha256"], "fp32_fallback_used": fallback_used, "autocast": str(jev.autocast_dtype), "dropped_train": dropped_train, "dropped_valid": dropped_valid, "total_steps": total_steps, "warmup_steps": warmup, "accumulation": accumulation})
+        log_line(log_path, {"event": "start", "arm": settings.arm, "env": config["env"], "beta": settings.beta, "init": str(init_dir), "init_adapter_sha256": config["rlcd"]["init_adapter_sha256"], "fp32_fallback_used": fallback_used, "autocast": str(jev.autocast_dtype), "dropped_train": dropped_train, "dropped_valid": dropped_valid, "total_steps": total_steps, "warmup_steps": warmup, "accumulation": accumulation})
 
     attach_sft_adapter(jev, init_dir / "adapter", config)
     ref = load_reference(config, init_dir, jev.device, half=jev.autocast_dtype is not None)
@@ -428,13 +493,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.resume:
         progress = load_state(run_dir, jev, optimizer, scheduler, scaler)
         generator.set_state(progress["sampler_state"])
+        if env is not None:
+            env.set_state(progress["env_state"])
         log_line(log_path, {"event": "resume", "step": progress["step"], "epoch": progress["epoch"]})
         say(f"resumed at step {progress['step']}, epoch {progress['epoch']}, micro-batch {progress['micro_done']}")
     else:
-        init_valid = validate(jev, ref, valid_subset, micro * 2, max_tokens, settings.arm)
+        init_valid = validate(jev, ref, valid_subset, micro * 2, max_tokens, settings.arm, noisy)
         progress["init_valid"] = init_valid
         log_line(log_path, {"event": "valid", "step": 0, **init_valid})
-        say(f"step 0 (the SFT adapter): valid acc {init_valid['accuracy']:.4f} ece {init_valid['ece']:.4f} nll {init_valid['nll']:.4f}")
+        say(f"step 0 (the SFT adapter): valid acc {init_valid['accuracy']:.4f} ece {init_valid['ece']:.4f} nll {init_valid['nll']:.4f}" + (f" ce(theta) {init_valid['cross_entropy_theta']:.4f}" if noisy else ""))
     say(f"{len(train_records)} records, {total_steps} optimizer steps, micro-batch {micro} x {accumulation}, warmup {warmup}, arm {settings.arm}")
 
     limit = min(total_steps, args.limit_steps) if args.limit_steps else total_steps
@@ -442,14 +509,16 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     def checkpoint() -> None:
         progress["sampler_state"] = generator.get_state()
+        if env is not None:
+            progress["env_state"] = env.get_state()
         save_state(run_dir, jev, optimizer, scheduler, scaler, progress)
 
     def run_validation(step: int) -> None:
-        result = validate(jev, ref, valid_subset, micro * 2, max_tokens, settings.arm)
+        result = validate(jev, ref, valid_subset, micro * 2, max_tokens, settings.arm, noisy)
         log_line(log_path, {"event": "valid", "step": step, **result})
-        say(f"step {step}: valid acc {result['accuracy']:.4f} ece {result['ece']:.4f} nll {result['nll']:.4f} kl {result['kl_to_ref']:.4f}")
-        if progress["best_nll"] is None or result["nll"] < progress["best_nll"]:
-            progress["best_nll"], progress["best_step"] = result["nll"], step
+        say(f"step {step}: valid acc {result['accuracy']:.4f} ece {result['ece']:.4f} nll {result['nll']:.4f} kl {result['kl_to_ref']:.4f}" + (f" ce(theta) {result['cross_entropy_theta']:.4f}" if noisy else ""))
+        if progress["best_nll"] is None or result[select] < progress["best_nll"]:  # best_nll holds the best value of `select`
+            progress["best_nll"], progress["best_step"] = result[select], step
             jev.model.save_pretrained(run_dir / "adapter")
 
     stopped_by_time = False
@@ -463,7 +532,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 break
             losses, stats = [], []
             for batch in group:
-                loss, stat = batch_loss(jev, ref, batch, settings, generator)
+                loss, stat = batch_loss(jev, ref, batch, settings, generator, env)
                 scaler.scale(loss / len(group)).backward()
                 losses.append(loss.item())
                 stats.append(stat)
@@ -504,21 +573,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise RuntimeError("no validation ran, so no best adapter exists")
 
     jev.model.save_pretrained(run_dir / "adapter_last")
-    final_last = validate(jev, ref, valid_all, micro * 2, max_tokens, settings.arm)
+    final_last = validate(jev, ref, valid_all, micro * 2, max_tokens, settings.arm, noisy)
     load_adapter_weights(jev, run_dir / "adapter")
-    final = validate(jev, ref, valid_all, micro * 2, max_tokens, settings.arm)
+    final = validate(jev, ref, valid_all, micro * 2, max_tokens, settings.arm, noisy)
     log_line(log_path, {"event": "final_valid", "best_step": progress["best_step"], **final})
     log_line(log_path, {"event": "final_valid_last", "step": progress["step"], **final_last})
     (run_dir / "calibration.json").write_text(json.dumps({"temperature": 1.0}) + "\n")
     summary = {
         "run_name": config["run_name"],
         "arm": settings.arm,
+        "env": config["env"],
+        "beta": settings.beta,
         "finished": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         "steps": progress["step"],
         "total_steps": total_steps,
         "limit_steps": args.limit_steps,
         "best_step": progress["best_step"],
-        "best_subset_nll": progress["best_nll"],
+        "best_by": select,
+        f"best_subset_{select}": progress["best_nll"],
         "init": str(init_dir),
         "init_adapter_sha256": config["rlcd"]["init_adapter_sha256"],
         "init_valid": progress["init_valid"],

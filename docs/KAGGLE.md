@@ -257,3 +257,35 @@ The four-run session (sft_cont, outcome, outcome_minus_p, direct_log) confirmed 
 1.7B is not measured yet. Scaled from SFT (3.0 hours for 1378 steps, about 7.9 s per step) plus the reference pass, estimate 90 to 110 minutes of training and 99 minutes of evaluation (measured for sft_17b) per run, about 3.3 hours. At most two 1.7B runs fit one session.
 
 The pre-flight line in the smoke run shows peak memory for policy plus reference within a minute: 8.19 of 14.56 GiB at 0.6B (`runs/rlcd_06b_direct_brier_s0/training_log.jsonl`). At 1.7B the reference adds about 3.4 GB to the SFT peak of 4.02 GiB.
+
+## 11. RLCD stage 3: the stochastic-outcome environment (task 2.5)
+
+Stage 3 trains RLCD against outcomes drawn from a known distribution instead of the gold label (decision 54). The data stay frozen. The environment, `jevmark/environment.py`, is a layer on top that gives each question a noise rate η(K) = min(0.40, 0.05 + 0.03 (K − 2)) and a target θ: 1 − η on gold and η / (K − 1) on each other option. On every visit it draws an accepted answer from θ, and the sampled action's outcome is 1 when it equals that answer.
+
+The notebook is the same as in section 10, with `ENV = "noisy"`. Every training command then gets `--env noisy`, runs are named `rlcd_<size>_noisy_<arm>_s<seed>`, and `sft_cont` is not offered.
+
+A noisy run takes `rlcd.beta` 0 and `training.steps` 1000 from the config's `noisy` section. To change them, override `noisy.beta` or `noisy.steps`; `train_rlcd.py` refuses a direct `rlcd.beta` or `training.steps` override in noisy mode. Validation adds expected Brier and cross-entropy against θ, and `adapter/` is the best step by cross-entropy against θ on the valid subset. Resume works as in section 10, with `--env noisy` added to the resume command, since it names the run.
+
+### Sessions at 0.6B
+
+`SIZE = "06b"`, `ENV = "noisy"`, `MAX_HOURS = 2.5`, one `COMMIT` for both sessions:
+
+| Session | `ARMS` | `SEEDS` | Runs | Estimate |
+|---|---|---|---|---|
+| 3-1 | `["direct_brier"]` | `[0, 1, 2]` | 3 | 6.8 h |
+| 3-2 | `["direct_log", "outcome_minus_p", "outcome"]` | `[0]` | 3 | 6.8 h |
+
+The estimate comes from the stage 1 logs (`runs/rlcd_06b_direct_brier_s0/training_log.jsonl`, `runs/rlcd_06b_outcome_s0/training_log.jsonl`):
+- **Per step:** about 3.6 s.
+- **Per subset validation:** about 60 s, including the checkpoint.
+- **The two full-valid passes:** about 9 minutes.
+- **Before the first step:** about 2 minutes.
+
+So 1000 steps with 10 validations take about 81 minutes, well inside `MAX_HOURS = 2.5`, and the evaluation adds 44 minutes. That is about 2.1 hours per run, 6.3 hours for three runs, plus clone, install, data build and smoke. Stage 3 is about 14 GPU hours.
+
+### After the sessions, locally on CPU
+
+1. `scripts/evaluate_env.py runs/<run>` for each run, which writes `runs/<run>_env/metrics.json`. `runs/sft_06b_env/metrics.json` is committed with this task.
+2. `scripts/compare_env.py --size 06b`, which writes `runs/rlcd_stage3_06b/metrics.json`.
+
+Commit each run as in section 10.

@@ -61,3 +61,9 @@ rlcd:
   # Known broken (decision 52): true allows arm=brier or arm=log, the proper scores as detached
   # REINFORCE rewards, only to reproduce the negative result runs/rlcd_06b_brier_s0.
   reinforce_proper_score: false
+
+# Stage 3, the stochastic-outcome environment (--env noisy, decision 54). A fresh noisy run takes
+# rlcd.beta and training.steps from here; override noisy.beta or noisy.steps, never the originals.
+noisy:
+  beta: 0.0               # no KL: the SFT policy is sharp on gold, and theta is where the policy should move
+  steps: 1000             # noisy outcomes carry less signal per step than gold
