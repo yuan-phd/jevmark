@@ -72,6 +72,7 @@ jevmark/
     recompute_baseline_metrics.py  rebuilds a baseline's metrics from its replies
     paired_deltas.py         paired accuracy differences between two runs
     simulate_advantages.py   RLCD advantages per reward from stored probabilities (decision 52)
+    compare_rlcd.py          RLCD arms against SFT and SFT plus T, per size and seeds, with a temperature ablation
     serve.py          optional FastAPI wrapper
   notebooks/          thin Kaggle wrappers only: clone, install, run a script
   tests/
