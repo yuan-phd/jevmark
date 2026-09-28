@@ -57,73 +57,85 @@ Score questions collapsed (score accuracy .636 to .111 on test_sst5, .505 to .04
 
 **Corrected design** (decision 52). The arms are `sft_cont` (control), `outcome` and `outcome_minus_p` (REINFORCE), and `direct_brier` and `direct_log`, which minimise the sampled action's Brier or log score with p_a differentiable, so the update is a gradient of a proper score of p itself. The REINFORCE `brier` and `log` arms remain in the code behind `rlcd.reinforce_proper_score: true`, off by default, only to reproduce this result. Stage 1 runs the five arms on 0.6B with seed 0 (docs/KAGGLE.md section 10); section 3 reports it.
 
-## 3. RLCD stage 1: five arms on 0.6B, seed 0 (interim)
+## 3. RLCD stages 1 and 2a: five arms on 0.6B, seeds 0, 1 and 2
 
-**Status: interim.** This is one seed at one size. Stage 2, seeds 1 and 2 at 0.6B and seed 0 at 1.7B (decision 53, docs/KAGGLE.md section 10), and stage 3 are pending. This section will be revised with them and does not yet state the v2 conclusion.
+**Status: stage 2a complete; stage 2b and stage 3 pending.** Stage 1 ran the five arms at seed 0; stage 2a added seeds 1 and 2 (decision 53, docs/KAGGLE.md section 10). This section reports all three seeds at 0.6B. Stage 2b (the five arms at seed 0 on 1.7B) and stage 3 (the stochastic-outcome environment, task 2.5) have not run, so this section does not yet state the v2 conclusion.
 
 **Setup.**
-- Five arms, each 500 steps from `runs/sft_06b` with the same settings: lr 5e-5, beta 0.02, G 4, epsilon 0.1, and the same records and schedule.
+- Five arms, each 500 steps from `runs/sft_06b` with the same settings: lr 5e-5, beta 0.02, G 4, epsilon 0.1, and the same records and schedule. The seed sets the data order, the sampled actions and the 1000-record validation subset.
 - The arms: `sft_cont` (the control: more cross-entropy on the gold labels), `outcome` and `outcome_minus_p` (REINFORCE), and `direct_brier` and `direct_log` (pathwise proper scores, decision 52).
-- Each run is evaluated on its best adapter by validation NLL, on all nine splits.
+- Each run is evaluated on its best adapter by NLL on its validation subset, on all nine splits.
+- The fifteen runs all record commit f30800d (seed 0, all arms but direct_brier), 9c160d2 (direct_brier, seed 0) or 740371b (seeds 1 and 2), not dirty, the same data hashes as `runs/sft_06b`, 500 of 500 steps, no fp32 fallback, and the SFT adapter sha256 5d2681f3... in config.yaml, train_summary.json and metrics.json (`runs/rlcd_06b_<arm>_s<seed>/`).
 
-**Source of the numbers.** Every number below is from `runs/rlcd_stage1_06b/metrics.json`, written by `scripts/compare_rlcd.py --size 06b --seeds 0`, at these keys:
-- per split: `splits.<split>.overall.{sft,sft_temp,arms.<arm>.mean}`;
-- unseen-schema mean: `unseen_schemas`;
-- temperature ablation: `temperature_ablation`;
-- validation curves: `validation`.
+**Source of the numbers.** Every number below is from `runs/rlcd_stage2a_06b/metrics.json`, written by `scripts/compare_rlcd.py --size 06b --seeds 0 1 2 --out runs/rlcd_stage2a_06b` on a clean tree, unless another file is named:
+- per split: `splits.<split>.overall.{sft,sft_temp,arms.<arm>.mean,arms.<arm>.by_seed}`;
+- unseen-schema mean: `unseen_schemas.arms.<arm>` (`mean_ece`, `mean_ece_range`, `mean_ece_by_seed`);
+- temperature ablation: `temperature_ablation`, with the per-seed values after temperature from `runs/rlcd_06b_<arm>_s<seed>_temp/metrics.json:splits.<split>.overall.ece`;
+- validation curves: `validation.<arm>.<seed>`.
 
-**How the intervals are computed.** They are 95 percent paired bootstrap intervals over records (1000 resamples, the same draws for every run). Accuracy differences are against `sft_06b`; ECE differences are against `sft_06b_temp`. With one seed, they cover record sampling only; stage 2a adds the variation between seeds.
+The seed 0 numbers alone are in `runs/rlcd_stage1_06b/metrics.json` (the interim stage 1 table).
 
-**Unseen schemas.** ECE on gold-dependent questions; test_indomain is shown for accuracy:
+**How the intervals are computed.** A cell for an arm is the mean over its three seeds, with the range (min, max) where shown. Its interval is a 95 percent paired bootstrap over records (1000 resamples, the same draws for every run), each draw averaging the three seeds' differences under that record resample. The interval therefore covers record sampling for these three seeds; the range shows the variation between seeds. Accuracy differences are against `sft_06b`; ECE differences are against `sft_06b_temp`.
 
-| run | test_indomain acc / ECE | test_agnews | test_emotion | test_banking77 | test_yelp | unseen mean ECE | Δ vs sft_06b_temp [95% CI] |
+**Unseen schemas.** ECE on gold-dependent questions, seed means; test_indomain is shown for accuracy:
+
+| run | test_indomain acc / ECE | test_agnews | test_emotion | test_banking77 | test_yelp | unseen mean ECE (seeds 0, 1, 2) | Δ vs sft_06b_temp [95% CI] |
 |---|---|---|---|---|---|---|---|
 | sft_06b | .956 / .013 | .164 | .207 | .067 | .169 | .152 | |
 | sft_06b_temp | .956 / .005 | .146 | .166 | .037 | .137 | .121 | |
-| sft_cont | .958 / .016 | .169 | .244 | .088 | .241 | .185 | +.064 [+.057, +.073] |
-| outcome | .958 / .038 | .203 | .333 | .119 | .396 | .262 | +.141 [+.131, +.149] |
-| outcome_minus_p | .959 / .014 | .172 | .234 | .088 | .196 | .173 | +.051 [+.043, +.058] |
-| direct_brier | .957 / .011 | .172 | .236 | .082 | .201 | .173 | +.051 [+.044, +.059] |
-| direct_log | .958 / .016 | .169 | .239 | .085 | .233 | .181 | +.060 [+.053, +.068] |
+| sft_cont | .957 / .017 | .172 | .236 | .087 | .189 | .171 (.185, .172, .156) | +.050 [+.044, +.056] |
+| outcome | .953 / .039 | .196 | .326 | .118 | .354 | .248 (.262, .244, .239) | +.127 [+.118, +.135] |
+| outcome_minus_p | .957 / .014 | .165 | .211 | .072 | .164 | .153 (.173, .155, .131) | +.031 [+.026, +.038] |
+| direct_brier | .957 / .012 | .168 | .222 | .076 | .169 | .159 (.173, .165, .139) | +.037 [+.032, +.043] |
+| direct_log | .958 / .018 | .172 | .234 | .083 | .191 | .170 (.181, .172, .156) | +.048 [+.043, +.055] |
 
-- **Unseen-schema ECE:** no arm matches `sft_06b_temp` on any unseen schema, and every interval lies above 0. Every arm is also less calibrated there than `sft_06b` itself.
-- **In-domain accuracy held:** test_indomain accuracy moved by +.001 to +.003 against `sft_06b`. Only outcome_minus_p's interval, [+.001, +.004], excludes 0.
-- **In-domain ECE:** every arm's test_indomain ECE is above `sft_06b_temp`'s .005, from +.005 (direct_brier) to +.032 (outcome), with intervals above 0.
-- **Other held-out splits:** accuracy fell on several; the full table is in the metrics file.
-- **The broken REINFORCE `brier` arm** (section 2) is in the file for completeness and left out here.
+- **Unseen-schema ECE:** at every seed, every arm's four-schema mean is above `sft_06b_temp`'s .121; the lowest single run is outcome_minus_p at seed 2 with .131. Every seed-mean interval lies above 0. The stage 1 direction holds at all three seeds.
+- **The size is smaller than stage 1 showed:** seed 0 was the least calibrated seed for every arm, so the seed-mean differences (+.031 to +.127) are .012 to .020 below the seed 0 differences (+.051 to +.141, `runs/rlcd_stage1_06b/metrics.json:unseen_schemas`).
+- **One run beats `sft_06b_temp` on one schema:** outcome_minus_p at seed 2 on Yelp, .098 against .137, difference -.040 [-.061, -.014] (`splits.test_yelp.overall.arms.outcome_minus_p.by_seed.2`). direct_brier at seed 2 is also below on Yelp (-.017 [-.031, +.003]), with an interval that includes 0. No other run is below `sft_06b_temp` on any unseen schema.
+- **Raw SFT:** stage 1 found every arm less calibrated than `sft_06b` itself (.152). Across seeds that holds for sft_cont, outcome and direct_log at every seed, but not for outcome_minus_p (.131 at seed 2) and direct_brier (.139 at seed 2). Their seed means (.153 and .159) are at or above .152.
+- **In-domain accuracy:** test_indomain accuracy moved by -.003 to +.001 against `sft_06b`. Only outcome's difference excludes 0: -.003 [-.005, -.001]. Stage 1's small significant gain for outcome_minus_p (+.003 at seed 0) does not survive the seed mean (+.000 [-.001, +.002]).
+- **In-domain ECE:** every arm's test_indomain ECE is above `sft_06b_temp`'s .005, from +.007 (direct_brier) to +.034 (outcome), with intervals above 0.
+- **Other held-out splits:** accuracy fell against `sft_06b` on test_sst5 for every arm (-.005 to -.009) and on test_unseen_intents for every arm but outcome (-.006 to -.009), all with intervals below 0 (`splits.<split>.overall.arms.<arm>.mean.accuracy_minus_sft_ci`).
+- **The broken REINFORCE `brier` arm** (section 2) has seed 0 only; it is in the file for completeness and left out here.
 
-**What training did to confidence.** On the fixed valid subset, from step 0 to step 500 (`validation.<arm>.0`):
+**Seed variation against record intervals.** The seed-mean intervals are 0.011 to 0.017 wide. The range between seeds of the four-schema mean is .023 (outcome) to .041 (outcome_minus_p), 1.4 to 3.5 times the width of its interval, and most of it sits on Yelp: sft_cont's Yelp ECE is .241, .188 and .139 at seeds 0, 1 and 2. A record-level interval from one seed therefore understates how far a rerun can move. Two consequences:
+- **The arm ranking is only partly stable.** outcome is separated from the others at every seed (.239 to .262 against at most .185). The ranges of the other four overlap. Compared within the same seed, outcome_minus_p is below sft_cont at every seed (-.013, -.018, -.024) and direct_brier too (-.013, -.008, -.017), while direct_log is level with sft_cont (-.004, .000, +.001). These are point differences with no interval.
+- **The seed effect follows the selected step.** At seed 2 all five arms selected step 100, the first trained checkpoint; at seed 0 they selected steps 200 to 400; at seed 1, step 100 (outcome, outcome_minus_p), 400 (sft_cont) or 500 (direct_brier, direct_log) (`validation.<arm>.<seed>.best_step`). Within each arm, the runs selected at step 100 have the lowest Σp² on full valid (`validation.<arm>.<seed>.full_valid_best`) and the lowest unseen-schema ECE. The selection uses NLL on a validation subset drawn per seed (`scripts/train_rlcd.py`, `random.Random(f"{seed}:valid_subset")`), so part of what differs between seeds is which checkpoint the rule picks, not only the training trajectory.
 
-| arm | Σp² (expected p of the chosen action) | KL to SFT | train ECE | valid NLL |
+**What training did to confidence.** Validation of the last adapter (step 500) on the full `valid` split, the same records at every seed (`validation.<arm>.<seed>.full_valid_last`), as the range over the three seeds:
+
+| arm | Σp² (expected p of the chosen action) | KL to SFT | valid NLL | valid ECE |
 |---|---|---|---|---|
-| (SFT, step 0) | .912 | 0 | .009 | .219 |
-| sft_cont | .929 | .015 | .004 | .232 |
-| outcome | .985 | .076 | .057 | .627 |
-| outcome_minus_p | .924 | .014 | .005 | .223 |
-| direct_brier | .924 | .010 | .005 | .225 |
-| direct_log | .930 | .016 | .003 | .234 |
+| sft_cont | .924 to .928 | .0096 to .0117 | .228 to .234 | .027 to .033 |
+| outcome | .983 to .988 | .070 to .076 | .585 to .677 | .075 to .077 |
+| outcome_minus_p | .918 to .922 | .0086 to .0101 | .224 to .226 | .024 to .026 |
+| direct_brier | .918 to .922 | .0078 to .0096 | .223 to .226 | .023 to .028 |
+| direct_log | .923 to .928 | .0091 to .0125 | .227 to .234 | .026 to .032 |
 
-**Temperature ablation.** Each arm was given its own temperature, fitted on valid with `scripts/calibrate.py`, as `runs/rlcd_06b_<arm>_s0_temp/`. The question is whether that temperature brings the arm back to `sft_06b_temp` (T 1.266):
+On the validation subset, from step 0 to step 500 (`validation.<arm>.<seed>.step_0` and `.last`), Σp² rose at every seed for every arm: by .013 to .017 for sft_cont, .067 to .076 for outcome, .007 to .012 for outcome_minus_p, .006 to .011 for direct_brier and .012 to .018 for direct_log, with final KL to SFT of .010 to .015, .066 to .076, .009 to .014, .008 to .010 and .010 to .016. The subset differs per seed (step-0 Σp² .912, .914 and .916), so the full-valid table is the one to compare across seeds. The ordering by sharpening, outcome far above, then sft_cont and direct_log, then outcome_minus_p and direct_brier, is the same at every seed and is the same ordering as unseen-schema ECE.
 
-| arm | T | unseen mean ECE before → after | after − sft_06b_temp [95% CI] | level |
+**Temperature ablation.** Each run was given its own temperature, fitted on valid with `scripts/calibrate.py`, as `runs/rlcd_06b_<arm>_s<seed>_temp/`. The question is whether that temperature brings the arm back to `sft_06b_temp` (T 1.266):
+
+| arm | T (seeds 0, 1, 2) | unseen mean ECE before → after (seeds after) | after − sft_06b_temp [95% CI] | level |
 |---|---|---|---|---|
-| sft_cont | 1.432 | .185 → .132 | +.011 [+.006, +.020] | above |
-| outcome | 2.851 | .262 → .156 | +.035 [+.026, +.045] | above |
-| outcome_minus_p | 1.384 | .173 → .129 | +.007 [+.001, +.014] | above |
-| direct_brier | 1.351 | .173 → .127 | +.006 [+.001, +.014] | above |
-| direct_log | 1.394 | .181 → .135 | +.013 [+.007, +.021] | above |
+| sft_cont | 1.432, 1.426, 1.315 | .171 → .124 (.132, .124, .116) | +.002 [-.001, +.009] | level |
+| outcome | 2.851, 2.528, 2.525 | .248 → .146 (.156, .140, .143) | +.025 [+.018, +.034] | above |
+| outcome_minus_p | 1.384, 1.287, 1.165 | .153 → .120 (.129, .119, .112) | -.002 [-.006, +.004] | level |
+| direct_brier | 1.351, 1.361, 1.175 | .159 → .122 (.127, .123, .116) | +.001 [-.004, +.007] | level |
+| direct_log | 1.394, 1.430, 1.289 | .170 → .126 (.135, .121, .123) | +.005 [+.001, +.011] | above |
 
-- **Temperature is not enough:** every arm needs a higher temperature than SFT, and even with its own it stays above `sft_06b_temp`, with every interval excluding 0 (`temperature_ablation.every_arm_back_to_sft_temp_level` is false).
-- **Where the gap remains:** it is smallest for direct_brier and outcome_minus_p (+.006 and +.007) and sits mostly on emotion, where every arm stays .014 to .040 above. It also remains on Yelp for sft_cont (+.023), outcome (+.079) and direct_log (+.034).
-- **What that means:** the extra training did more than scale the SFT logits. It also changed the shape of the distributions off-distribution, in a way one temperature fitted in-domain does not undo.
+- **This changes the stage 1 reading.** At seed 0 every arm stayed above `sft_06b_temp` after its own temperature. Over three seeds, sft_cont, outcome_minus_p and direct_brier come back to its level (intervals containing 0); outcome and direct_log stay above (`temperature_ablation.every_arm_back_to_sft_temp_level` is false). For the three arms that come back, the extra training is mostly a sharpening that one in-domain temperature undoes; the stage 1 claim that it changed the shape of the distributions off-distribution rests on seed 0.
+- **Where a gap remains:** on emotion, sft_cont (+.016), direct_brier (+.011) and direct_log (+.015) stay above `sft_06b_temp` after temperature, with intervals above 0; outcome_minus_p does not (+.004 [-.003, +.012]). outcome is above on emotion, Banking77 and Yelp, and below on AG News (-.008 [-.016, -.002]). On Yelp, direct_brier after temperature is below `sft_06b_temp` (-.017 [-.028, -.001]) (`temperature_ablation.arms.<arm>.splits`).
+- **Being level is not a win.** An arm with its own temperature is a method of the same kind as `sft_06b_temp`: one T fitted on in-domain valid. The best of them, outcome_minus_p at -.002 [-.006, +.004], is level with it, and the control sft_cont reaches the same level (+.002). Nothing here is attributable to bandit feedback.
 
 **Mechanism.**
-- **Every arm sharpens, the control included.** Every arm trains on fully labelled in-domain data whose gold answers are deterministic, and every arm sharpens: Σp² rises and train ECE falls. `sft_cont` does so as much as the pathwise arms (Σp² .929 against .924 and .930), so what the pathwise arms do is what more cross-entropy on the same records does.
+- **Every arm sharpens, the control included.** Every arm trains on fully labelled in-domain data whose gold answers are deterministic, and every arm sharpens at every seed: Σp² rises and in-domain valid NLL rises from step 0. `sft_cont` sharpens as much as direct_log and more than the two arms with the lowest unseen ECE, so what the pathwise arms do is at most what more cross-entropy on the same records does.
 - **Bandit feedback cannot add anything here.** It reveals only whether the sampled option was gold, which is strictly less information per question than the gold label cross-entropy is given. On deterministic gold, no bandit objective can do what cross-entropy cannot.
-- **Outcome-only reward destroys calibration.** With nothing that penalises confidence, REINFORCE on the 0/1 outcome drives the policy towards certainty: Σp² .985, valid NLL .219 to .627, unseen mean ECE .262. It needs T 2.85 to come back even partly.
-- **Off-distribution overconfidence needs softening.** The unseen schemas need temperatures of 1.4 to 2.7 (section 1) on top of the model's in-domain fit. Every arm moves the other way, and even an arm's own temperature leaves it above `sft_06b_temp`.
+- **Outcome-only reward destroys calibration.** With nothing that penalises confidence, REINFORCE on the 0/1 outcome drives the policy towards certainty at every seed: Σp² .983 to .988 on full valid, valid NLL .585 to .677, unseen mean ECE .239 to .262, and in-domain accuracy -.003. It needs T 2.5 to 2.9 and still stays above `sft_06b_temp`.
+- **Less sharpening, better off-distribution.** outcome_minus_p and direct_brier sharpen least (Σp² .918 to .922, KL .008 to .010), have the lowest unseen ECE, and need the smallest temperatures (1.16 to 1.38). The unseen schemas need softening (temperatures of 1.4 to 2.7, section 1); any training that sharpens in-domain moves them the wrong way, and how far it moves them tracks how much it sharpens.
+
+**Stage 2a answer.** Across three seeds at 0.6B, no RLCD arm matches `sft_06b_temp` on unseen-schema ECE without a temperature of its own, the sign of every arm's difference is the same at every seed, and the size is about .015 smaller than seed 0 alone showed. With its own temperature, no arm is below `sft_06b_temp`, and the control does as well as the best RLCD arm.
 
 **Pending.**
-- **Stage 2a** tests whether these differences hold across seeds; the range across seeds will show whether the ordering between arms is stable.
-- **Stage 2b** tests whether they hold at 1.7B.
-- **Stage 3** is specified in a separate task.
+- **Stage 2b** tests whether these differences hold at 1.7B (seed 0, docs/KAGGLE.md section 10).
+- **Stage 3** (task 2.5, decision 54) tests RLCD where outcomes are stochastic, the setting in which bandit feedback can carry information that cross-entropy on gold cannot.

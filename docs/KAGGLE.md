@@ -238,7 +238,7 @@ Stage 2 is about 34 GPU hours, more than one week's quota, so it spans two weeks
 After each stage, locally and on CPU:
 1. Fit a temperature on every new run with `scripts/calibrate.py runs/<run>`, for the temperature ablation.
 2. Write the table:
-   - stage 2a: `scripts/compare_rlcd.py --size 06b --stage 2`, which covers seeds 0, 1 and 2 and writes `runs/rlcd_stage2_06b/metrics.json`;
+   - stage 2a: `scripts/compare_rlcd.py --size 06b --seeds 0 1 2 --out runs/rlcd_stage2a_06b`, which covers seeds 0, 1 and 2 and writes `runs/rlcd_stage2a_06b/metrics.json` (done);
    - stage 2b: `scripts/compare_rlcd.py --size 17b --stage 2`, which writes `runs/rlcd_stage2_17b/metrics.json`.
 
 The REINFORCE arms `brier` and `log` are known broken (decision 52): used as a detached reward on the sampled action, a proper score never ranks a wrong action below gold, so the policy gradient lowers gold for K > 2 and is zero for K = 2. Their one run, `runs/rlcd_06b_brier_s0`, is committed as the negative result. The notebook does not offer them; to reproduce that run, set `ARMS = ["brier"]` and `SEEDS = [0]`, drop the notebook's `ARMS` assertion and add `rlcd.reinforce_proper_score=true` to both training commands.
