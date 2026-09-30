@@ -51,6 +51,8 @@ Learning level: this project covers a training objective the author has not done
 - Ablations: outcome-only reward, outcome minus confidence, Brier, log score; SFT plus temperature scaling as the cheap competitor.
 - Core claim to test: RLCD keeps calibration on unseen schemas without fitting a temperature per schema.
 
+Status (2026-09-30). Stages 1 and 2a are complete: five arms on 0.6B at seeds 0, 1 and 2. None of them matches SFT plus one in-domain temperature on unseen-schema ECE without a temperature of its own: the four-schema mean is .153 to .248 across arms, against .121 for SFT plus T. With its own temperature, no arm goes below SFT plus T, and the control (more cross-entropy) does as well as the best arm. On deterministic gold labels, bandit feedback is less information than the label, so no bandit objective can do what cross-entropy cannot. Stage 2b (the arms on 1.7B) and stage 3 (a stochastic-outcome environment, decision 54) are pending. docs/RESULTS_v2.md sections 3 and 4 give the evidence and the stage 3 method.
+
 ### v3: integration
 
 - A LocalDecider wrapper in delta-filing next to the existing LocalLLM wrapper.
@@ -58,6 +60,7 @@ Learning level: this project covers a training objective the author has not done
 - The agent's own decision questions (its routes, its tools, its completion check) have no public dataset counterpart, so the v1 and v2 checkpoints meet them as unseen schemas. Before measurement, v3 therefore includes a fine-tuning pass on the agent's logged decisions: run the graph with the LLM deciding, log every decision point's state, question and the LLM's answer (checked against the reference where one exists), and fine-tune the adapter on those logs, with the measurement queries held out.
 - Design constraint on question order (API_SPEC section 4, usage note): in every request the agent sends, a question whose construction depends on the answer to another question in the same request comes after it, with at most one such dependent question per request; independent questions may be batched freely. Decision points that need a chain of dependent questions are split into separate requests. Violating the order cost about 6 points of noul accuracy and flipped about 9 percent of noul answers on test_indomain for 0.6B.
 - The same graph run in three configurations: all decisions by LLM, all by jevmark, cascade. Measure end-to-end latency, cost and accuracy on the same query set.
+- Phase 3 is also where partial, stochastic feedback actually occurs. An agent's decisions are judged by what happens next (a tool call succeeds or fails, a reviewer accepts or rejects an answer), with only the chosen option observed and no gold label. That is the setting stage 3 simulates, and the one in which an RLCD objective could add something that SFT on labels cannot.
 
 ## How we measure
 

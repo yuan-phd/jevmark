@@ -138,4 +138,66 @@ On the validation subset, from step 0 to step 500 (`validation.<arm>.<seed>.step
 
 **Pending.**
 - **Stage 2b** tests whether these differences hold at 1.7B (seed 0, docs/KAGGLE.md section 10).
-- **Stage 3** (task 2.5, decision 54) tests RLCD where outcomes are stochastic, the setting in which bandit feedback can carry information that cross-entropy on gold cannot.
+- **Stage 3** (task 2.5, decision 54) tests RLCD where outcomes are stochastic, the setting in which bandit feedback can carry information that cross-entropy on gold cannot. Section 4 gives its method and the SFT baseline.
+
+## 4. RLCD stage 3: a stochastic-outcome environment (method; results pending)
+
+**Status: method and SFT baseline only.** No stage 3 training run exists yet. Sessions 3-1 and 3-2 (docs/KAGGLE.md section 11) are pending. The SFT numbers below are from `runs/sft_06b_env/metrics.json` (commit b49153b, not dirty, written by `scripts/evaluate_env.py runs/sft_06b` from `runs/sft_06b/results.jsonl.gz` on CPU), key `variants.<variant>.splits.<split>`. Decision 54 records the design.
+
+**Why a new setting.** In stages 1 and 2a the outcome of a sampled action is whether it is gold. That is strictly less information than the gold label cross-entropy already uses, and every arm, the control included, only sharpened (section 3). In that setting RLCD cannot do anything that SFT cannot. Stage 3 changes the outcomes so that the best-calibrated policy is not the one-hot gold answer and is known exactly.
+
+**The environment** (`jevmark/environment.py`). The data stay frozen (v1.3). A question with K options (K = 2 for a noul) gets a noise rate
+
+  eta(K) = min(0.40, 0.05 + 0.03 (K - 2)),
+
+so eta is .05 for a noul, .08 at K 3, .32 at K 11 and .40 from K 12 on. The target distribution theta puts 1 - eta on gold and eta / (K - 1) on each other option. On every visit to a question the environment draws one accepted answer from theta with its own generator, seeded from the run seed and saved with the resume state. All G sampled actions of that visit are scored against the same accepted answer, so an action a is revealed as 1 with probability theta_a. One accepted answer per visit matches a bandit setting with one environment response per decision. It changes the correlation within a group of samples, not any action's outcome rate. theta depends on K, so no single temperature applied to a sharp policy can reach it.
+
+**Training.** `scripts/train_rlcd.py --env noisy`, from `runs/sft_06b`, 1000 steps, G 4, epsilon 0.1, lr 5e-5, with beta 0 and the step count taken from the config's `noisy` section. Direct overrides of `rlcd.beta` or `training.steps` are refused. `adapter/` is the step with the lowest cross-entropy against theta on the validation subset.
+
+**Why beta is 0.** The KL term pulls the policy towards the SFT policy, which is nearly one-hot on gold. Under noise that pull points away from theta: the minimiser of a proper score plus beta KL(p || p_ref) is a blend of theta and p_ref, not theta. The pathwise proper scores are bounded objectives whose minimum is theta itself, so they need no trust region. The runs take 1000 steps rather than 500 because a noisy outcome carries less signal than a gold label.
+
+**Arms and seeds planned** (0.6B, `MAX_HOURS = 2.5`, one commit for both sessions):
+
+| session | arms | seeds | runs |
+|---|---|---|---|
+| 3-1 | `direct_brier` | 0, 1, 2 | 3 |
+| 3-2 | `direct_log`, `outcome_minus_p`, `outcome` | 0 | 3 |
+
+`sft_cont` is refused, because cross-entropy on gold ignores the outcomes. The REINFORCE `brier` and `log` arms are refused as known broken (decision 52). `direct_brier` gets three seeds because it is the arm the prediction is about. The estimate is about 2.1 hours per run (81 minutes of training, 44 of evaluation) and 14 GPU hours in all (docs/KAGGLE.md section 11).
+
+**Post-hoc baselines, computed from SFT.**
+- **Global T, fitted from bandit feedback.** One temperature fitted on `valid` from the SFT policy's own bandit outcomes in the environment (G 4, epsilon 0.1, seed 0), minimising the binary log loss of p_T(a) against the revealed outcome. It sees the same kind of feedback RLCD does, so it is the fair post-hoc competitor. On `sft_06b` it is T 2.849 (`variants.global_T.temperature`).
+- **Per-K oracle T.** One temperature per K, fitted on each test split's own theta by minimising cross-entropy against theta. It reads the target on the split it is scored on, so it is a bound, not a method. Because it minimises cross-entropy and not the gap, it can leave a larger gap than the global T (Banking77, below).
+
+**Metrics against theta.** Every metric is an expectation over theta rather than over sampled outcomes, on gold-dependent questions (`evaluate_env.py`):
+- expected Brier, E over theta of the multi-class Brier score, whose minimum over p is 1 - Σ theta² (`expected_brier_min`);
+- cross-entropy against theta, -Σ theta_k log p_k, whose minimum is the entropy of theta, and the KL to theta;
+- accuracy against gold;
+- ECE against outcomes sampled once per split from theta (`ece_sampled`), the same outcomes for every variant;
+- the calibration gap, redefined for this setting: for each K, |mean top-1 probability - mean expected hit rate of the top-1 option|, where the hit rate is theta of the predicted option, then the count-weighted mean over K (`calibration_gap`, per K in `by_k`). The hit rate of the predicted option replaces 1 - eta because a model that is sometimes wrong should report less than 1 - eta on the questions it gets wrong. Mean p(gold) against 1 - eta is kept as `gap_gold`, but it grows when such a model is softened, so it is not the headline.
+
+theta itself scores a gap of 0 and reaches both minima.
+
+**SFT baseline.** Calibration gap, raw / with the global T / with the per-K oracle, and cross-entropy against theta (raw / global T / oracle / theta):
+
+| split | K present | gap raw | + global T | + per-K oracle | cross-entropy raw / global T / oracle / theta |
+|---|---|---|---|---|---|
+| test_indomain | 2 to 14 | .152 | .027 | .022 | 1.353 / .709 / .706 / .618 |
+| test_unseen_intents | 2 to 14 | .192 | .022 | .007 | 1.525 / .785 / .781 / .622 |
+| test_sst5 | 2, 3, 5 | .084 | .093 | .025 | .841 / .745 / .721 / .375 |
+| test_agnews | 4 | .242 | .069 | .003 | 1.769 / .871 / .851 / .467 |
+| test_emotion | 2, 6 | .256 | .029 | .011 | 1.571 / 1.030 / 1.022 / .464 |
+| test_banking77 | 10 | .308 | .022 | .032 | 2.653 / 1.479 / 1.479 / 1.239 |
+| test_yelp | 5 | .188 | .061 | .027 | 1.415 / 1.298 / 1.267 / .599 |
+
+- **Unseen schemas.** The raw gap is .188 to .308. The global T brings it to .022 to .069 (four-schema mean .045), and the per-K oracle to .003 to .032 (mean .018).
+- **The margin left for `direct_brier`.** Between the global T and the oracle there is .066 on AG News, .034 on Yelp and .018 on emotion. On Banking77 there is none: the oracle's gap is .010 above the global T's. Across the four schemas the global T is about .02 to .05 above zero on three and .069 on AG News, which is the most any method can gain there. A stage 3 arm that beats the global T but not the oracle has only these amounts to win.
+- **Where a global T cannot fit every K.** The unseen schemas each have one or two values of K, so one temperature can come close on each of them. The in-domain splits mix K from 2 to 14. There the oracle temperatures rise with K, from 2.51 at K 2 to 3.20 at K 13 on test_indomain (`variants.oracle_T_by_K.splits.test_indomain.temperatures`), and the global T of 2.849 leaves a signed gap that runs from -.036 at K 2 (underconfident) to +.034 at K 13 (overconfident) (`variants.global_T.splits.test_indomain.by_k.<K>.gap`). test_sst5 (K 2, 3 and 5) is the extreme case: the global T raises its gap from .084 to .093, while the oracle brings it to .025. The count-weighted gap hides most of this on test_indomain (.027 against .022), because 5900 of its 11800 questions are nouls at K 2.
+- **Accuracy and theta.** A temperature changes no prediction, so accuracy against gold is the SFT value in every variant (test_indomain .956). theta's cross-entropy is the floor: on test_indomain the global T is .091 above it and the oracle .088.
+
+**Falsifiable prediction** (decision 54, stated before any stage 3 run):
+1. A global temperature cannot fix calibration that depends on K. So `sft_06b` plus the global T keeps a calibration gap that the per-K oracle reduces. The baseline above already shows this on the mixed-K splits (test_sst5 .093 against .025, test_unseen_intents .022 against .007) and on three of the four unseen schemas, with Banking77 as the exception.
+2. `direct_brier` should approach theta: lower cross-entropy against theta and a lower calibration gap than `sft_06b` plus the global T, at SFT accuracy.
+3. If `direct_brier` does not beat `sft_06b` plus the per-K oracle temperature, RLCD has no value independent of post-hoc scaling in this setting, and the report will say so.
+
+**How the result will be reported.** `scripts/compare_env.py --size 06b` writes `runs/rlcd_stage3_06b/metrics.json`. Its columns are `sft_06b` raw, with the global T and with the per-K oracle, and each noisy arm as evaluated, as the seed mean with the range across seeds. For every column it gives the differences in expected Brier, cross-entropy and calibration gap against the global T and against the oracle, and the accuracy difference against `sft_06b`, with a paired bootstrap by record (1000 resamples, the same draws for every column; for an arm, each draw averages its seeds' differences, as in section 3).
