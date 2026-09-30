@@ -155,37 +155,55 @@ Bandit simulation on the labeled training data, starting from the SFT adapter (`
 - [x] First run, REINFORCE `brier` on 0.6B seed 0: a negative result that changed the arm design (decision 52). Proof: `runs/rlcd_06b_brier_s0` (the training script took 46.3 min for 500 steps with its validations and both full-valid passes, `train_summary.json:wall_clock_seconds_this_session`).
 - [x] Stage 1 (interim): the five arms `sft_cont`, `outcome`, `outcome_minus_p`, `direct_brier` and `direct_log` on 0.6B, seed 0, each 500 steps from the SFT adapter, evaluated on all splits and compared with SFT and SFT+temperature, with a temperature ablation per arm. Proof: `runs/rlcd_06b_<arm>_s0/`, `runs/rlcd_06b_<arm>_s0_temp/`, `runs/rlcd_stage1_06b/metrics.json` (`scripts/compare_rlcd.py --size 06b --seeds 0`; `tests/test_compare_rlcd.py`); docs/RESULTS_v2.md section 3, marked interim pending stages 2 and 3.
 - [x] Stage 2a (decision 53): seeds 1 and 2 for the five arms on 0.6B, in sessions of at most four runs (`ARMS` and `SEEDS` in `notebooks/kaggle_rlcd.ipynb`; docs/KAGGLE.md section 10); temperature per run; `scripts/compare_rlcd.py --size 06b --seeds 0 1 2 --out runs/rlcd_stage2a_06b`. Proof: `runs/rlcd_06b_<arm>_s{1,2}/` (commit 740371b, not dirty, 500 of 500 steps, SFT adapter sha256 matching), `runs/rlcd_06b_<arm>_s{1,2}_temp/`, `runs/rlcd_stage2a_06b/metrics.json`; docs/RESULTS_v2.md section 3.
-- [ ] Stage 2b (decision 53): the five arms at seed 0 on 1.7B with `MAX_HOURS = 3.0`; temperature per run; `scripts/compare_rlcd.py --size 17b --stage 2`.
-- [ ] Stage 3 (decision 53): specified in a separate task.
+- [ ] Stage 2b (decision 53): the five arms at seed 0 on 1.7B with `MAX_HOURS = 3.0`; temperature per run; `scripts/compare_rlcd.py --size 17b --stage 2`. Kept, but ranked after v3 (decision 56).
+- Stage 3 (decision 53): specified as task 2.5, then cancelled by decision 56.
 - [ ] Evaluate every arm on all splits. Compare against SFT and SFT+temperature.
 - [ ] `docs/RESULTS_v2.md`: table of accuracy and ECE per arm per split; the cascade figure (coverage vs accuracy) for SFT, SFT+temperature and the best RLCD arm; reliability diagrams on unseen schemas; a plain statement of whether the core claim held.
 - Acceptance: report written; if no arm beats SFT+temperature on unseen-schema ECE, the report says so and lists the hypotheses tested.
 
-### 2.5 Stage 3: RLCD in a stochastic-outcome environment (decision 54)
+### 2.5 Stage 3: RLCD in a stochastic-outcome environment (decision 54), CANCELLED
+Cancelled by decision 56 before any training run: v3 (docs/V3_DESIGN.md) tests RLCD on real deployment feedback instead. The items below are done and stay as history; `jevmark/environment.py` is reused for the v3 noisy condition, and `runs/sft_06b_env` stays committed.
+
 - [x] `jevmark/environment.py`: eta(K) = min(0.40, 0.05 + 0.03 (K - 2)); theta, 1 - eta on gold and eta / (K - 1) elsewhere; an environment that draws each visit's accepted answer from theta with its own seeded generator; metrics against theta (expected Brier, cross-entropy, calibration table and gap by K, ECE against sampled outcomes); a global temperature fitted on the policy's own bandit outcomes and an oracle temperature per K. Proof: `tests/test_environment.py` (theta sums to 1 with its argmax on gold, empirical outcome rates match theta over many draws, state round trip, calibrated distributions have zero gap and oracle T 1).
 - [x] `scripts/train_rlcd.py --env noisy`: outcomes from the environment, its generator saved with the resume state, beta 0 and 1000 steps from the config's `noisy` section, validation against theta with the best adapter by cross-entropy against theta, arms `direct_brier`, `direct_log`, `outcome_minus_p` and `outcome` (`sft_cont` refused), run names `rlcd_<size>_noisy_<arm>_s<seed>`; the notebook takes `ENV`. Proof: `tests/test_train_rlcd.py::test_ten_noisy_steps_of_every_arm_complete_on_cpu` (four arms), `::test_the_noisy_environment_refuses_other_arms_and_direct_overrides`, `::test_noisy_outcomes_come_from_the_environment`, `::test_noisy_resume_matches_an_uninterrupted_run`; `tests/test_kaggle.py::test_rlcd_notebook_env_matches_train_rlcd`.
 - [x] `scripts/evaluate_env.py` (any run, every split, raw, global T and per-K oracle T, and theta itself) and `scripts/compare_env.py` (the stage 3 table with paired bootstrap by record). Proof: `tests/test_evaluate_env.py` (a calibrated synthetic file recovers zero gap; per-K oracle T undoes a known sharpening; seed aggregation and pairing); `runs/sft_06b_env/metrics.json`.
-- [ ] Sessions 3-1 and 3-2 at 0.6B (docs/KAGGLE.md section 11), `evaluate_env.py` on every run, `compare_env.py --size 06b` into `runs/rlcd_stage3_06b/metrics.json`, and the stage 3 section of docs/RESULTS_v2.md.
+- Cancelled, not run: sessions 3-1 and 3-2 at 0.6B (docs/KAGGLE.md section 11), `evaluate_env.py` on every run, `compare_env.py --size 06b` into `runs/rlcd_stage3_06b/metrics.json`. The stage 3 method is in docs/RESULTS_v2.md section 4.
 
 ### 2.4 Optional improvements, only if 2.3 motivates them
 - [ ] Ranked probability score reward for score questions.
 - [ ] Permutation averaging at inference for choice (average over R random option orders) if letter bias is material.
 - [ ] Marker-token readout head as an alternative to letter logits if bias persists or options exceed 26. Requires an API_SPEC update.
 
-## Phase 3: v3 integration into delta-filing
+## Phase 3: v3 adaptation from deployment feedback (decision 56)
 
-### 3.1 LocalDecider wrapper
-- [ ] In the delta-filing repo, a `LocalDecider` class next to `LocalLLM` that loads jevmark once and exposes `decide(state, questions)`.
-- [ ] All question definitions and thresholds for the agent in one file, `decisions.py`.
-- Acceptance: the router node runs through LocalDecider on 20 sample queries with identical graph behaviour to the LLM router on the confident cases.
+Specification: docs/V3_DESIGN.md. The decisions its section 11 asks for (items 3, 5 and 7 to 11) are settled and recorded before task 3.1 starts. v3 runs on 0.6B only (section 11, item 6).
 
-### 3.2 Switchable decision backend
-- [ ] A config flag with three values: `llm`, `jevmark`, `cascade`. Cascade sends decisions with confidence below the threshold in `decisions.py` back to the LLM.
-- [ ] Nodes covered: router, tool selection, retrieval rerank (one noul per chunk), completion check.
-- Acceptance: the same 200-query set runs end to end in all three modes and produces a per-mode log of latency, LLM calls, tokens and final answers.
+### 3.1 Data: the Banking77 log domain and the full test split
+- [ ] Banking77 train records built as test_banking77 records are (gold, 8 distractors, `other`, existing descriptions, seeded option order, the JSON-state share of decision 42), minus every message whose normalised text occurs in the Banking77 test split, in new files outside the nine v1.3 files (V3_DESIGN section 10, gap 1; section 11, items 1, 3 and 10).
+- [ ] The full Banking77 test split (3080 records) containing the 1000 test_banking77 records verbatim, the other 2080 from a separate seeded stream.
+- [ ] Build checks: the nine v1.3 files byte-identical to their recorded sha256, the new files' sha256 recorded, the new split names evaluable (gap 9).
+- Acceptance: the build is deterministic, the checks pass, and a test proves the 1000-record split is a subset of the full test.
 
-### 3.3 v3 report
-- [ ] Accuracy against a human-labeled or LLM-labeled reference for the 200 queries, per mode.
-- [ ] Latency and cost per mode; cost model with the API prices used, stated explicitly.
-- [ ] `docs/RESULTS_v3.md` with one table and one paragraph per question in PLAN.md section How we measure.
-- Acceptance: the placeholders in PLAN.md success criteria replaced with measured numbers.
+### 3.2 Log collection
+- [ ] `scripts/collect_log.py` and `jevmark/feedback.py`: sft_06b over the log domain in a fixed seeded order, one action per message at epsilon 0.1, recording record id, question, option order, probability vector, action, propensity, outcome and flipped outcome (gaps 2 and 3).
+- [ ] The prefix reader for N in {500, 2000, 5000} and the held-out validation slice (section 11, item 8).
+- Acceptance: CPU tests on the tiny model show the log is deterministic, propensities match the sampling rule, and the empirical flip rate matches 0.2; one GPU pass writes the log (about 10 minutes), with its sha256 recorded.
+
+### 3.3 Learners
+- [ ] `train_rlcd.py --log`: RLCD direct_brier on the logged action and outcome, positive-only cross-entropy, and full-label cross-entropy, all from the sft_06b adapter, with the equal-step rule in `configs/v3_06b.yaml` and feedback-only checkpoint selection (gaps 4 to 7).
+- [ ] The temperature learner: a Bernoulli maximum-likelihood fit on the logged outcomes, on CPU (gap 8).
+- Acceptance: CPU tests check each log-mode loss by hand, that no learner but full-label SFT reads gold, the equal-step rule, and the Bernoulli fit recovering a known temperature.
+
+### 3.4 Runs
+- [ ] `notebooks/kaggle_v3.ipynb` with the fail-fast checks of decision 45 (gap 11).
+- [ ] 9 learner runs (positive-only, RLCD, full-label at N 500, 2000, 5000), RLCD seeds 1 and 2 at N 5000, and 2 noisy runs at N 5000 (RLCD, positive-only), each evaluated on test_banking77, the full Banking77 test, test_indomain and test_unseen_intents. About 8 GPU hours in two sessions.
+- [ ] Zero-shot and temperature on CPU.
+- Acceptance: every run has a metrics.json at one commit, not dirty, with the log's sha256.
+
+### 3.5 Comparison and v3 report
+- [ ] `scripts/compare_v3.py`: per learner and N, accuracy, ECE, Brier, NLL and coverage with bootstrap intervals, paired deltas between learners, forgetting deltas against sft_06b, the RLCD seed range, the predicted-`other` rate, the B2 subset reference, and the noisy table (gap 10; section 11, items 11 and 15).
+- [ ] `docs/RESULTS_v3.md`: the four predictions, each stated as held or failed with its numbers.
+- Acceptance: every number in the report links to a metrics.json; if prediction 1 fails, the report says v2 and v3 together are a negative result about RLCD as reconstructed.
+
+### 3.6 Optional after v3: delta-filing demonstration
+- [ ] A `LocalDecider` in the delta-filing repository with the question definitions and thresholds in one file, measured on its track1 evaluation sets (router 160, tool choice 160, review 80), with decision logging added for future feedback. It needs the human's go-ahead after v3.

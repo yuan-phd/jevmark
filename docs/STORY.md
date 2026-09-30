@@ -36,7 +36,7 @@ Routing, tool choice, reranking and completion checks in an agent need a choice 
 
 ## Pending
 
-Stage 2b (the five arms on 1.7B); stage 3, outcomes drawn from a known theta whose confidence depends on K, against a bandit-fitted global T and a per-K oracle T (R2 section 4, about 14 GPU hours); phase 3, integration into the delta-filing agent.
+v3 (docs/V3_DESIGN.md, D56): adaptation to Banking77 from a log of sft_06b's own actions with only their correctness revealed, comparing RLCD with positive-only SFT, a fitted temperature and full-label SFT at N 500, 2000 and 5000 (about 8 GPU hours). Then stage 2b (the five arms on 1.7B). Stage 3 (R2 section 4) was cancelled in favour of v3, and the delta-filing integration is an optional demonstration after it.
 
 ## Five lessons about data and pipelines
 
@@ -54,6 +54,6 @@ Stage 2b (the five arms on 1.7B); stage 3, outcomes drawn from a known theta who
 
 **From prompting an LLM?** At 0.6B it is 16 times faster than gpt-4.1-mini's median and costs about 1/76 as much per request, and it is more accurate in-domain (.944 against .908). It is less accurate on all four unseen schemas at 0.6B and on three at 1.7B. The cascade (send low-confidence answers to the LLM) is the design for that gap (R1 section 4, docs/PLAN.md).
 
-**When should RLCD help, and when can it not?** It cannot help when every question has a deterministic gold label: a bandit outcome carries less information than the label (R2 section 3). It can help only when feedback is partial and stochastic and the calibrated target is beyond one temperature, as in stage 3 and an agent's real outcomes. If it does not beat the per-K oracle temperature there, it adds nothing beyond post-hoc scaling (D54).
+**When should RLCD help, and when can it not?** It cannot help when every question has a deterministic gold label: a bandit outcome carries less information than the label (R2 section 3). It can help only when feedback is partial, as after deployment on a new domain, where only the chosen action's correctness is observed. v3 tests exactly that: if RLCD does not beat positive-only SFT on the same log, it adds nothing there either (D56).
 
 **What are the cost and latency figures, and what do they assume?** Batch-1 median on one T4: 47.7 ms (sft_06b), 74.8 ms (sft_17b), 3231 and 2795 ms (B1 0.6B and 1.7B). B2 has a 777 ms median and 1095 ms p95, which include the network from a laptop. Per 1000 requests: 0.0032 and 0.0072 USD for jevmark and 0.030 USD for B1, assuming a T4 at 0.35 USD per hour (an assumption, not a measured price) at full batch-16 use. B2 cost 0.2431 USD per 1000 at 0.40, 0.10 and 1.60 USD per million input, cached and output tokens (R1 section 4 and addendum).

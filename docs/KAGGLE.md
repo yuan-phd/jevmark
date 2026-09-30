@@ -266,6 +266,8 @@ The pre-flight line in the smoke run shows peak memory for policy plus reference
 
 ## 11. RLCD stage 3: the stochastic-outcome environment (task 2.5)
 
+**Cancelled by decision 56; these sessions will not run.** The section stays as the record of the plan. v3 (docs/V3_DESIGN.md) replaces it.
+
 Stage 3 trains RLCD against outcomes drawn from a known distribution instead of the gold label (decision 54). The data stay frozen. The environment, `jevmark/environment.py`, is a layer on top that gives each question a noise rate η(K) = min(0.40, 0.05 + 0.03 (K − 2)) and a target θ: 1 − η on gold and η / (K − 1) on each other option. On every visit it draws an accepted answer from θ, and the sampled action's outcome is 1 when it equals that answer.
 
 The notebook is the same as in section 10, with `ENV = "noisy"`. Every training command then gets `--env noisy`, runs are named `rlcd_<size>_noisy_<arm>_s<seed>`, and `sft_cont` is not offered.

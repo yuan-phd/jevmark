@@ -137,12 +137,12 @@ On the validation subset, from step 0 to step 500 (`validation.<arm>.<seed>.step
 **Stage 2a answer.** Across three seeds at 0.6B, no RLCD arm matches `sft_06b_temp` on unseen-schema ECE without a temperature of its own, the sign of every arm's difference is the same at every seed, and the size is about .015 smaller than seed 0 alone showed. With its own temperature, no arm is below `sft_06b_temp`, and the control does as well as the best RLCD arm.
 
 **Pending.**
-- **Stage 2b** tests whether these differences hold at 1.7B (seed 0, docs/KAGGLE.md section 10).
-- **Stage 3** (task 2.5, decision 54) tests RLCD where outcomes are stochastic, the setting in which bandit feedback can carry information that cross-entropy on gold cannot. Section 4 gives its method and the SFT baseline.
+- **Stage 2b** tests whether these differences hold at 1.7B (seed 0, docs/KAGGLE.md section 10). It is ranked after v3 (decision 56).
+- **Stage 3** (task 2.5, decision 54) was cancelled by decision 56; section 4 keeps its method and SFT baseline. The setting in which bandit feedback can carry information that cross-entropy on gold cannot is now tested in v3, on real deployment feedback (docs/V3_DESIGN.md).
 
 ## 4. RLCD stage 3: a stochastic-outcome environment (method; results pending)
 
-**Status: method and SFT baseline only.** No stage 3 training run exists yet. Sessions 3-1 and 3-2 (docs/KAGGLE.md section 11) are pending. The SFT numbers below are from `runs/sft_06b_env/metrics.json` (commit b49153b, not dirty, written by `scripts/evaluate_env.py runs/sft_06b` from `runs/sft_06b/results.jsonl.gz` on CPU), key `variants.<variant>.splits.<split>`. Decision 54 records the design.
+**Status: cancelled by decision 56 before any training run.** Phase 3 (docs/V3_DESIGN.md) tests RLCD on real deployment feedback instead. This section stays as the record of the method and the SFT baseline. Sessions 3-1 and 3-2 (docs/KAGGLE.md section 11) will not run. The SFT numbers below are from `runs/sft_06b_env/metrics.json` (commit b49153b, not dirty, written by `scripts/evaluate_env.py runs/sft_06b` from `runs/sft_06b/results.jsonl.gz` on CPU), key `variants.<variant>.splits.<split>`. Decision 54 records the design.
 
 **Why a new setting.** In stages 1 and 2a the outcome of a sampled action is whether it is gold. That is strictly less information than the gold label cross-entropy already uses, and every arm, the control included, only sharpened (section 3). In that setting RLCD cannot do anything that SFT cannot. Stage 3 changes the outcomes so that the best-calibrated policy is not the one-hot gold answer and is known exactly.
 
