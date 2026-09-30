@@ -168,17 +168,30 @@ def test_b1_notebook_runs_a_smoke_run_then_every_size_on_the_whole_subset_and_co
     params = cells[0]
     for name in ("REPO", "COMMIT", "LIMIT", "BATCH_SIZE"):
         assert re.search(rf"^{name} = ", params, re.M), name
-    assert re.search(r'^SIZES = \["06b", "17b"\]', params, re.M)
+    assert re.search(r'^SIZES = \["06b", "17b"\]', params, re.M) and re.search(r"^LATENCY_ONLY = False", params, re.M)
     joined = "\n".join(cells)
     data = joined.index("make data-build PY=python")
-    smoke = joined.index("baseline_llm_json.py --size {SIZES[0]} --device cuda --limit {LIMIT} --latency-requests 10 --batch-size {BATCH_SIZE}")
-    loop = joined.index("for size in SIZES:\n    !python scripts/baseline_llm_json.py --size {size} --device cuda --batch-size {BATCH_SIZE}")
+    smoke = joined.index("if not LATENCY_ONLY:\n    !python scripts/baseline_llm_json.py --size {SIZES[0]} --device cuda --limit {LIMIT} --latency-requests 10 --batch-size {BATCH_SIZE}")
+    loop = joined.index("if not LATENCY_ONLY:\n    for size in SIZES:\n        !python scripts/baseline_llm_json.py --size {size} --device cuda --batch-size {BATCH_SIZE}\n")
     copy = joined.index('shutil.copytree(WORK / "runs", "/kaggle/working/runs"')
     assert data < smoke < loop < copy
     summary = cells[-1]
     assert 'for name in [f"b1_qwen{size}_json" for size in SIZES]:' in summary and 'glob("' not in summary
-    assert summary.index("for name in") < summary.index('assert metrics["git"]["commit"] == COMMIT, name')
+    assert summary.index("else:") < summary.index('assert metrics["git"]["commit"] == COMMIT, name')
     assert 'WORK.glob("runs/b1_*")' in cells[1] and "requirements-kaggle.txt" in joined and "--no-deps" in joined
+
+
+def test_b1_notebook_latency_only_probes_every_size_and_copies_only_the_latency_files():
+    cells = code_cells("kaggle_baseline_b1.ipynb")
+    joined = "\n".join(cells)
+    probe = joined.index("if LATENCY_ONLY:\n    for size in SIZES:\n        !python scripts/baseline_llm_json.py --size {size} --device cuda --batch-size {BATCH_SIZE} --latency-only\n")
+    assert joined.index("make data-build PY=python") < probe < joined.index("# Copy runs/")
+    summary = cells[-1]
+    latency_branch = summary[summary.index("if LATENCY_ONLY:") : summary.index("else:")]
+    assert 'shutil.copy2(WORK / "runs" / name / "latency.json", target / "latency.json")' in latency_branch
+    assert "copytree" not in latency_branch and "metrics.json" not in latency_branch
+    assert latency_branch.index('for name in [f"b1_qwen{size}_json" for size in SIZES]:') < latency_branch.index('assert probe["git"]["commit"] == COMMIT, name')
+    assert "p95_ms" in latency_branch
 
 
 def test_b1_sizes_pin_one_instruct_model_per_backbone_size():

@@ -397,6 +397,29 @@ def test_b1_end_to_end_on_the_tiny_model(tiny_dir, baseline_data, tmp_path):
     assert len((run / "replies.jsonl").read_text().splitlines()) == 8  # nothing generated twice
 
 
+def test_b1_latency_only_writes_latency_json_and_nothing_else(tiny_dir, baseline_data, tmp_path):
+    root, data_dir = baseline_data
+    run = tmp_path / "runs" / "b1_qwen06b_json"
+    run.mkdir(parents=True)
+    (run / "metrics.json").write_text("{}\n")  # a finished run's files stay as they are
+    argv = ["--size", "06b", "--model", str(tiny_dir), "--revision", "main", "--subset", str(root / "subset.json"), "--data-dir", str(data_dir),
+            "--runs-dir", str(tmp_path / "runs"), "--device", "cpu", "--batch-size", "3", "--max-new-tokens", "4", "--latency-requests", "5", "--latency-only"]
+    assert b1.main(argv) == 0
+    assert sorted(p.name for p in run.iterdir()) == ["latency.json", "metrics.json"] and (run / "metrics.json").read_text() == "{}\n"
+    probe = json.loads((run / "latency.json").read_text())
+    assert probe["model"] == {"id": str(tiny_dir), "revision": "main"} and set(probe["git"]) == {"commit", "dirty"}
+    latency = probe["latency"]
+    assert latency["device"] == "cpu" and latency["batch_1"]["n"] == 5 and "batch_3_requests_per_second" in latency
+    times = [r["ms"] for r in latency["batch_1_per_request"]]
+    assert len(times) == 5 and all(1 <= r["output_tokens"] <= 4 for r in latency["batch_1_per_request"])
+    assert latency["batch_1"]["p95_ms"] == pytest.approx(float(np.percentile(times, 95)))
+    assert latency["batch_1"]["median_ms"] == pytest.approx(float(np.median(times))) and latency["batch_1"]["mean_ms"] == pytest.approx(float(np.mean(times)))
+    train_digest = json.loads((root / "subset.json").read_text())["data_files_sha256"]["train.jsonl"]
+    assert probe["data_files_sha256"] == {"train.jsonl": train_digest}
+    with pytest.raises(SystemExit):
+        b1.parse_args([*argv, "--resume"])
+
+
 # B2 with a fake client
 
 
@@ -720,3 +743,52 @@ def test_recompute_baseline_metrics_rebuilds_the_splits_and_keeps_run_fields(bas
     assert recompute_b.main([str(run), "--subset", str(root / "subset.json"), "--data-dir", str(data_dir), "--out", str(tmp_path / "re.json")]) == 0
     after = json.loads((tmp_path / "re.json").read_text())
     assert after["splits"] == before["splits"] and after["usage"] == before["usage"] and after["recomputed"]["requests"] == 4
+
+
+def b1_metrics(model):
+    return {"run_name": "b1_qwen06b_json", "model": model, "git": {"commit": "a" * 40, "dirty": False}, "splits": {"test_indomain": {}},
+            "latency": {"batch_1": {"n": 200, "median_ms": 3276.9, "mean_ms": 3425.2}, "device": "cuda:0"}}
+
+
+def latency_probe(model):
+    return {"model": model, "git": {"commit": "b" * 40, "dirty": False}, "created": "2026-09-30T12:00:00+00:00",
+            "precision": {"dtype": "torch.float16", "fp32_fallback_used": False},
+            "decoding": {"greedy": True, "max_new_tokens": 256, "batch_size": 16, "enable_thinking": False},
+            "data_files_sha256": {"train.jsonl": "c" * 64},
+            "latency": {"batch_1": {"n": 200, "median_ms": 3100.0, "mean_ms": 3300.0, "p95_ms": 6200.0}, "batch_1_mean_output_tokens": 66.0,
+                        "batch_1_per_request": [{"ms": 3100.0, "output_tokens": 66}], "batch_16_requests_per_second": 3.3, "device": "cuda:0"}}
+
+
+def test_merge_latency_replaces_the_block_and_keeps_the_run_commit():
+    recompute_b = load_script("recompute_baseline_metrics")
+    model = {"id": "Qwen/Qwen3-0.6B", "revision": "r1"}
+    metrics, probe = b1_metrics(model), latency_probe(model)
+    recompute_b.merge_latency(metrics, probe)
+    latency = metrics["latency"]
+    assert latency["batch_1"] == {"n": 200, "median_ms": 3100.0, "mean_ms": 3300.0, "p95_ms": 6200.0}
+    assert latency["batch_1_per_request"] == probe["latency"]["batch_1_per_request"] and latency["batch_16_requests_per_second"] == 3.3
+    assert latency["probe"]["from"] == "latency.json" and latency["probe"]["git"] == {"commit": "b" * 40, "dirty": False}
+    assert latency["probe"]["precision"] == probe["precision"] and latency["probe"]["data_files_sha256"] == probe["data_files_sha256"]
+    assert metrics["git"] == {"commit": "a" * 40, "dirty": False}  # the commit that generated the replies
+    with pytest.raises(RuntimeError, match="latency.json measured"):
+        recompute_b.merge_latency(b1_metrics(model), latency_probe({"id": "Qwen/Qwen3-1.7B", "revision": "r2"}))
+
+
+def test_recompute_baseline_metrics_merges_latency_json_when_present(tiny_dir, baseline_data, tmp_path):
+    recompute_b = load_script("recompute_baseline_metrics")
+    root, data_dir = baseline_data
+    common = ["--size", "06b", "--model", str(tiny_dir), "--revision", "main", "--subset", str(root / "subset.json"), "--data-dir", str(data_dir),
+              "--runs-dir", str(tmp_path / "runs"), "--device", "cpu", "--batch-size", "3", "--max-new-tokens", "4"]
+    assert b1.main([*common, "--splits", "test_indomain", "--latency-requests", "3"]) == 0
+    run = tmp_path / "runs" / "b1_qwen06b_json"
+    before = json.loads((run / "metrics.json").read_text())
+    recompute_args = [str(run), "--subset", str(root / "subset.json"), "--data-dir", str(data_dir), "--out", str(tmp_path / "re.json")]
+    assert recompute_b.main(recompute_args) == 0
+    assert json.loads((tmp_path / "re.json").read_text())["latency"] == before["latency"]  # no latency.json: kept as it was
+    assert b1.main([*common, "--latency-requests", "5", "--latency-only"]) == 0
+    probe = json.loads((run / "latency.json").read_text())
+    assert recompute_b.main(recompute_args) == 0
+    after = json.loads((tmp_path / "re.json").read_text())
+    assert after["latency"]["batch_1"] == probe["latency"]["batch_1"] and after["latency"]["batch_1"]["n"] == 5
+    assert after["latency"]["probe"]["git"] == probe["git"] and after["latency"]["probe"]["created"] == probe["created"]
+    assert after["splits"] == before["splits"] and after["git"] == before["git"]

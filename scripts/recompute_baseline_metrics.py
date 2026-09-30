@@ -9,6 +9,12 @@ records of the baseline subset, or of its sub-subset when the run's config.yaml 
 scripts use. Run-level fields (provenance, latency, usage, spend) are kept from the
 existing metrics.json. Use it after a change to the parser or to the baseline
 metrics, so finished runs gain it without new generation or API spend.
+
+When the run directory holds latency.json (baseline_llm_json.py --latency-only),
+its latency block replaces the one in metrics.json, together with the commit,
+precision and time of the probe, under `latency.probe`; metrics.json's own `git`
+stays the commit that generated the replies. A latency.json for another model or
+revision is refused.
 """
 
 from __future__ import annotations
@@ -28,6 +34,23 @@ from jevmark.baselines.subset import SUBSET_PATH, load_subset, subset_records
 REPO = Path(__file__).resolve().parents[1]
 
 
+def merge_latency(metrics: dict, probe: dict) -> None:
+    """Replace metrics["latency"] with the probe's, recording where and on which commit it was measured."""
+    if probe["model"] != metrics["model"]:
+        raise RuntimeError(f"latency.json measured {probe['model']}, but the run is {metrics['model']}")
+    metrics["latency"] = {
+        **probe["latency"],
+        "probe": {
+            "from": "latency.json",
+            "git": probe["git"],
+            "created": probe["created"],
+            "precision": probe["precision"],
+            "decoding": probe["decoding"],
+            "data_files_sha256": probe["data_files_sha256"],
+        },
+    }
+
+
 def recompute(run_dir: Path, subset: dict, data_dir: Path) -> dict:
     metrics = json.loads((run_dir / "metrics.json").read_text())
     config_path = run_dir / "config.yaml"
@@ -36,6 +59,9 @@ def recompute(run_dir: Path, subset: dict, data_dir: Path) -> dict:
     splits = [split for split in subset["splits"] if split in metrics["splits"]]
     records = {split: subset_records(data_dir, subset, split, sub)[0] for split in splits}
     metrics["splits"] = baseline_reports_by_split(answers_from_replies(records, replies))
+    latency_path = run_dir / "latency.json"
+    if latency_path.is_file():
+        merge_latency(metrics, json.loads(latency_path.read_text()))
     metrics["recomputed"] = {
         "from": "replies.jsonl",
         "requests": sum((split, r["id"]) in replies for split, rs in records.items() for r in rs),
@@ -55,7 +81,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     metrics = recompute(run_dir, load_subset(Path(args.subset)), Path(args.data_dir))
     out = Path(args.out) if args.out else run_dir / "metrics.json"
     out.write_text(json.dumps(metrics, indent=2) + "\n")
-    print(f"recomputed {len(metrics['splits'])} splits from {metrics['recomputed']['requests']} replies; wrote {out}")
+    merged = " and merged latency.json" if "probe" in metrics.get("latency", {}) else ""
+    print(f"recomputed {len(metrics['splits'])} splits from {metrics['recomputed']['requests']} replies{merged}; wrote {out}")
     return 0
 
 

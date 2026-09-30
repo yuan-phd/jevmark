@@ -2,6 +2,7 @@
 
     python scripts/baseline_llm_json.py --size 17b --device cuda
     python scripts/baseline_llm_json.py --size 06b --device cuda --limit 5 --latency-requests 10   # smoke run
+    python scripts/baseline_llm_json.py --size 17b --device cuda --latency-only   # the latency probe alone
 
 --size picks the instruct release of the same size as one of jevmark's backbones,
 revision pinned (SIZES): 06b is Qwen/Qwen3-0.6B, written to runs/b1_qwen06b_json/,
@@ -21,6 +22,12 @@ as it goes so --resume can continue), metrics.json in the evaluate.py layout
 wall clock per request (chat template, tokenization and generation), median over
 --latency-requests requests, which are the first records of data/train.jsonl, the
 same requests evaluate.py times; throughput at --batch-size on the same requests.
+
+--latency-only loads the model and runs only the latency probe: the same batch-1
+requests, each one's time and generated tokens, and the throughput at
+--batch-size. It writes runs/<run_name>/latency.json and nothing else, so a
+finished run's replies.jsonl and metrics.json stay untouched;
+scripts/recompute_baseline_metrics.py merges latency.json into metrics.json.
 
 The first batch's next-token logits are checked for NaN or inf under fp16 on GPU;
 on failure the model is reloaded in fp32, which is logged and recorded.
@@ -186,11 +193,14 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--device", default=None, help="cpu, cuda or cuda:N; default cuda when available")
     parser.add_argument("--run-name", default=None, help="default b1_qwen<size>_json")
     parser.add_argument("--resume", action="store_true", help="continue a run whose replies.jsonl exists; otherwise such a run is never overwritten")
+    parser.add_argument("--latency-only", action="store_true", help="run only the latency probe and write runs/<run_name>/latency.json; replies.jsonl and metrics.json are not touched")
     parser.add_argument("--data-dir", default=str(REPO / "data"))
     parser.add_argument("--runs-dir", default=str(REPO / "runs"))
     args = parser.parse_args(argv)
     if args.limit is not None and args.limit < 1:
         parser.error("--limit must be at least 1")
+    if args.latency_only and (args.limit is not None or args.resume):
+        parser.error("--latency-only takes neither --limit nor --resume")
     model_id, revision, run_name = SIZES[args.size]
     args.model = args.model or model_id
     args.revision = args.revision or revision
@@ -198,10 +208,63 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     return args
 
 
+def load_checked(args: argparse.Namespace, first_prompts: Sequence[str]) -> tuple[PreTrainedModel, PreTrainedTokenizerBase, bool]:
+    """The model in fp16 on GPU (fp32 on CPU), reloaded in fp32 if the first batch's next-token logits are not finite; returns whether it was."""
+    device = torch.device(args.device or ("cuda" if torch.cuda.is_available() else "cpu"))
+    dtype = torch.float16 if device.type == "cuda" else torch.float32
+    model, tokenizer = load_model(args.model, args.revision, device, dtype)
+    if first_batch_finite(model, tokenizer, first_prompts):
+        return model, tokenizer, False
+    if dtype == torch.float32:
+        raise RuntimeError("next-token logits contain NaN or inf in fp32; this is not a precision problem")
+    log("WARNING: NaN or inf in first-batch logits under fp16; reloading the model in fp32")
+    del model
+    model, tokenizer = load_model(args.model, args.revision, device, torch.float32)
+    return model, tokenizer, True
+
+
+def probe_prompts(data_dir: Path, subset: dict[str, Any], n: int) -> tuple[list[str], str]:
+    """The latency requests, the first n records of train.jsonl, and the file's sha256; RuntimeError if it is not the build the subset was drawn from."""
+    train_records, digest = read_jsonl(data_dir / "train.jsonl")
+    expected = subset["data_files_sha256"].get("train.jsonl")
+    if expected is not None and digest != expected:
+        raise RuntimeError(f"train.jsonl has sha256 {digest}, but the baseline subset was drawn from {expected}; rebuild the data at the frozen version")
+    return [build_prompt(request_of(r)) for r in train_records[:n]], digest
+
+
+def latency_only(args: argparse.Namespace, git: dict[str, Any], started: float) -> int:
+    """The latency probe alone, into runs/<run_name>/latency.json; replies.jsonl and metrics.json are never touched."""
+    out_dir = Path(args.runs_dir) / args.run_name
+    probe, digest = probe_prompts(Path(args.data_dir), load_subset(Path(args.subset)), args.latency_requests)
+    model, tokenizer, fp32_fallback = load_checked(args, probe[: args.batch_size])
+    log(f"latency probe {args.run_name}: {args.model}@{args.revision} on {model.device}, dtype {model.dtype}, {len(probe)} requests, batch {args.batch_size}")
+    timing = latency(model, tokenizer, probe, args.max_new_tokens, args.batch_size)
+    log(f"latency batch 1: median {timing['batch_1']['median_ms']:.1f} ms, p95 {timing['batch_1']['p95_ms']:.1f} ms; batch {args.batch_size}: {timing[f'batch_{args.batch_size}_requests_per_second']:.2f} requests/s")
+    result = {
+        "run_name": args.run_name,
+        "baseline": "B1",
+        "size": args.size,
+        "model": {"id": args.model, "revision": args.revision},
+        "git": git,
+        "created": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+        "precision": {"dtype": str(model.dtype), "fp32_fallback_used": fp32_fallback},
+        "decoding": {"greedy": True, "max_new_tokens": args.max_new_tokens, "batch_size": args.batch_size, "enable_thinking": False},
+        "data_files_sha256": {"train.jsonl": digest},
+        "latency": timing,
+        "wall_clock_seconds": time.perf_counter() - started,
+    }
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "latency.json").write_text(json.dumps(result, indent=2) + "\n")
+    log(f"wrote {out_dir}/latency.json")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     started = time.perf_counter()
     git = git_state()  # before any output exists (decision 35)
+    if args.latency_only:
+        return latency_only(args, git, started)
     run_name = f"{args.run_name}_limit{args.limit}" if args.limit else args.run_name
     out_dir = Path(args.runs_dir) / run_name
     replies_path = out_dir / "replies.jsonl"
@@ -220,19 +283,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         records_by_split[split] = sample_records(records, args.limit, random.Random(f"limit:{split}")) if args.limit else records
         data_files[f"{split}.jsonl"] = digest
 
-    device = torch.device(args.device or ("cuda" if torch.cuda.is_available() else "cpu"))
-    dtype = torch.float16 if device.type == "cuda" else torch.float32
-    model, tokenizer = load_model(args.model, args.revision, device, dtype)
     first = next(iter(records_by_split.values()))[: args.batch_size]
-    fp32_fallback = False
-    if not first_batch_finite(model, tokenizer, [build_prompt(request_of(r)) for r in first]):
-        if dtype == torch.float32:
-            raise RuntimeError("next-token logits contain NaN or inf in fp32; this is not a precision problem")
-        log("WARNING: NaN or inf in first-batch logits under fp16; reloading the model in fp32")
-        del model
-        model, tokenizer = load_model(args.model, args.revision, device, torch.float32)
-        fp32_fallback = True
-    log(f"run {run_name}: {args.model}@{args.revision} on {device}, dtype {model.dtype}, batch {args.batch_size}, max_new_tokens {args.max_new_tokens}")
+    model, tokenizer, fp32_fallback = load_checked(args, [build_prompt(request_of(r)) for r in first])
+    log(f"run {run_name}: {args.model}@{args.revision} on {model.device}, dtype {model.dtype}, batch {args.batch_size}, max_new_tokens {args.max_new_tokens}")
 
     done = read_replies(replies_path)
     for split, records in records_by_split.items():
@@ -251,8 +304,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         overall = report["overall"]
         log(f"{split:20} acc {overall['accuracy'] or 0:.4f} (parsed)  acc_all {overall['accuracy_all']:.4f}  parse failures {overall['parse_failure_rate']:.4f}")
 
-    train_records, _ = read_jsonl(data_dir / "train.jsonl")
-    probe = [build_prompt(request_of(r)) for r in train_records[: args.latency_requests]]
+    probe, _ = probe_prompts(data_dir, subset, args.latency_requests)
     timing = latency(model, tokenizer, probe, args.max_new_tokens, args.batch_size)
     log(f"latency batch 1: median {timing['batch_1']['median_ms']:.1f} ms; batch {args.batch_size}: {timing[f'batch_{args.batch_size}_requests_per_second']:.2f} requests/s")
 

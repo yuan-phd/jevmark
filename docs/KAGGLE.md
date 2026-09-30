@@ -130,7 +130,7 @@ What to check in the fast run's printout and `metrics.json` before a full sessio
 
 ## 9. Baseline B1: `notebooks/kaggle_baseline_b1.ipynb` (task 1.8)
 
-B1 is the instruct release of each jevmark size, Qwen/Qwen3-0.6B and Qwen/Qwen3-1.7B (revisions pinned in `scripts/baseline_llm_json.py`), answering the baseline subset (`data/baseline_subset.json`: 500 records per split, all nine splits, committed) as generated JSON (decision 47). Token, secret, import and notebook settings are as in sections 1 to 3; one T4 is used. In the first code cell set `REPO`, `COMMIT`, `LIMIT` (default 5), `BATCH_SIZE` (default 16) and `SIZES` (default `["06b", "17b"]`), then run the cells top to bottom:
+B1 is the instruct release of each jevmark size, Qwen/Qwen3-0.6B and Qwen/Qwen3-1.7B (revisions pinned in `scripts/baseline_llm_json.py`), answering the baseline subset (`data/baseline_subset.json`: 500 records per split, all nine splits, committed) as generated JSON (decision 47). Token, secret, import and notebook settings are as in sections 1 to 3; one T4 is used. In the first code cell set `REPO`, `COMMIT`, `LIMIT` (default 5), `BATCH_SIZE` (default 16), `SIZES` (default `["06b", "17b"]`) and `LATENCY_ONLY` (default False; see the latency probe below), then run the cells top to bottom:
 
 1. Clone, install and data, as in the evaluation notebook; the clone cell deletes any committed `runs/b1_*`. `baseline_llm_json.py` checks every split's sha256 against the one stored in the subset file and stops if the build differs.
 2. Smoke run on the first size in `SIZES`: `LIMIT` subset records per split and 10 latency requests into `runs/b1_qwen<size>_json_limit<LIMIT>/` (gitignored); raises on a non-zero exit.
@@ -140,6 +140,12 @@ B1 is the instruct release of each jevmark size, Qwen/Qwen3-0.6B and Qwen/Qwen3-
 Expected time, not yet measured: about 1 to 1.5 hours for 1.7B and less for 0.6B (4500 requests of mostly short JSON replies each, then 200 sequential batch-1 generations for latency). If a session ends early, add the partial `runs/b1_qwen<size>_json/` back as a dataset, copy it into place and run the script with `--size <size> --resume`: requests already in `replies.jsonl` are not generated again.
 
 Download `runs/b1_qwen06b_json/` and `runs/b1_qwen17b_json/`. Commit `metrics.json`, `config.yaml` and `model_id.txt`; keep `replies.jsonl` outside git (it is gitignored) but keep a copy, because `scripts/compare_baselines.py` recomputes the table from it. B2 (`scripts/baseline_api.py`) runs locally, not on Kaggle.
+
+### The latency probe alone
+
+The committed B1 runs (commit 972e711) predate per-request timings, so their `metrics.json` has the batch-1 median and mean but no p95. With `LATENCY_ONLY = True` the notebook skips the smoke run and the generation on the subset, and for each size in `SIZES` runs `baseline_llm_json.py --size <size> --latency-only`: the model is loaded with the same fp16 check and fp32 fallback, then the same 200 batch-1 requests (the first records of `train.jsonl`) are timed one by one with their generated tokens, followed by the throughput at `BATCH_SIZE`. Each size writes only `runs/b1_qwen<size>_json/latency.json`, and the last cell copies just those two files to `/kaggle/working/runs/` and prints n, median, p95 and mean with the commit. Expected time, from the committed means (3.4 s and 2.7 s per request): about 12 minutes for 0.6B and 10 for 1.7B, plus model downloads, install and data build.
+
+Locally, put each `latency.json` in `runs/b1_qwen<size>_json/` (next to the kept `replies.jsonl`) and run `uv run python scripts/recompute_baseline_metrics.py runs/b1_qwen<size>_json`. It replaces the `latency` block of `metrics.json` with the probe's and records the probe's commit, time and precision under `latency.probe`; the run's own `git` stays the commit that generated the replies (decision 55). Commit `latency.json` with the updated `metrics.json`.
 
 ## 10. RLCD: `notebooks/kaggle_rlcd.ipynb` (task 2.2)
 
