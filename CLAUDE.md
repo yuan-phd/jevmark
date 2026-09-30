@@ -2,7 +2,7 @@
 
 ## What this project is
 
-jevmark is a small System One decision model. A text state and a set of typed questions go in; a probability distribution per question comes out, plus a confidence score for choice and score questions, from one forward pass, with no text generation. It is an independent re-implementation of the concept behind TypeSafe AI's Jev model, built for learning and for a portfolio. Phase 3 plugs it into an existing LangGraph agent (delta-filing) as the decision backend, replacing LLM calls that only decide and never write.
+jevmark is a small System One decision model. A text state and a set of typed questions go in; a probability distribution per question comes out, plus a confidence score for choice and score questions, from one forward pass, with no text generation. It is an independent re-implementation of the concept behind TypeSafe AI's Jev model, built for learning and for a portfolio. Phase 3 is the v3 adaptation study (docs/V3_DESIGN.md, decision 56): after deployment on an unseen domain (Banking77), where only the correctness of the chosen action is revealed, does RLCD learn the domain better than a fitted temperature, positive-only SFT and full-label SFT on the same feedback log? Plugging jevmark into the delta-filing LangGraph agent as its decision backend is an optional later demonstration.
 
 Read docs/PLAN.md first, then docs/API_SPEC.md, then docs/TASKS.md. Work on exactly one task at a time, in order, unless the human says otherwise.
 
@@ -21,7 +21,7 @@ Read docs/PLAN.md first, then docs/API_SPEC.md, then docs/TASKS.md. Work on exac
 - Local development is CPU only. All unit tests run on CPU in under 3 minutes using a tiny randomly initialised Qwen3 config, never real weights.
 - Main backbone: Qwen/Qwen3-1.7B-Base. Development backbone for pipeline debugging and RLCD sweeps: Qwen/Qwen3-0.6B-Base. Both are config switches, never hard-coded. Qwen3-4B-Base is allowed only as an optional 4-bit QLoRA experiment, never as the default.
 - Precision: fp16 autocast with GradScaler and fp32 LoRA weights. Every training and evaluation script checks the first batch for NaN or inf in the slot logits and, on failure, restarts in fp32 automatically and logs that it did. fp32 fits both 0.6B and 1.7B on a T4; it does not fit 4B, which is one reason 4B is not the default.
-- Where work happens: tasks 0.1 through 1.5 run locally on CPU (tests use the tiny model; data building and description generation need only the API key and dataset downloads). Tasks 1.6 onward run on Kaggle through the thin notebooks. Run every GPU stage on 0.6B first, then repeat on 1.7B.
+- Where work happens: tasks 0.1 through 1.5 run locally on CPU (tests use the tiny model; data building and description generation need only the API key and dataset downloads). Tasks 1.6 onward run on Kaggle through the thin notebooks. Run every GPU stage on 0.6B first, then repeat on 1.7B. Exception: v3 (phase 3) runs on 0.6B only (decision 56).
 - Post-training only, via LoRA (peft). No from-scratch pretraining. No full fine-tune.
 - Python 3.11, managed with uv (pyproject plus uv.lock). Core deps: torch (CPU wheels locally; Kaggle's preinstalled torch on Kaggle), transformers>=4.56 (Qwen3 support since 4.51; the `dtype` keyword of from_pretrained since 4.56), peft, datasets, numpy, pyyaml, matplotlib, pytest. Optional extras: serve (fastapi, uvicorn), baselines (openai).
 

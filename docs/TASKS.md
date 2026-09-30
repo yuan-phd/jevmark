@@ -176,33 +176,36 @@ Cancelled by decision 56 before any training run: v3 (docs/V3_DESIGN.md) tests R
 
 ## Phase 3: v3 adaptation from deployment feedback (decision 56)
 
-Specification: docs/V3_DESIGN.md. The decisions its section 11 asks for (items 3, 5 and 7 to 11) are settled and recorded before task 3.1 starts. v3 runs on 0.6B only (section 11, item 6).
+Specification: docs/V3_DESIGN.md, with the review's decisions in its section 11 (2026-09-30). v3 runs on 0.6B only (section 11, item 6).
 
 ### 3.1 Data: the Banking77 log domain and the full test split
-- [ ] Banking77 train records built as test_banking77 records are (gold, 8 distractors, `other`, existing descriptions, seeded option order, the JSON-state share of decision 42), minus every message whose normalised text occurs in the Banking77 test split, in new files outside the nine v1.3 files (V3_DESIGN section 10, gap 1; section 11, items 1, 3 and 10).
-- [ ] The full Banking77 test split (3080 records) containing the 1000 test_banking77 records verbatim, the other 2080 from a separate seeded stream.
+- [ ] Banking77 train records built as test_banking77 records are (gold, 8 distractors, `other`, existing descriptions, seeded option order, 20 percent JSON states), after dropping the 25 messages whose normalised text occurs in the Banking77 test split and keeping the first copy of each repeated text: 9947 records, in new files outside the nine v1.3 files (V3_DESIGN section 10, gap 1).
+- [ ] The full Banking77 test split (3080 records): the 1000 test_banking77 records verbatim, the other 2080 from a separate seeded stream with the same construction and JSON-state share.
 - [ ] Build checks: the nine v1.3 files byte-identical to their recorded sha256, the new files' sha256 recorded, the new split names evaluable (gap 9).
-- Acceptance: the build is deterministic, the checks pass, and a test proves the 1000-record split is a subset of the full test.
+- Acceptance: the build is deterministic, the checks pass, and tests prove the 1000-record split is a subset of the full test, no log-domain text occurs in the Banking77 test split, and no normalised text repeats in the log domain.
 
 ### 3.2 Log collection
-- [ ] `scripts/collect_log.py` and `jevmark/feedback.py`: sft_06b over the log domain in a fixed seeded order, one action per message at epsilon 0.1, recording record id, question, option order, probability vector, action, propensity, outcome and flipped outcome (gaps 2 and 3).
-- [ ] The prefix reader for N in {500, 2000, 5000} and the held-out validation slice (section 11, item 8).
-- Acceptance: CPU tests on the tiny model show the log is deterministic, propensities match the sampling rule, and the empirical flip rate matches 0.2; one GPU pass writes the log (about 10 minutes), with its sha256 recorded.
+- [ ] `scripts/collect_log.py` and `jevmark/feedback.py`: sft_06b over the log domain in a fixed seeded order, one action per message sampled from q = 0.9 p + 0.1 / K, recording record id, question, option order, probability vector, action, propensity q(a), outcome, and the outcome flipped with probability 0.2 (gaps 2 and 3). `jevmark/environment.py` is not changed.
+- [ ] The prefix reader: for N in {500, 2000, 5000}, the first 0.9 N interactions for training and the last 0.1 N for checkpoint selection.
+- [ ] Two logs, seed 0 (the main log) and seed 1 (logging variance only), in the same message order.
+- Acceptance: CPU tests on the tiny model show each log is deterministic for its seed, the recorded propensity equals q(a), and the empirical flip rate is 0.2 within its binomial interval; the GPU pass writes both logs (about 10 minutes each), with their sha256 recorded.
 
 ### 3.3 Learners
-- [ ] `train_rlcd.py --log`: RLCD direct_brier on the logged action and outcome, positive-only cross-entropy, and full-label cross-entropy, all from the sft_06b adapter, with the equal-step rule in `configs/v3_06b.yaml` and feedback-only checkpoint selection (gaps 4 to 7).
-- [ ] The temperature learner: a Bernoulli maximum-likelihood fit on the logged outcomes, on CPU (gap 8).
-- Acceptance: CPU tests check each log-mode loss by hand, that no learner but full-label SFT reads gold, the equal-step rule, and the Bernoulli fit recovering a known temperature.
+- [ ] `train_rlcd.py --log`: RLCD direct_brier on the logged action and outcome (beta 0, no importance weights), positive-only cross-entropy on outcome-1 interactions, and full-label cross-entropy on gold, all from the sft_06b adapter, trained on the first 0.9 N interactions (gaps 4 and 5).
+- [ ] The step rule in `configs/v3_06b.yaml`: steps = max(200, ceil(10 x 0.9 N / 32)), 200, 563 and 1407 at N 500, 2000 and 5000, warmup 20, linear decay, identical for the three learners (gap 6).
+- [ ] Checkpoint selection on the last 0.1 N by the mean Bernoulli log-likelihood of the logged outcomes under p(logged action), for all three learners, gold never read (gap 7).
+- [ ] The temperature learner: a Bernoulli maximum-likelihood fit on the first 0.9 N logged outcomes, on CPU (gap 8).
+- Acceptance: CPU tests check each log-mode loss by hand, the step counts per N, that no learner reads gold during validation and only full-label SFT reads it during training, and that the Bernoulli fit recovers a known temperature.
 
 ### 3.4 Runs
-- [ ] `notebooks/kaggle_v3.ipynb` with the fail-fast checks of decision 45 (gap 11).
-- [ ] 9 learner runs (positive-only, RLCD, full-label at N 500, 2000, 5000), RLCD seeds 1 and 2 at N 5000, and 2 noisy runs at N 5000 (RLCD, positive-only), each evaluated on test_banking77, the full Banking77 test, test_indomain and test_unseen_intents. About 8 GPU hours in two sessions.
+- [ ] `notebooks/kaggle_v3.ipynb` with the fail-fast checks of decision 45 (gap 11); session plan in docs/KAGGLE.md section 12.
+- [ ] 14 trained runs, 13,545 steps in all: positive-only, RLCD and full-label SFT at N 500, 2000 and 5000; RLCD seeds 1 and 2 at N 5000; noisy RLCD and noisy positive-only at N 5000; RLCD at N 5000 on the seed 1 log. Each evaluated on the full Banking77 test split, test_indomain and test_unseen_intents. About 15 GPU hours in three sessions (V3_DESIGN section 8).
 - [ ] Zero-shot and temperature on CPU.
-- Acceptance: every run has a metrics.json at one commit, not dirty, with the log's sha256.
+- Acceptance: every run has a metrics.json at one commit, not dirty, with its log's sha256.
 
 ### 3.5 Comparison and v3 report
-- [ ] `scripts/compare_v3.py`: per learner and N, accuracy, ECE, Brier, NLL and coverage with bootstrap intervals, paired deltas between learners, forgetting deltas against sft_06b, the RLCD seed range, the predicted-`other` rate, the B2 subset reference, and the noisy table (gap 10; section 11, items 11 and 15).
-- [ ] `docs/RESULTS_v3.md`: the four predictions, each stated as held or failed with its numbers.
+- [ ] `scripts/compare_v3.py`: per learner and N, accuracy, ECE, Brier, NLL and coverage with bootstrap intervals, paired deltas between learners, forgetting deltas against sft_06b, the RLCD training-seed range and the logging-variance run at N 5000, the predicted-`other` rate and accuracy without `other` predictions, the B2 subset reference, and the noisy table (gap 10; V3_DESIGN section 11, notes 11 to 15).
+- [ ] `docs/RESULTS_v3.md`: the four predictions, each stated as held or failed with its numbers; adapted learners' Banking77 numbers kept out of the v1 and v2 unseen-schema means.
 - Acceptance: every number in the report links to a metrics.json; if prediction 1 fails, the report says v2 and v3 together are a negative result about RLCD as reconstructed.
 
 ### 3.6 Optional after v3: delta-filing demonstration

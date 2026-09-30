@@ -297,3 +297,24 @@ So 1000 steps with 10 validations take about 81 minutes, well inside `MAX_HOURS 
 2. `scripts/compare_env.py --size 06b`, which writes `runs/rlcd_stage3_06b/metrics.json`.
 
 Commit each run as in section 10.
+
+## 12. v3: adaptation from deployment feedback (phase 3, decision 56)
+
+Specification: docs/V3_DESIGN.md. The notebook, `notebooks/kaggle_v3.ipynb`, is task 3.4 and does not exist yet. This section is the session plan it has to follow. Everything runs on 0.6B, starting from the sft_06b adapter in the `jevmark-sft-adapters` dataset (section 10). Token, secret, import and notebook settings are as in sections 1 to 3.
+
+**Logs between sessions.** Session A writes the two deployment logs (seeds 0 and 1). Download them from `/kaggle/working`, record their sha256, and upload them as a private dataset, `jevmark-v3-logs`, which sessions B and C attach next to the adapter dataset. Every learner run records the sha256 of the log it trained on and refuses a log whose hash differs from the one in the config.
+
+**Steps per run** (V3_DESIGN section 5): 200, 563 and 1407 at N 500, 2000 and 5000.
+
+| Session | Runs | Training steps | Estimate |
+|---|---|---|---|
+| A | log collection, seeds 0 and 1; full-label SFT and positive-only SFT at N 500, 2000 and 5000 | 4340 | 5.5 h |
+| B | RLCD at N 500, 2000 and 5000; RLCD seed 1 at N 5000 | 3577 | 4.6 h |
+| C | RLCD seed 2 at N 5000; noisy RLCD and noisy positive-only at N 5000; RLCD at N 5000 on the seed 1 log | 5628 | 6.5 h |
+
+**How the estimate is made (measure on session A and update).**
+- **Per step:** 3.07 s for cross-entropy (`runs/sft_06b`: 70.5 minutes for 1378 steps at micro-batch 8 x 4) and about 3.6 s for RLCD (section 11). The log mode with beta 0 needs no reference forward pass, so RLCD may be faster.
+- **Evaluation:** about 11 minutes per run on the full Banking77 test split, test_indomain and test_unseen_intents, a quarter of the questions of the 45-minute nine-split evaluation.
+- **Other:** each session adds about 20 minutes for clone, install, data build and a smoke run, and session A about 20 minutes for the two log passes.
+
+The total is about 16.5 GPU hours with overhead (A: 3.7 h training, 1.1 h evaluation, 0.7 h logs and setup; B: 3.6, 0.7 and 0.3; C: 5.4, 0.7 and 0.3). Each session stays under the 9-hour limit, and the longest single run (1407 steps) takes about 1.4 hours, so `MAX_HOURS = 2.0` per run leaves room without letting a stuck run take the session. Zero-shot and temperature run locally on CPU. A run that stops at `MAX_HOURS` resumes as in section 10.
