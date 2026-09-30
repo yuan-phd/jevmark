@@ -103,7 +103,9 @@ def footer(run_dirs: Sequence[Path]) -> list[str]:
         parts = []
         if latency.get("batch_1"):
             p95 = latency["batch_1"].get("p95_ms")
-            parts.append(f"batch 1 median {latency['batch_1']['median_ms']:.1f} ms, p95 " + (f"{p95:.1f} ms" if p95 is not None else "not recorded"))
+            probe = latency.get("probe")
+            source = f" (latency probe at {probe['git']['commit'][:7]})" if probe else ""
+            parts.append(f"batch 1 median {latency['batch_1']['median_ms']:.1f} ms, p95 " + (f"{p95:.1f} ms" if p95 is not None else "not recorded") + source)
         throughput = [(k, v) for k, v in latency.items() if k.endswith("_requests_per_second")]
         parts += [f"{k.removesuffix('_requests_per_second').replace('_', ' ')}: {v:.1f} requests/s" for k, v in throughput]
         first = latency.get("first_attempt")

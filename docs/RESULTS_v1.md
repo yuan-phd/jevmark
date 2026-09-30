@@ -159,3 +159,18 @@ The four jevmark `metrics.json` files were recomputed for this report to add `sy
 ## What the numbers say
 
 A small base model with a LoRA adapter, reading answers from letter logits, decides in-domain questions at 95 to 96 percent accuracy with an ECE of .013 to .015, transfers to held-out intents and unseen schemas without collapsing, and does so 40 to 70 times faster than same-size generation and about 34 to 76 times cheaper per request than gpt-4.1-mini, whose accuracy it matches or beats in-domain and on unseen intents. The numbers do not show that its probabilities stay honest off-distribution: on unseen schemas SFT is markedly overconfident and the frozen base is better calibrated, and gpt-4.1-mini is still more accurate on Banking77, emotion and Yelp. Scale from 0.6B to 1.7B helps only far from the training data, so whether calibration can transfer without per-schema fitting, not raw accuracy, is the open question v2 has to answer.
+
+## Addendum (2026-09-30): B1 batch-1 p95
+
+This report is frozen at commit 8ed8750 (decision 49), and nothing above has been changed. This addendum fills in the limitation "B1 batch-1 p95 is missing" (section 7). The B1 latency probe was rerun alone with `scripts/baseline_llm_json.py --latency-only` at commit 97f233c (not dirty, one T4, fp16, no fp32 fallback). It used the same 200 batch-1 requests (the first records of train.jsonl, sha256 `84f218d5`), the same model revisions and the same decoding (greedy, at most 256 new tokens), and recorded every request's time and generated tokens. `scripts/recompute_baseline_metrics.py` merged it into each run's `metrics.json`. The replies and accuracy numbers are those of commit 972e711. The probe's own provenance is in `<run>:latency.probe`, and the raw probe is in `runs/<run>/latency.json`.
+
+| run | batch-1 median | p95 | mean | n | mean generated tokens | batch 16 | 0.35 USD/h T4, per 1000 requests |
+|---|---|---|---|---|---|---|---|
+| B1 0.6B (`runs/b1_qwen06b_json`) | 3231 ms | 4339 ms | 3383 ms | 200 | 66.8 | 3.24 requests/s | 0.030 USD |
+| B1 1.7B (`runs/b1_qwen17b_json`) | 2795 ms | 2998 ms | 2588 ms | 200 | 50.5 | 3.27 requests/s | 0.030 USD |
+
+Keys: `<run>:latency.batch_1.{median_ms,p95_ms,mean_ms,n}`, `latency.batch_1_mean_output_tokens`, `latency.batch_16_requests_per_second`; per-request times in `latency.batch_1_per_request`.
+
+- **Consistency with the first measurement.** Mean generated tokens are identical to the 972e711 probe (66.775 and 50.465), so greedy decoding produced the same outputs. The medians are 1.4 and 5.8 percent lower (3277 and 2969 ms in section 4), and batch-16 throughput is 1 and 4 percent lower (3.27 and 3.40). The difference is session-to-session timing variation, not a change in the work done.
+- **What sets the tail.** Batch-1 time follows the number of generated tokens (correlation .99 at both sizes, about 51 ms per token), and no request reached the 256-token cap. The p95 is therefore the long replies, not stalls. At 1.7B the replies fall into two length groups (about 37 and about 55 tokens), which puts the median above the mean and the p95 close to the median (1.07 times). At 0.6B the lengths spread more (43 to 101 tokens) and the p95 is 1.34 times the median.
+- **Effect on section 4's comparisons.** Against the jevmark medians of section 4, same-size generation is 68 times slower at 0.6B and 37 times slower at 1.7B at batch 1, against the "about 40 to 70 times" stated there. B1 1.7B's cost rounds to 0.030 USD per 1000 requests instead of 0.029. The jevmark runs still record only the batch-1 median and mean, so there is no p95 to compare against on the jevmark side.

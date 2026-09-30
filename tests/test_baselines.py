@@ -792,3 +792,17 @@ def test_recompute_baseline_metrics_merges_latency_json_when_present(tiny_dir, b
     assert after["latency"]["batch_1"] == probe["latency"]["batch_1"] and after["latency"]["batch_1"]["n"] == 5
     assert after["latency"]["probe"]["git"] == probe["git"] and after["latency"]["probe"]["created"] == probe["created"]
     assert after["splits"] == before["splits"] and after["git"] == before["git"]
+
+
+def test_compare_footer_shows_p95_and_the_probe_commit(tmp_path):
+    model = {"id": "Qwen/Qwen3-0.6B", "revision": "r1"}
+    merged, old = tmp_path / "merged", tmp_path / "old"
+    metrics = b1_metrics(model)
+    load_script("recompute_baseline_metrics").merge_latency(metrics, latency_probe(model))
+    merged.mkdir()
+    (merged / "metrics.json").write_text(json.dumps(metrics))
+    old.mkdir()
+    (old / "metrics.json").write_text(json.dumps(b1_metrics(model)))
+    lines = compare.footer([merged, old])
+    assert "  merged: batch 1 median 3100.0 ms, p95 6200.0 ms (latency probe at bbbbbbb); batch 16: 3.3 requests/s" in lines
+    assert "  old: batch 1 median 3276.9 ms, p95 not recorded" in lines
