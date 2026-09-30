@@ -7,14 +7,19 @@ be drawn from, so the test splits keep their pinned contents and the duplicate c
 (scripts/check_duplicates.py) finds no exact match. The set is built from whole
 source splits, not from the sampled test sets, so it does not depend on which splits
 a build includes.
+
+The v3 log domain (decision 56) uses the same set: dedupe() drops every Banking77
+train message whose normalised text is in it, and keeps only the first copy of a
+text that repeats within the split, recording every dropped row and why.
 """
 
 from __future__ import annotations
 
 import re
 import unicodedata
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from functools import cache
+from typing import Any
 
 from datasets import load_dataset
 
@@ -47,3 +52,25 @@ def test_texts(held_out: tuple[str, ...]) -> frozenset[str]:
 
 def keep(texts: Iterable[str], excluded: frozenset[str]) -> list[bool]:
     return [normalise(t) not in excluded for t in texts]
+
+
+def dedupe(texts: Sequence[str], excluded: frozenset[str]) -> tuple[list[int], list[dict[str, Any]]]:
+    """The indices to keep, in order, and every dropped index with its reason.
+
+    A text is dropped as "test_text" when its normalised form is in `excluded`, and as
+    "repeat" when an earlier kept text has the same normalised form ("first" names
+    that earlier index), so the first copy of a repeated text is the one kept.
+    """
+    kept: list[int] = []
+    dropped: list[dict[str, Any]] = []
+    first: dict[str, int] = {}
+    for index, text in enumerate(texts):
+        key = normalise(text)
+        if key in excluded:
+            dropped.append({"index": index, "reason": "test_text"})
+        elif key in first:
+            dropped.append({"index": index, "reason": "repeat", "first": first[key]})
+        else:
+            first[key] = index
+            kept.append(index)
+    return kept, dropped

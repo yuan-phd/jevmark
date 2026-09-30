@@ -1,0 +1,15 @@
+# v3 data (task 3.1, decision 56, docs/V3_DESIGN.md sections 2 and 6): the Banking77 log domain and
+# the full Banking77 test split, built by scripts/build_v3_data.py next to the nine v1.3 files.
+# Seed, option count and JSON-state share come from the v1.3 data config, so the construction is
+# test_banking77's; each file has its own seeded streams (the split name is the stream key).
+data_config: configs/data.yaml
+out_dir: data
+files:
+  train: v3_banking77_train.jsonl        # the log domain: Banking77 train after the duplicate rules
+  test_full: v3_banking77_test_full.jsonl  # test_banking77 verbatim, then the other 2080 test messages
+manifest: v3_manifest.json               # counts, every dropped train row with its reason, sha256 of every file
+# The sha256 of each file as first built. The build fails if a rebuild differs, and collect_log.py
+# refuses a log-domain file with another hash.
+sha256:
+  v3_banking77_train.jsonl: 519de2cd69d87d3ac14b8a0ebdc6b2f34dd76397935f36544bfcc8f9255634bd
+  v3_banking77_test_full.jsonl: d7428065a9585d01c7eb7d9b962606e9c6801d0ec89c3816c640a9d8e7fb8fbd

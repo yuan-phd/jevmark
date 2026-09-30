@@ -573,3 +573,16 @@ In every split's `metrics.json` block, `overall` and the per-type blocks (`noul`
 
 `data/baseline_subset.json` is the one file under `data/` that is committed (a `.gitignore` exception). It holds, for every split, the ids of 500 records drawn with the fast-cycle sampler and the `--limit` seed (the records `evaluate.py --limit 500` evaluates), the ids of a 200-record sub-subset drawn from those, and the sha256 of each data file they came from (data v1.3, identical to the hashes in `runs/sft_06b/metrics.json`). The generative baselines run on it, and `scripts/compare_baselines.py` restricts every jevmark run to it (task 1.8, decision 47). `scripts/make_baseline_subset.py` wrote it once and refuses to overwrite it without `--force`.
 
+
+## 11. v3 data: the Banking77 log domain and the full Banking77 test split (decision 56)
+
+Built by `scripts/build_v3_data.py` (`make data-v3`, after `make data-build`) next to the nine v1.3 files, which it checks are byte-identical to the sha256 in `data/baseline_subset.json` before and after it runs. Settings are in `configs/v3_data.yaml`, which records the sha256 of both files; a rebuild that differs fails.
+
+| file | records | built from |
+|---|---|---|
+| `v3_banking77_train.jsonl` | 9942 | the Banking77 train split (10,003 messages) minus 30 messages whose normalised text occurs in a test source (25 Banking77 test, 5 CLINC test or held-out-intent utterances; `dedup.test_texts`, decision 43) and 31 later copies of a repeated text, in dataset order |
+| `v3_banking77_test_full.jsonl` | 3080 | the 1000 test_banking77 records verbatim, then the other 2080 Banking77 test messages in dataset order |
+
+Every record has one choice question built as test_banking77's (`unseen.subset_question`: gold, 8 distractors, `other`, canonical descriptions, seeded order; gold is never `other`) and the v1.3 record schema (section 1), with `meta.source_split` `train` or `test`. Each file has its own seeded streams, keyed by its split name, for options (`{seed}:{split}`) and JSON states (`{seed}:{split}:state_format`, 20 percent). `data/v3_manifest.json` lists every dropped train row with its reason (`test_text`, or `repeat` with the index of the kept copy), the counts and the checks. The leak probes pass on both files (largest lift -0.6 points, `data/v3_leak_probe.json`); with one choice question per record and `other` never gold, the only probed target is the gold position.
+
+**Feedback log** (`jevmark/feedback.py`, `scripts/collect_log.py`). One JSON line per interaction in `runs/v3_log_s<seed>/log.jsonl`: `index` (position in the log), `record_id`, `question_id`, `labels` (option labels in the order the model read them), `probs` (the logging policy's p over them), `action` (index into `labels`), `propensity` (q(action) under 0.9 p + 0.1 / K), `outcome` (1 if the chosen option is gold), `flipped_outcome` (the outcome flipped with probability 0.2), `model`, `commit`. Gold is not stored. The message order is `random.Random("v3_log_order:0")` over the file, the same for every log seed; actions come from `v3_log:<seed>` and flips from `v3_flip:<seed>`, one draw of each per interaction.

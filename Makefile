@@ -1,4 +1,4 @@
-.PHONY: setup test data data-build train-sft eval kaggle-requirements
+.PHONY: setup test data data-build data-v3 train-sft eval kaggle-requirements
 
 CONFIG ?= configs/base.yaml
 DATA_CONFIG ?= configs/data.yaml
@@ -23,6 +23,12 @@ data: data-build
 # Build and build checks only; the Kaggle notebooks use this, since the gates already passed locally on the same commit.
 data-build:
 	$(PY) scripts/build_data.py --config $(DATA_CONFIG)
+
+# v3 data (task 3.1, decision 56): the Banking77 log domain and the full Banking77 test split, next to the
+# v1.3 files, which must exist (make data-build); then the leak probes on the two new files.
+data-v3:
+	$(PY) scripts/build_v3_data.py
+	$(PY) scripts/leak_probe.py --config $(DATA_CONFIG) --splits v3_banking77_train v3_banking77_test_full --out data/v3_leak_probe.json
 
 train-sft:
 	$(PY) scripts/train_sft.py --config $(CONFIG)
