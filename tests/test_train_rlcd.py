@@ -314,17 +314,29 @@ def test_run_name_and_overrides():
 # The stochastic-outcome environment (task 2.5, decision 54)
 
 
-@pytest.mark.parametrize("arm", rl.NOISY_ARMS)
-def test_ten_noisy_steps_of_every_arm_complete_on_cpu(setup, tmp_path, arm):
-    run_training(setup, tmp_path, "--env", "noisy", f"arm={arm}", "noisy.steps=10")
-    run_dir = tmp_path / f"rlcd_06b_noisy_{arm}_s0"
+# Stage 3 is cancelled (decision 56). These tests keep its code paths covered with as few training runs as
+# possible: one noisy arm end to end (shared with the resume test), and every noisy arm's loss with the
+# environment and its validation against theta called directly.
+NOISY_ARGS = ("--env", "noisy", "arm=direct_brier", "noisy.steps=4", "training.eval_every=2")
+NOISY_NAME = "rlcd_06b_noisy_direct_brier_s0"
+
+
+@pytest.fixture(scope="module")
+def noisy_run(setup, tmp_path_factory):
+    runs_dir = tmp_path_factory.mktemp("noisy")
+    run_training(setup, runs_dir, *NOISY_ARGS)
+    return runs_dir
+
+
+def test_a_noisy_run_completes_and_selects_by_cross_entropy_against_theta(noisy_run):
+    run_dir = noisy_run / NOISY_NAME
     summary = json.loads((run_dir / "train_summary.json").read_text())
-    assert summary["steps"] == summary["total_steps"] == 10 and summary["arm"] == arm and summary["env"] == "noisy"
+    assert summary["steps"] == summary["total_steps"] == 4 and summary["arm"] == "direct_brier" and summary["env"] == "noisy"
     assert summary["beta"] == 0.0 and summary["best_by"] == "cross_entropy_theta" and "best_subset_cross_entropy_theta" in summary
     config = yaml.safe_load((run_dir / "config.yaml").read_text())
-    assert config["env"] == "noisy" and config["rlcd"]["beta"] == 0.0 and config["training"]["steps"] == 10
+    assert config["env"] == "noisy" and config["rlcd"]["beta"] == 0.0 and config["training"]["steps"] == 4
     valids = [e for e in log_of(run_dir) if e.get("event") == "valid"]
-    assert [e["step"] for e in valids] == [0, 5, 10]
+    assert [e["step"] for e in valids] == [0, 2, 4]
     for key in ("expected_brier_theta", "cross_entropy_theta", "kl_theta", "accuracy", "expected_reward"):
         assert all(math.isfinite(e[key]) for e in valids), key
     assert all(e["cross_entropy_theta"] >= e["kl_theta"] for e in valids)
@@ -333,6 +345,29 @@ def test_ten_noisy_steps_of_every_arm_complete_on_cpu(setup, tmp_path, arm):
     assert summary["final_valid"]["cross_entropy_theta"] > 0
     state = torch.load(run_dir / "last" / "state.pt", weights_only=False)
     assert "env_state" in state["progress"]
+
+
+@pytest.fixture(scope="module")
+def tiny_policy(setup):
+    from jevmark.model import JevMark
+
+    return JevMark.load(load_config(setup.config_path), device="cpu")
+
+
+@pytest.mark.parametrize("arm", rl.NOISY_ARMS)
+def test_every_noisy_arm_trains_against_the_environment_and_validates_against_theta(setup, tiny_policy, arm):
+    from jevmark.environment import NoisyEnvironment
+
+    jev = tiny_policy
+    train_records = [json.loads(line) for line in (setup.data_dir / "train.jsonl").read_text().splitlines()]
+    examples, _ = rl.epoch_examples(train_records[:4], jev, 1024, 0, 0)
+    loss, stats = rl.batch_loss(jev, jev, examples[:2], settings(arm, beta=0.0), torch.Generator().manual_seed(0), NoisyEnvironment(0))
+    assert math.isfinite(float(loss.detach())) and all(math.isfinite(v) for v in stats.values())
+    valid_records = [json.loads(line) for line in (setup.data_dir / "valid.jsonl").read_text().splitlines()][:4]
+    result = rl.validate(jev, jev, valid_records, 4, 1024, arm, noisy=True)
+    for key in ("expected_brier_theta", "cross_entropy_theta", "kl_theta", "expected_reward"):
+        assert math.isfinite(result[key]), key
+    assert result["cross_entropy_theta"] >= result["kl_theta"] and result["kl_to_ref"] == pytest.approx(0.0, abs=1e-6)
 
 
 def test_the_noisy_environment_refuses_other_arms_and_direct_overrides(setup, tmp_path):
@@ -348,11 +383,9 @@ def test_the_noisy_environment_refuses_other_arms_and_direct_overrides(setup, tm
     assert load_config(REPO / "configs" / "rlcd_06b.yaml")["noisy"] == {"beta": 0.0, "steps": 1000}
 
 
-def test_noisy_outcomes_come_from_the_environment(setup):
+def test_noisy_outcomes_come_from_the_environment(setup, tiny_policy):
     """batch_loss asks the environment for each gold-dependent question's accepted answer and scores the samples against it."""
-    from jevmark.model import JevMark
-
-    jev = JevMark.load(load_config(setup.config_path), device="cpu")
+    jev = tiny_policy
     train_records = [json.loads(line) for line in (setup.data_dir / "train.jsonl").read_text().splitlines()]
     examples, _ = rl.epoch_examples(train_records, jev, 1024, 0, 0)
     batch = examples[:2]
@@ -382,18 +415,15 @@ def test_noisy_outcomes_come_from_the_environment(setup):
     assert [g for g, _ in env.calls] == golds and seen == [(g + 1) % k for g, k in env.calls]
 
 
-def test_noisy_resume_matches_an_uninterrupted_run(setup, tmp_path):
-    args = ("--env", "noisy", "arm=direct_brier", "noisy.steps=10")
-    uninterrupted = tmp_path / "a"
-    run_training(setup, uninterrupted, *args)
+def test_noisy_resume_matches_an_uninterrupted_run(setup, noisy_run, tmp_path):
     resumed = tmp_path / "b"
-    run_training(setup, resumed, *args, "--limit-steps", "5")
+    run_training(setup, resumed, *NOISY_ARGS, "--limit-steps", "2")
     run_training(setup, resumed, "--env", "noisy", "arm=direct_brier", "--resume")
-    name = "rlcd_06b_noisy_direct_brier_s0"
-    rewards_a = [e["reward"] for e in log_of(uninterrupted / name) if "loss" in e]
+    name = NOISY_NAME
+    rewards_a = [e["reward"] for e in log_of(noisy_run / name) if "loss" in e]
     rewards_b = [e["reward"] for e in log_of(resumed / name) if "loss" in e]
-    assert rewards_a == pytest.approx(rewards_b)  # the same actions and the same accepted answers after the resume
-    a = adapter_tensors(uninterrupted / name / "adapter_last")
+    assert len(rewards_a) == 4 and rewards_a == pytest.approx(rewards_b)  # the same actions and the same accepted answers after the resume
+    a = adapter_tensors(noisy_run / name / "adapter_last")
     b = adapter_tensors(resumed / name / "adapter_last")
     for key in a:
         torch.testing.assert_close(a[key], b[key], atol=1e-6, rtol=1e-5)
