@@ -27,6 +27,13 @@ SPLITS = (
     "test_banking77",
     "test_yelp",
 )
+# v3 (decision 56): the full Banking77 test split and the log domain (the latter for the logging policy only),
+# built next to the nine v1.3 files by scripts/build_v3_data.py.
+V3_TEST_FULL = "v3_banking77_test_full"
+V3_TRAIN = "v3_banking77_train"
+V3_SPLITS = (V3_TEST_FULL, V3_TRAIN)
+# What a v3 run is evaluated on by default: the full Banking77 test, test_banking77 inside it, and the forgetting check.
+V3_EVAL_SPLITS = (V3_TEST_FULL, "test_banking77", "test_indomain", "test_unseen_intents")
 
 
 def split_rng(seed: int, name: str) -> random.Random:

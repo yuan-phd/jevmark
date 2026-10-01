@@ -300,21 +300,50 @@ Commit each run as in section 10.
 
 ## 12. v3: adaptation from deployment feedback (phase 3, decision 56)
 
-Specification: docs/V3_DESIGN.md. The notebook, `notebooks/kaggle_v3.ipynb`, is task 3.4 and does not exist yet. This section is the session plan it has to follow. Everything runs on 0.6B, starting from the sft_06b adapter in the `jevmark-sft-adapters` dataset (section 10). Token, secret, import and notebook settings are as in sections 1 to 3.
+Specification: docs/V3_DESIGN.md. Notebook: `notebooks/kaggle_v3.ipynb`. Everything runs on 0.6B and starts from the sft_06b adapter in the `jevmark-sft-adapters` dataset (section 10). Token, secret, import and notebook settings are as in sections 1 to 3. Use one `COMMIT` for all three sessions, pushed before session A.
 
-**Logs between sessions.** Session A writes the two deployment logs (seeds 0 and 1). Download them from `/kaggle/working`, record their sha256, and upload them as a private dataset, `jevmark-v3-logs`, which sessions B and C attach next to the adapter dataset. Every learner run records the sha256 of the log it trained on and refuses a log whose hash differs from the one in the config.
+### Parameters per session
 
-**Steps per run** (V3_DESIGN section 5): 200, 563 and 1407 at N 500, 2000 and 5000.
-
-| Session | Runs | Training steps | Estimate |
+| Parameter | Session A | Session B | Session C |
 |---|---|---|---|
-| A | log collection, seeds 0 and 1; full-label SFT and positive-only SFT at N 500, 2000 and 5000 | 4340 | 5.5 h |
-| B | RLCD at N 500, 2000 and 5000; RLCD seed 1 at N 5000 | 3577 | 4.6 h |
-| C | RLCD seed 2 at N 5000; noisy RLCD and noisy positive-only at N 5000; RLCD at N 5000 on the seed 1 log | 5628 | 6.5 h |
+| `SESSION` | `SESSION = "A"` | `SESSION = "B"` | `SESSION = "C"` |
+| `COMMIT` | the pushed commit | the same | the same |
+| `ADAPTER_DATASET` | `/kaggle/input/jevmark-sft-adapters` | the same | the same |
+| `LOG_DATASET` | not read | `/kaggle/input/jevmark-v3-logs` | the same |
+| `LOG_SHA256` | not read (filled by the session) | `{0: "<seed 0 sha256>", 1: "<seed 1 sha256>"}` from session A's LOG DONE lines | the same |
+| `SMOKE_STEPS` | 10 | 10 | 10 |
+| `MAX_HOURS` | 2.0 | 2.0 | 2.0 |
+| Inputs to add | the adapter dataset | the adapter dataset and `jevmark-v3-logs` | the same as B |
 
-**How the estimate is made (measure on session A and update).**
-- **Per step:** 3.07 s for cross-entropy (`runs/sft_06b`: 70.5 minutes for 1378 steps at micro-batch 8 x 4) and about 3.6 s for RLCD (section 11). The log mode with beta 0 needs no reference forward pass, so RLCD may be faster.
-- **Evaluation:** about 11 minutes per run on the full Banking77 test split, test_indomain and test_unseen_intents, a quarter of the questions of the 45-minute nine-split evaluation.
-- **Other:** each session adds about 20 minutes for clone, install, data build and a smoke run, and session A about 20 minutes for the two log passes.
+### What each session runs
 
-The total is about 16.5 GPU hours with overhead (A: 3.7 h training, 1.1 h evaluation, 0.7 h logs and setup; B: 3.6, 0.7 and 0.3; C: 5.4, 0.7 and 0.3). Each session stays under the 9-hour limit, and the longest single run (1407 steps) takes about 1.4 hours, so `MAX_HOURS = 2.0` per run leaves room without letting a stuck run take the session. Zero-shot and temperature run locally on CPU. A run that stops at `MAX_HOURS` resumes as in section 10.
+Every session clones, installs, builds the nine v1.3 splits (`make data-build`), builds the v3 Banking77 files (`scripts/build_v3_data.py`, which fails unless the v1.3 files match `data/baseline_subset.json` and the v3 files match `configs/v3_data.yaml`), copies the sft_06b adapter, runs a smoke training of `SMOKE_STEPS` on the session's first run (TRAINING PASS or FAIL), and then, for each run of the plan in order: trains from the log (`train_rlcd.py --config configs/v3_06b.yaml --log runs/v3_log_s<k>/log.jsonl --n N`), checks it (TRAINING PASS or FAIL, raising on FAIL), evaluates its best adapter on v3_banking77_test_full, test_banking77, test_indomain and test_unseen_intents, copies the run to `/kaggle/working/runs/` and prints one RUN DONE line. A failure stops the session; earlier runs are already in the output.
+
+| Session | Before training | Runs, in order | Training steps | Estimate |
+|---|---|---|---|---|
+| A | sft_06b evaluated on the v3 splits into `runs/v3_06b_zeroshot` (ZERO-SHOT DONE line); logs of seeds 0 and 1 into `runs/v3_log_s0` and `runs/v3_log_s1` (one LOG DONE line each, with the sha256) | full_sft at N 500, 2000, 5000; positive_sft at N 500, 2000, 5000 | 4340 | 5.5 h |
+| B | the logs copied from `LOG_DATASET`; each log's sha256 must equal its metrics.json and `LOG_SHA256`, or the session stops (LOG OK lines) | direct_brier at N 500, 2000, 5000 (seed 0); direct_brier at N 5000, seed 1 | 3577 | 4.6 h |
+| C | as B | direct_brier at N 5000, seed 2; direct_brier and positive_sft at N 5000 with `--noisy`; direct_brier at N 5000 on the seed 1 log | 5628 | 6.5 h |
+
+Run names: `v3_06b_<arm>_n<N>_s<seed>`, plus `_noisy`, plus `_log1` for the seed 1 log. The smoke run is `<first run>_smoke` (gitignored).
+
+### Publishing the logs as `jevmark-v3-logs` after session A
+
+1. From session A's output, download `runs/v3_log_s0/` and `runs/v3_log_s1/` (each holds `log.jsonl` and `metrics.json`), and note the two sha256 values from the LOG DONE lines.
+2. Locally, check them: `shasum -a 256 v3_log_s0/log.jsonl v3_log_s1/log.jsonl` must print the same values, which are also `log_sha256` in each `metrics.json`.
+3. Put both directories in one folder, `jevmark-v3-logs/v3_log_s0/` and `jevmark-v3-logs/v3_log_s1/`. On Kaggle: Datasets, New Dataset, upload the folder, visibility Private, slug `jevmark-v3-logs`. The notebook looks for `v3_log_s<k>/` and `runs/v3_log_s<k>/` under `LOG_DATASET`, so either layout works.
+4. In sessions B and C: Add Input, Your Datasets, `jevmark-v3-logs`, and set `LOG_SHA256` to the two values.
+
+### After the sessions, locally on CPU
+
+1. Put every downloaded run under `runs/`. Commit `metrics.json`, `config.yaml`, `model_id.txt`, `calibration.json`, `training_log.jsonl`, `train_summary.json` and `plots/` of each run, `runs/v3_06b_zeroshot/` (without `results.jsonl.gz`), and `runs/v3_log_s<k>/metrics.json`. `log.jsonl`, `results.jsonl.gz`, `adapter/`, `adapter_last/` and `last/` stay outside git (all gitignored); keep copies, because the comparison and the temperature learner read them.
+2. The temperature learner, once per N: `uv run python scripts/calibrate.py runs/v3_06b_zeroshot --fit-log runs/v3_log_s0/log.jsonl --n <N>`, which writes `runs/v3_06b_temp_n<N>/`.
+3. The comparison: `uv run python scripts/compare_v3.py`, which writes `runs/v3_stage_06b/metrics.json`.
+
+### How the estimate is made (measure on session A and update)
+
+- **Per step:** 3.07 s for cross-entropy (`runs/sft_06b`: 70.5 minutes for 1378 steps at micro-batch 8 x 4) and about 3.6 s for RLCD (section 11). The log mode has no reference model, so RLCD may be faster.
+- **Evaluation:** about 11 minutes per run on the four v3 splits, a quarter of the questions of the 45-minute nine-split evaluation.
+- **Other:** each session adds about 20 minutes for clone, install, data build and the smoke run, and session A about 30 minutes for the zero-shot evaluation and the two log passes.
+
+The total is about 16.5 GPU hours with overhead (A: 3.7 h training, 1.1 h evaluation, 0.7 h logs and setup; B: 3.6, 0.7 and 0.3; C: 5.4, 0.7 and 0.3). Each session stays under the 9-hour limit, and the longest single run (1407 steps) takes about 1.4 hours, so `MAX_HOURS = 2.0` per run leaves room without letting a stuck run take the session. A run that stops at `MAX_HOURS` resumes as in section 10, with the same `--log`, `--n` and `--noisy`.

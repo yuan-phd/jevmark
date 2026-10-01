@@ -21,6 +21,7 @@ def write_summary(run_dir, **changes):
         "final_valid": {"accuracy": 0.95, "ece": 0.01},
         **changes,
     }
+    summary = {k: v for k, v in summary.items() if not (k == "final_valid" and v is None)}
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "train_summary.json").write_text(json.dumps(summary))
 
@@ -76,3 +77,10 @@ def test_require_training_prints_one_line_and_raises_on_fail(tmp_path, capsys):
     with pytest.raises(TrainingFailed, match="392 steps of 1378 planned"):
         require_training(run_dir, STARTED, 0)
     assert capsys.readouterr().out.strip() == "TRAINING FAIL: 392 steps of 1378 planned"
+
+
+def test_a_v3_log_mode_run_passes_on_its_selection_criterion(tmp_path):
+    run_dir = tmp_path / "v3_06b_direct_brier_n500_s0"
+    write_summary(run_dir, steps=200, total_steps=200, best_step=150, final_valid=None, best_criterion=-0.3123)
+    passed, reason, _ = check_training(run_dir, STARTED, 0)
+    assert passed and "selection log-likelihood -0.3123" in reason

@@ -30,8 +30,7 @@ from jevmark.data.form import wrap_states
 from jevmark.data.sources import AG_NEWS, BANKING77, EMOTION, YELP, DatasetSource
 
 QUESTION_ID = "label"
-V3_TRAIN = "v3_banking77_train"
-V3_TEST_FULL = "v3_banking77_test_full"
+from jevmark.data.build import V3_TEST_FULL, V3_TRAIN  # noqa: E402  (re-exported for the v3 builders)
 OTHER_LABEL = "other"
 OTHER_DESCRIPTION = "None of the listed options"
 

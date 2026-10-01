@@ -43,7 +43,7 @@ import torch  # noqa: E402
 import yaml  # noqa: E402
 
 from jevmark.config import load_config  # noqa: E402
-from jevmark.data.build import SPLITS  # noqa: E402
+from jevmark.data.build import SPLITS, V3_EVAL_SPLITS, V3_SPLITS  # noqa: E402
 from jevmark.data.negation import negate  # noqa: E402
 from jevmark.encode import Encoded, encode  # noqa: E402
 from jevmark.metrics import QuestionResult, max_abs_difference, split_report, timing_summary, write_results  # noqa: E402
@@ -282,7 +282,7 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--ckpt", required=True, help="a run directory, or 'base' for the frozen backbone of --config")
     parser.add_argument("--config", default=None, help="config file; default configs/base.yaml for base, the run's config.yaml otherwise")
-    parser.add_argument("--splits", nargs="+", choices=SPLITS, default=list(SPLITS), help="default: all nine")
+    parser.add_argument("--splits", nargs="+", choices=[*SPLITS, *V3_SPLITS], default=None, help="default: the nine v1.3 splits, or for a v3 run (a config with a v3 section, or a run name starting v3_) v3_banking77_test_full, test_banking77, test_indomain and test_unseen_intents")
     parser.add_argument("--limit", type=int, default=None, help="a seeded, stratified sample of N records per split (sample_records), for smoke runs and the fast cycle")
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--device", default=None, help="cpu, cuda or cuda:N; default cuda when available")
@@ -300,11 +300,16 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     if args.limit is not None and args.limit < 1:
         parser.error("--limit must be at least 1")
-    if args.shuffle_questions:
+    if args.shuffle_questions and args.splits is not None:
         unknown = set(args.shuffle_questions) - set(args.splits)
         if unknown:
             parser.error(f"--shuffle-questions names splits that are not evaluated: {sorted(unknown)}")
     return args
+
+
+def default_splits(config: dict[str, Any], run_name: str) -> list[str]:
+    """The nine v1.3 splits, or for a v3 run the v3 evaluation set (decision 56)."""
+    return list(V3_EVAL_SPLITS) if "v3" in config or run_name.startswith("v3_") else list(SPLITS)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -324,8 +329,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.limit:
         run_name = f"{run_name}_limit{args.limit}"
     out_dir = Path(args.runs_dir) / run_name
+    splits = list(args.splits) if args.splits is not None else default_splits(config, run_name)
+    if args.shuffle_questions and set(args.shuffle_questions) - set(splits):
+        raise SystemExit(f"--shuffle-questions names splits that are not evaluated: {sorted(set(args.shuffle_questions) - set(splits))}")
 
-    log(f"run {run_name}: ckpt {args.ckpt}, config {config_path}, backbone {config['backbone']['id']}")
+    log(f"run {run_name}: ckpt {args.ckpt}, config {config_path}, backbone {config['backbone']['id']}, splits {', '.join(splits)}")
     jev = JevMark.load(config, checkpoint=checkpoint, device=args.device)
     lora_merged = None if checkpoint is None else (False if args.no_merge else jev.merge_lora())
     log(f"model {jev.model_id} on {jev.device}, autocast {jev.autocast_dtype}, max_tokens {jev.max_tokens}, lora merged {lora_merged}")
@@ -338,7 +346,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     data_files: dict[str, str] = {}
     probe: list[Encoded] = []
     probe_requests: list[Request] = []
-    for split in args.splits:
+    for split in splits:
         records, digest = read_split(Path(args.data_dir), split, args.limit)
         data_files[f"{split}.jsonl"] = digest
         if fallback_used is None:
@@ -379,7 +387,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "temperature": jev.temperature,
         "lora_merged": lora_merged,
         "adapter_sha256": hashlib.sha256((checkpoint / "adapter" / "adapter_model.safetensors").read_bytes()).hexdigest() if checkpoint is not None else None,
-        "init_adapter_sha256": config.get("rlcd", {}).get("init_adapter_sha256") if isinstance(config.get("rlcd"), dict) else None,
+        "init_adapter_sha256": next((config[k].get("init_adapter_sha256") for k in ("rlcd", "v3") if isinstance(config.get(k), dict) and config[k].get("init_adapter_sha256")), None),
+        "v3": {k: config["v3"].get(k) for k in ("log", "log_sha256", "log_seed", "n", "noisy", "data_sha256")} | {"arm": config.get("arm")} if isinstance(config.get("v3"), dict) and config["v3"].get("log_sha256") else None,
         "data_files_sha256": data_files,
         "confidence_note": "ECE and reliability use the top-1 probability; coverage uses the response confidence field (1 - H/ln K for choice and score, max(p, 1 - p) for noul).",
         "splits": split_results,
@@ -394,7 +403,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         (out_dir / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
         (out_dir / "model_id.txt").write_text(jev.model_id + "\n")
     size_kb = (out_dir / "results.jsonl.gz").stat().st_size / 1024
-    log(f"wrote {out_dir}/metrics.json, results.jsonl.gz ({len(all_results)} questions, {size_kb:.1f} KiB), config.yaml, model_id.txt and {len(args.splits)} plots")
+    log(f"wrote {out_dir}/metrics.json, results.jsonl.gz ({len(all_results)} questions, {size_kb:.1f} KiB), config.yaml, model_id.txt and {len(splits)} plots")
     return 0
 
 

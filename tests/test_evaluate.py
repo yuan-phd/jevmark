@@ -540,3 +540,38 @@ def test_calibrate_fits_on_valid_and_never_touches_the_source(run, tmp_path):
     original = json.loads((run / "metrics.json").read_text())
     for split, block in original["splits"].items():
         assert metrics["splits"][split]["overall"]["accuracy"] == block["overall"]["accuracy"]
+
+
+# v3 splits (task 3.4, decision 56)
+
+
+def test_a_v3_run_defaults_to_the_v3_evaluation_splits():
+    from jevmark.data.build import V3_EVAL_SPLITS
+
+    assert evaluate.default_splits({"v3": {"n": 500}}, "anything") == list(V3_EVAL_SPLITS)
+    assert evaluate.default_splits({}, "v3_06b_zeroshot") == list(V3_EVAL_SPLITS)
+    assert evaluate.default_splits({}, "sft_06b") == list(SPLITS)
+    assert V3_EVAL_SPLITS == ("v3_banking77_test_full", "test_banking77", "test_indomain", "test_unseen_intents")
+    assert evaluate.parse_args(["--ckpt", "base", "--splits", "v3_banking77_test_full", "v3_banking77_train"]).splits == ["v3_banking77_test_full", "v3_banking77_train"]
+
+
+def test_evaluate_runs_a_v3_split_with_the_same_outputs(eval_inputs, tmp_path):
+    from jevmark.data import unseen
+    from jevmark.data.description_loader import load_descriptions
+    from jevmark.metrics import read_results
+
+    _, config_path, data_dir = eval_inputs
+    descriptions = load_descriptions("banking77")
+    names = sorted(descriptions)
+    rows = [(i, f"my card payment number {i} failed", names[i % len(names)]) for i in range(6)]
+    records = unseen.banking77_records(unseen.V3_TEST_FULL, rows, "test", names, descriptions, load_config(REPO / "configs" / "data.yaml"))
+    (data_dir / "v3_banking77_test_full.jsonl").write_text("".join(json.dumps(r) + "\n" for r in records))
+    runs_dir = tmp_path / "runs"
+    argv = ["--ckpt", "base", "--config", str(config_path), "--splits", "v3_banking77_test_full", "test_banking77", "--limit", "4", "--run-name", "v3_tiny_zeroshot",
+            "--data-dir", str(data_dir), "--runs-dir", str(runs_dir), "--device", "cpu"]
+    assert evaluate.main(argv) == 0
+    run = runs_dir / "v3_tiny_zeroshot"
+    metrics = json.loads((run / "metrics.json").read_text())
+    assert set(metrics["splits"]) == {"v3_banking77_test_full", "test_banking77"} and "v3_banking77_test_full.jsonl" in metrics["data_files_sha256"]
+    assert {r.split for r in read_results(run / "results.jsonl.gz")} == {"v3_banking77_test_full", "test_banking77"}
+    assert metrics["splits"]["v3_banking77_test_full"]["choice"]["by_gold_other"]["predicted_other_rate"] is not None

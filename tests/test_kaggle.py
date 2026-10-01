@@ -38,7 +38,7 @@ def code_cells(name):
     return ["".join(c["source"]) for c in notebook["cells"] if c["cell_type"] == "code"]
 
 
-@pytest.mark.parametrize("name", ["kaggle_eval.ipynb", "kaggle_train.ipynb", "kaggle_baseline_b1.ipynb", "kaggle_rlcd.ipynb"])
+@pytest.mark.parametrize("name", ["kaggle_eval.ipynb", "kaggle_train.ipynb", "kaggle_baseline_b1.ipynb", "kaggle_rlcd.ipynb", "kaggle_v3.ipynb"])
 def test_notebook_token_is_never_printed_or_put_on_a_command_line(name):
     cells = code_cells(name)
     clone = cells[1]
@@ -79,7 +79,7 @@ def test_train_notebook_runs_one_size_smoke_first_then_train_evaluate_and_copy()
     assert "make data-build PY=python" in joined and "requirements-kaggle.txt" in joined
 
 
-@pytest.mark.parametrize("name", ["kaggle_eval.ipynb", "kaggle_train.ipynb", "kaggle_baseline_b1.ipynb", "kaggle_rlcd.ipynb"])
+@pytest.mark.parametrize("name", ["kaggle_eval.ipynb", "kaggle_train.ipynb", "kaggle_baseline_b1.ipynb", "kaggle_rlcd.ipynb", "kaggle_v3.ipynb"])
 def test_notebooks_uninstall_torchao_before_installing(name):
     install = next(c for c in code_cells(name) if "requirements-kaggle.txt" in c)
     assert install.index("pip uninstall -y -q torchao") < install.index("pip install -q -r requirements-kaggle.txt")
@@ -107,11 +107,11 @@ def test_fast_runs_are_gitignored():
     assert ignored.returncode == 0
 
 
-@pytest.mark.parametrize("name", ["kaggle_eval.ipynb", "kaggle_train.ipynb", "kaggle_rlcd.ipynb"])
+@pytest.mark.parametrize("name", ["kaggle_eval.ipynb", "kaggle_train.ipynb", "kaggle_rlcd.ipynb", "kaggle_v3.ipynb"])
 def test_notebooks_set_expandable_segments_before_any_training_or_evaluation(name):
     cells = code_cells(name)
     joined = "\n".join(cells)
-    first_run = min(joined.index(s) for s in ("train_sft.py", "evaluate.py") if s in joined)
+    first_run = min(joined.index(s) for s in ("train_sft.py", "evaluate.py", "train_rlcd.py", "collect_log.py") if s in joined)
     for var in ("PYTORCH_ALLOC_CONF", "PYTORCH_CUDA_ALLOC_CONF"):
         assert joined.index(f'os.environ["{var}"] = "expandable_segments:True"') < first_run
 
@@ -309,3 +309,93 @@ def test_rlcd_notebook_env_matches_train_rlcd():
     noisy_choices = re.search(r'else \((.*)\)\n', cells[1].split("ARM_CHOICES = ")[1]).group(1)
     assert tuple(a.strip().strip('"') for a in noisy_choices.split(",")) == rl.NOISY_ARMS
     assert rl.ENVS == ("deterministic", "noisy") and 'assert ENV in ("deterministic", "noisy")' in cells[1]
+
+
+# v3 (tasks 3.4 and 3.5, decision 56)
+
+
+def v3_plan():
+    """PLAN and run_name_of from the notebook's clone cell, executed without the clone."""
+    clone = code_cells("kaggle_v3.ipynb")[1]
+    block = clone[clone.index("PLAN = {") : clone.index("RUNS = [run_name_of")]
+    namespace = {"SESSION": None}
+    exec("def plan_for(SESSION):\n" + "\n".join("    " + line for line in block.splitlines()) + "\n    return PLAN, run_name_of", namespace)
+    return namespace["plan_for"]
+
+
+def test_v3_notebook_parameters_and_session_plans_match_kaggle_md_and_train_rlcd():
+    cells = code_cells("kaggle_v3.ipynb")
+    params = cells[0]
+    for name in ("REPO", "COMMIT", "SESSION", "ADAPTER_DATASET", "LOG_DATASET", "LOG_SHA256", "SMOKE_STEPS", "MAX_HOURS"):
+        assert re.search(rf"^{name} = ", params, re.M), name
+    plan_for = v3_plan()
+    plans = {session: plan_for(session) for session in "ABC"}
+    names = {session: [run_name_of(*run) for run in plan] for session, (plan, run_name_of) in plans.items()}
+    assert names["A"] == [f"v3_06b_{arm}_n{n}_s0" for arm in ("full_sft", "positive_sft") for n in (500, 2000, 5000)]
+    assert names["B"] == ["v3_06b_direct_brier_n500_s0", "v3_06b_direct_brier_n2000_s0", "v3_06b_direct_brier_n5000_s0", "v3_06b_direct_brier_n5000_s1"]
+    assert names["C"] == ["v3_06b_direct_brier_n5000_s2", "v3_06b_direct_brier_n5000_s0_noisy", "v3_06b_positive_sft_n5000_s0_noisy", "v3_06b_direct_brier_n5000_s0_log1"]
+    all_names = [n for session in "ABC" for n in names[session]]
+    assert len(all_names) == len(set(all_names)) == 14  # the 14 trained runs of V3_DESIGN section 8
+    spec = importlib.util.spec_from_file_location("train_rlcd_nb", REPO / "scripts" / "train_rlcd.py")
+    rl = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = rl
+    spec.loader.exec_module(rl)
+    for session, (plan, run_name_of) in plans.items():
+        for arm, n, seed, noisy, log in plan:
+            assert arm in rl.LOG_ARMS and not (noisy and arm == "full_sft")
+            assert run_name_of(arm, n, seed, noisy, log) == rl.log_run_name({"size": "06b", "arm": arm, "seed": seed}, n, noisy, log)
+    kaggle_md = (REPO / "docs" / "KAGGLE.md").read_text()
+    section = kaggle_md[kaggle_md.index("## 12. v3") :]
+    for session in "ABC":
+        assert f'SESSION = "{session}"' in section, session
+    assert "jevmark-v3-logs" in section and "LOG_SHA256" in section
+
+
+def test_v3_notebook_session_a_evaluates_zero_shot_and_collects_both_logs_before_training():
+    cells = code_cells("kaggle_v3.ipynb")
+    joined = "\n".join(cells)
+    order = [
+        joined.index("make data-build PY=python"),
+        joined.index("!python scripts/build_v3_data.py"),
+        joined.index('target = WORK / "runs" / "sft_06b" / "adapter"'),
+        joined.index("evaluate.py --ckpt runs/sft_06b --run-name v3_06b_zeroshot --device cuda"),
+        joined.index("collect_log.py --ckpt runs/sft_06b --seed {k} --device cuda"),
+        joined.index("run_name={SMOKE_RUN} {NOISY_FLAG} --limit-steps {SMOKE_STEPS}"),
+        joined.index("--log runs/v3_log_s{log}/log.jsonl --n {n} --init runs/sft_06b arm={arm} seed={seed} {noisy_flag} --max-hours {MAX_HOURS}"),
+        joined.index("!python scripts/evaluate.py --ckpt runs/{run_name} --device cuda"),
+    ]
+    assert order == sorted(order)
+    logs = next(c for c in cells if "collect_log.py" in c)
+    assert 'if SESSION == "A":' in logs and 'LOG_SHA256[k] = m["log_sha256"]' in logs and "LOG DONE seed" in logs
+    clone = cells[1]
+    assert '"v3_06b_zeroshot", "v3_log_s0", "v3_log_s1"' in clone and clone.index('run(["git", "checkout"') < clone.index("shutil.rmtree")
+
+
+def test_v3_notebook_sessions_b_and_c_check_the_log_sha256_and_every_run_is_copied_with_a_run_done_line():
+    cells = code_cells("kaggle_v3.ipynb")
+    clone, logs = cells[1], next(c for c in cells if "collect_log.py" in c)
+    assert 're.fullmatch(r"[0-9a-f]{64}", LOG_SHA256.get(k, ""))' in clone
+    other = logs[logs.index("else:") :]
+    assert "file_sha256(target / \"log.jsonl\")" in other and "digest != recorded or digest != LOG_SHA256[k]" in other and "raise RuntimeError" in other
+    loop = next(c for c in cells if "for (arm, n, seed, noisy, log), run_name in zip(PLAN, RUNS):" in c)
+    assert 'if not TRAINED.get("smoke"):' in loop and loop.index('if not TRAINED.get("smoke"):') < loop.index("for (arm, n, seed, noisy, log)")
+    body = loop[loop.index("for (arm, n, seed, noisy, log)") :]
+    steps = [
+        "!python scripts/train_rlcd.py",
+        "training_exit = _exit_code",
+        "copy_run(run_name)  # keep the state even if the check fails",
+        'summary = require_training(WORK / "runs" / run_name, run_started, training_exit)',
+        "evaluation_allowed(run_name)",
+        "!python scripts/evaluate.py --ckpt runs/{run_name}",
+        'check_exit(f"evaluate.py for {run_name}", _exit_code)',
+        "copy_run(run_name)\n",
+        "DONE.append(run_summary(run_name, log, summary, run_started))",
+    ]
+    positions = [body.index(step) for step in steps]
+    assert positions == sorted(positions)
+    assert 'metrics["v3"]["log_sha256"] == summary["log_sha256"] == LOG_SHA256[log]' in loop and "RUN DONE" in loop
+    assert joined_count(cells, "require_training(") == 2
+
+
+def joined_count(cells, text):
+    return "\n".join(cells).count(text)

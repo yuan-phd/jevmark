@@ -36,8 +36,12 @@ def check_training(run_dir: Path, started: datetime.datetime, exit_code: int | N
     planned = min(summary["total_steps"], limit) if limit else summary["total_steps"]
     if summary["steps"] != planned:
         return False, f"{summary['steps']} steps of {planned} planned", summary
-    valid = summary["final_valid"]
-    return True, f"{run_dir.name}: {summary['steps']} of {planned} steps, best step {summary['best_step']}, full valid acc {valid['accuracy']:.4f} ece {valid['ece']:.4f}", summary
+    valid = summary.get("final_valid")
+    if valid is not None:
+        detail = f"full valid acc {valid['accuracy']:.4f} ece {valid['ece']:.4f}"
+    else:  # a v3 log-mode run selects on logged outcomes and never reads gold for it (decision 56)
+        detail = f"selection log-likelihood {summary['best_criterion']:.4f}"
+    return True, f"{run_dir.name}: {summary['steps']} of {planned} steps, best step {summary['best_step']}, {detail}", summary
 
 
 def require_training(run_dir: Path, started: datetime.datetime, exit_code: int | None) -> dict[str, Any]:
