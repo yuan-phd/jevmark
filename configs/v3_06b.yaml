@@ -1,0 +1,54 @@
+# v3 learners from the deployment-feedback log on Qwen/Qwen3-0.6B-Base (task 3.3, decision 56,
+# docs/V3_DESIGN.md section 5), run by scripts/train_rlcd.py in log mode:
+#   python scripts/train_rlcd.py --config configs/v3_06b.yaml --log runs/v3_log_s0/log.jsonl --n 5000 arm=direct_brier seed=0
+# run_name null means v3_<size>_<arm>_n<N>_s<seed>, with _noisy for --noisy and _log<k> for a log drawn with seed k > 0.
+
+run_name: null
+size: 06b
+arm: direct_brier           # positive_sft | full_sft | direct_brier
+seed: 0
+
+backbone:
+  id: Qwen/Qwen3-0.6B-Base
+  revision: da87bfb608c14b7cf20ba1ce41287e8de496c0cd
+
+tokenizer_reference:
+  id: Qwen/Qwen3-0.6B-Base
+  revision: da87bfb608c14b7cf20ba1ce41287e8de496c0cd
+
+max_tokens: 2048
+
+precision:
+  autocast: fp16
+  fp32_fallback: true
+
+# The LoRA shape of the SFT adapter every learner starts from (runs/sft_06b); its own adapter_config.json is what is loaded.
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj]
+  mlp: false
+
+calibration:
+  temperature: 1.0
+
+training:
+  data_dir: data
+  data_file: v3_banking77_train.jsonl  # the log domain; full_sft reads gold here, never from the log
+  max_tokens: 1024
+  lr: 5.0e-5
+  weight_decay: 0.0
+  warmup_steps: 20          # linear warmup, then linear decay to 0 at the last step
+  effective_batch: 32
+  micro_batch: 8            # x accumulation 4
+  grad_clip: 1.0
+  eval_every: 50            # selection on the last 0.1 N every this many steps, and at the last step
+  gradient_checkpointing: false
+
+v3:
+  init: runs/sft_06b        # the adapter every learner starts from; --init overrides
+  train_share: 0.9          # train on the first 0.9 N interactions, select on the last 0.1 N
+  epochs: 10                # steps = max(min_steps, ceil(epochs x 0.9 N / effective_batch)), the same for every arm
+  min_steps: 200            # 200, 563 and 1407 steps at N 500, 2000 and 5000
+  beta: 0.0                 # no KL term and no reference model (decision 56)

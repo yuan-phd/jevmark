@@ -24,6 +24,18 @@ Writes runs/<run>_temp/, next to the source run, which is never modified:
 
 --temperature applies a given T instead of fitting one (the tests use it with 1.0
 to check that the scaled metrics equal evaluate.py's).
+
+--fit-log (v3, task 3.3, decision 56) is the temperature learner:
+
+    uv run python scripts/calibrate.py runs/v3_06b_zeroshot --fit-log runs/v3_log_s0/log.jsonl --n 5000
+
+One scalar T is fitted by maximum likelihood of the logged outcomes under
+softmax(log p / T) of the logged action, on the first 0.9 N interactions of the log
+(jevmark/feedback.py; the same training part the trained learners use; no gold),
+from the probabilities the log stores. It is applied to every split in the source
+run's results.jsonl.gz, which must be the logging policy's own evaluation (the
+adapter sha256 in its metrics.json must equal the log's), and written to
+runs/v3_<size>_temp_n<N>/ unless --out is given.
 """
 
 from __future__ import annotations
@@ -31,13 +43,15 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
+import re
 import shutil
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from jevmark.calibration import fit_temperature, mean_nll, scale_results
+from jevmark.calibration import fit_outcome_temperature, fit_temperature, mean_nll, outcome_log_likelihood, scale_results
+from jevmark.feedback import TRAIN_SHARE, file_sha256, prefix, read_log
 from jevmark.metrics import QUESTION_TYPES, gold_dependent, read_results, reports_by_split, split_report
 from jevmark.provenance import git_state
 
@@ -72,7 +86,11 @@ def calibrate(run_dir: Path, temperature: float | None = None, out_dir: Path | N
         "per_type_diagnostic": per_type,
     }
 
-    out_dir = out_dir or run_dir.parent / f"{run_dir.name}_temp"
+    return write_scaled_run(run_dir, results, source_metrics, t, calibration, out_dir or run_dir.parent / f"{run_dir.name}_temp", git)
+
+
+def write_scaled_run(run_dir: Path, results: list, source_metrics: dict[str, Any], t: float, calibration: dict[str, Any], out_dir: Path, git: dict[str, Any]) -> Path:
+    """runs/<out>/: calibration.json, config.yaml, source.txt, metrics.json and metrics_oracle.json for temperature t."""
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "calibration.json").write_text(json.dumps({"temperature": t, "source_run": str(run_dir), "fit_on": calibration["fit_on"]}, indent=2) + "\n")
     shutil.copyfile(run_dir / "config.yaml", out_dir / "config.yaml")
@@ -116,12 +134,54 @@ def calibrate(run_dir: Path, temperature: float | None = None, out_dir: Path | N
     return out_dir
 
 
+def calibrate_from_log(run_dir: Path, log_path: Path, n: int, out_dir: Path | None = None, train_share: float = TRAIN_SHARE) -> Path:
+    """The v3 temperature learner: T fitted on the logged outcomes of the first train_share x N interactions, applied to run_dir's results."""
+    git = git_state()
+    log_metrics_path = log_path.parent / "metrics.json"
+    log_metrics = json.loads(log_metrics_path.read_text()) if log_metrics_path.is_file() else {}
+    source_metrics = json.loads((run_dir / "metrics.json").read_text())
+    logged_adapter = log_metrics.get("logging_policy", {}).get("adapter_sha256")
+    if logged_adapter and source_metrics.get("adapter_sha256") and logged_adapter != source_metrics["adapter_sha256"]:
+        raise SystemExit(f"{run_dir} evaluates another adapter than the policy that drew {log_path}; the temperature belongs to the logging policy")
+    fit = prefix(read_log(log_path), n, train_share).train
+    probs, actions, outcomes = [i.probs for i in fit], [i.action for i in fit], [i.outcome for i in fit]
+    t = fit_outcome_temperature(probs, actions, outcomes)
+    calibration = {
+        "temperature": t,
+        "fitted": True,
+        "fit_on": f"the first {len(fit)} interactions of {log_path} (N {n}), Bernoulli log-likelihood of the logged outcomes of the chosen actions",
+        "log": str(log_path),
+        "log_sha256": file_sha256(log_path),
+        "n": n,
+        "n_fit": len(fit),
+        "outcome_log_likelihood_at_t1": outcome_log_likelihood(probs, actions, outcomes, 1.0),
+        "outcome_log_likelihood_at_t": outcome_log_likelihood(probs, actions, outcomes, t),
+    }
+    if out_dir is None:
+        size = re.search(r"(06b|17b)", run_dir.name)
+        if size is None:
+            raise SystemExit(f"cannot tell the backbone size from {run_dir.name}; pass --out")
+        out_dir = run_dir.parent / f"v3_{size.group(1)}_temp_n{n}"
+    return write_scaled_run(run_dir, read_results(run_dir / "results.jsonl.gz"), source_metrics, t, calibration, out_dir, git)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("run_dir", help="a run directory holding results.jsonl.gz, metrics.json and config.yaml")
     parser.add_argument("--temperature", type=float, default=None, help="apply this temperature instead of fitting one on valid")
-    parser.add_argument("--out", default=None, help="output directory; default runs/<run>_temp next to the source")
+    parser.add_argument("--out", default=None, help="output directory; default runs/<run>_temp next to the source (runs/v3_<size>_temp_n<N> with --fit-log)")
+    parser.add_argument("--fit-log", default=None, help="v3: fit T on the logged outcomes of this deployment-feedback log instead of on valid")
+    parser.add_argument("--n", type=int, default=None, help="with --fit-log: the learner's N; T is fitted on the first 0.9 N interactions")
     args = parser.parse_args(argv)
+    if args.fit_log is not None:
+        if args.n is None or args.temperature is not None:
+            parser.error("--fit-log needs --n and does not take --temperature")
+        out = calibrate_from_log(Path(args.run_dir), Path(args.fit_log), args.n, Path(args.out) if args.out else None)
+        cal = json.loads((out / "metrics.json").read_text())["calibration"]
+        print(f"{out}: T {cal['temperature']:.4f} fitted on {cal['n_fit']} logged outcomes; log-likelihood {cal['outcome_log_likelihood_at_t1']:.4f} -> {cal['outcome_log_likelihood_at_t']:.4f}")
+        return 0
+    elif args.n is not None:
+        parser.error("--n is a --fit-log option")
     out = calibrate(Path(args.run_dir), args.temperature, Path(args.out) if args.out else None)
     metrics = json.loads((out / "metrics.json").read_text())
     cal = metrics["calibration"]

@@ -3,6 +3,7 @@
     python scripts/train_rlcd.py --config configs/rlcd_06b.yaml --init runs/sft_06b arm=direct_brier seed=0
     python scripts/train_rlcd.py --config configs/rlcd_06b.yaml arm=direct_brier seed=0 --resume
     python scripts/train_rlcd.py --config configs/rlcd_06b.yaml --env noisy arm=direct_brier seed=0
+    python scripts/train_rlcd.py --config configs/v3_06b.yaml --log runs/v3_log_s0/log.jsonl --n 5000 arm=direct_brier seed=0
 
 The trainable LoRA starts as the SFT adapter of --init (a run directory holding
 adapter/); a second copy of the backbone with that adapter merged is the frozen
@@ -74,6 +75,34 @@ Run directory runs/<run_name>/ (run_name rlcd_<size>_<arm>_s<seed>, or
 rlcd_<size>_noisy_<arm>_s<seed>, unless set):
 config.yaml, model_id.txt, training_log.jsonl, adapter/, adapter_last/, last/,
 train_summary.json, calibration.json.
+
+Log mode (v3, task 3.3, decision 56, docs/V3_DESIGN.md section 5): --log
+runs/v3_log_s<k>/log.jsonl --n N with configs/v3_06b.yaml replaces sampling by the
+logged interactions of a deployment-feedback log (jevmark/feedback.py). Each logged
+record's question is rebuilt in its stored option order, which is the order the
+logging policy read; the logged action and its outcome (the flipped outcome with
+--noisy) are the only feedback, with no behaviour mixture, no importance weights,
+no KL term and no reference model. Training uses the first 0.9 N interactions,
+every epoch in a seeded order. The arms:
+
+- positive_sft: cross-entropy on the logged action of every interaction whose
+  outcome is 1; outcome-0 interactions are skipped.
+- full_sft: cross-entropy on gold for every interaction, gold read from the data
+  file (training.data_file), never from the log; it never reads an outcome to
+  train, and --noisy is refused for it.
+- direct_brier: (r - p_a)^2 on the logged action's probability for every
+  interaction, positives and negatives.
+
+Every arm takes steps = max(v3.min_steps, ceil(v3.epochs x 0.9 N / effective
+batch)), warmup and linear decay as configured, from the --init adapter (default
+v3.init). Checkpoint selection, the same for every arm, is the mean Bernoulli
+log-likelihood of the logged outcomes under the model's probability of the logged
+action on the last 0.1 N interactions, every training.eval_every steps and at the
+last step; step 0 (the starting adapter) is logged as the reference and is not a
+candidate, and gold is never read for it. config.yaml and train_summary.json record
+the log's sha256 and seed, N, the arm, the noisy flag and the selection curve.
+Run names: v3_<size>_<arm>_n<N>_s<seed>, plus _noisy, plus _log<k> for a log drawn
+with seed k > 0. --resume needs the same --log, --n and --noisy, which name the run.
 """
 
 from __future__ import annotations
@@ -82,6 +111,7 @@ import argparse
 import datetime
 import hashlib
 import json
+import math
 import random
 import sys
 import time
@@ -104,6 +134,7 @@ from jevmark.environment import NoisyEnvironment
 from jevmark.environment import cross_entropy as theta_cross_entropy
 from jevmark.environment import expected_brier as theta_expected_brier
 from jevmark.environment import theta
+from jevmark.feedback import Interaction, bernoulli_log_likelihood, file_sha256, prefix, read_log
 from jevmark.metrics import QuestionResult, split_metrics
 from jevmark.model import JevMark, keep_lora_fp32
 from jevmark.schema import ChoiceQuestion, Request
@@ -381,6 +412,304 @@ def apply_noisy_defaults(config: dict[str, Any], overrides: Sequence[str]) -> No
     config["training"]["steps"] = int(config["noisy"]["steps"])
 
 
+# Log mode (v3, task 3.3, decision 56)
+
+LOG_ARMS = ("positive_sft", "full_sft", "direct_brier")
+
+
+@dataclass(frozen=True)
+class LogExample:
+    encoded: Encoded
+    action: int  # the logged action's index in the stored option order
+    outcome: int  # the logged outcome, or the flipped one with --noisy
+    gold: int | None  # the gold index, only for full_sft
+
+
+def log_steps(n_train: int, epochs: int, min_steps: int, effective_batch: int) -> int:
+    """max(min_steps, ceil(epochs x n_train / effective_batch)): the same for every arm at a given N."""
+    return max(min_steps, math.ceil(epochs * n_train / effective_batch))
+
+
+def log_seed_of(log_path: Path) -> int:
+    """The seed the log was drawn with, from collect_log.py's metrics.json next to it."""
+    metrics = log_path.parent / "metrics.json"
+    if not metrics.is_file():
+        raise SystemExit(f"--log {log_path}: no metrics.json next to it, so its seed and data hash are unknown")
+    return int(json.loads(metrics.read_text())["sampling"]["seed"])
+
+
+def log_run_name(config: dict[str, Any], n: int, noisy: bool, log_seed: int) -> str:
+    if config.get("run_name"):
+        return config["run_name"]
+    return f"v3_{config['size']}_{config['arm']}_n{n}_s{config['seed']}" + ("_noisy" if noisy else "") + (f"_log{log_seed}" if log_seed else "")
+
+
+def log_examples(interactions: Sequence[Interaction], records: dict[str, dict[str, Any]], jev: JevMark, max_tokens: int, noisy: bool, with_gold: bool) -> list[LogExample]:
+    """One example per interaction, the question rebuilt in the record's stored option order, which must be the logged order."""
+    examples = []
+    for interaction in interactions:
+        record = records[interaction.record_id]
+        question = record["questions"][interaction.question_id]
+        if tuple(question["criteria"]) != interaction.labels:
+            raise SystemExit(f"{interaction.record_id}: the data file's option order differs from the logged one; the log was not drawn from this file")
+        request = Request.from_dict({"state": record["state"], "questions": {interaction.question_id: question}})
+        gold = list(question["criteria"]).index(record["gold"][interaction.question_id]) if with_gold else None
+        outcome = interaction.flipped_outcome if noisy else interaction.outcome
+        examples.append(LogExample(encode(request, jev.tokenizer, max_tokens), interaction.action, outcome, gold))
+    return examples
+
+
+def log_batch_loss(jev: JevMark, batch: Sequence[LogExample], arm: str) -> tuple[torch.Tensor, dict[str, float]]:
+    """Mean loss over the micro-batch, and the mean probability of the logged action and outcome rate."""
+    losses, p_action = [], []
+    for z, example in zip(jev.slot_logits([e.encoded for e in batch]), batch):
+        logp = F.log_softmax(z.float(), dim=-1)
+        if arm == "positive_sft":
+            losses.append(-logp[example.action])
+        elif arm == "full_sft":
+            losses.append(-logp[example.gold])
+        elif arm == "direct_brier":
+            losses.append((example.outcome - logp[example.action].exp()) ** 2)
+        else:
+            raise ValueError(f"unknown log-mode arm {arm!r}; expected one of {LOG_ARMS}")
+        p_action.append(float(logp.detach()[example.action].exp()))
+    return torch.stack(losses).mean(), {"p_action": sum(p_action) / len(p_action), "outcome_rate": sum(e.outcome for e in batch) / len(batch)}
+
+
+def select_score(jev: JevMark, examples: Sequence[LogExample], batch_size: int) -> dict[str, Any]:
+    """The selection criterion on the held-out interactions: mean Bernoulli log-likelihood of the outcomes under p(logged action); no gold."""
+    was_training = jev.model.training
+    jev.model.eval()
+    p_action = []
+    with torch.no_grad():
+        for start in range(0, len(examples), batch_size):
+            chunk = examples[start : start + batch_size]
+            for z, example in zip(jev.slot_logits([e.encoded for e in chunk]), chunk):
+                p_action.append(float(F.softmax(z.float(), dim=-1)[example.action]))
+    if was_training:
+        jev.model.train()
+    outcomes = [e.outcome for e in examples]
+    return {"n": len(examples), "criterion": bernoulli_log_likelihood(p_action, outcomes), "mean_p_action": sum(p_action) / len(p_action), "outcome_rate": sum(outcomes) / len(outcomes)}
+
+
+def main_log(args: argparse.Namespace, started: float) -> int:
+    """Train one v3 learner from a deployment-feedback log (the module docstring's log mode)."""
+    if args.env != "deterministic":
+        raise SystemExit("--log and --env noisy do not combine; the log's noisy condition is --noisy")
+    if args.n is None or args.n < 1:
+        raise SystemExit("--log needs --n, the number of logged interactions the learner sees")
+    log_path = Path(args.log)
+    log_sha = file_sha256(log_path)
+    log_seed = log_seed_of(log_path)
+    config = load_config(args.config, args.overrides)
+    run_dir = Path(args.runs_dir) / log_run_name(config, args.n, args.noisy, log_seed)
+    if args.resume:
+        if not (run_dir / "last" / "state.pt").is_file():
+            raise SystemExit(f"--resume: no saved state at {run_dir / 'last'}")
+        config = load_config(run_dir / "config.yaml")
+        if config["v3"]["log_sha256"] != log_sha or config["v3"]["n"] != args.n or config["v3"]["noisy"] != args.noisy:
+            raise SystemExit(f"--resume: {run_dir} was trained on another log, N or noisy setting than given")
+    else:
+        stale = [name for name in RL_STALE_STATE if (run_dir / name).exists()]
+        if stale:
+            raise SystemExit(f"{run_dir} already holds a training run ({', '.join(stale)}); use --resume, or delete the directory, or another run_name")
+        if config["arm"] not in LOG_ARMS:
+            raise SystemExit(f"arm {config['arm']!r} does not run in log mode; expected one of {LOG_ARMS}")
+        if args.noisy and config["arm"] == "full_sft":
+            raise SystemExit("full_sft trains on gold and never reads an outcome, so --noisy would change only its selection; it is refused")
+        if float(config["v3"]["beta"]) != 0.0:
+            raise SystemExit("log mode has no KL term and no reference model; v3.beta must be 0 (decision 56)")
+        init_dir = Path(args.init or config["v3"]["init"])
+        if not (init_dir / "adapter" / "adapter_model.safetensors").is_file():
+            raise SystemExit(f"--init {init_dir}: no adapter at {init_dir / 'adapter'}")
+        config["run_name"] = run_dir.name
+        config["v3"].update({"init": str(init_dir), "init_adapter_sha256": adapter_sha256(init_dir / "adapter"), "log": str(log_path), "log_sha256": log_sha, "log_seed": log_seed, "n": args.n, "noisy": args.noisy})
+    init_dir = Path(config["v3"]["init"])
+    if adapter_sha256(init_dir / "adapter") != config["v3"]["init_adapter_sha256"]:
+        raise SystemExit(f"the adapter at {init_dir} is not the one this run started from (sha256 differs)")
+    arm, seed, n, noisy = config["arm"], int(config["seed"]), int(config["v3"]["n"]), bool(config["v3"]["noisy"])
+    train_cfg = config["training"]
+    data_dir = Path(args.data_dir) if args.data_dir else REPO / train_cfg["data_dir"]
+    data_path = data_dir / train_cfg["data_file"]
+    data_sha = file_sha256(data_path)
+    logged_data_sha = json.loads((log_path.parent / "metrics.json").read_text()).get("data_files_sha256", {}).get(train_cfg["data_file"])
+    if logged_data_sha and logged_data_sha != data_sha:
+        raise SystemExit(f"{data_path} has sha256 {data_sha}, but the log was drawn from {logged_data_sha}")
+    config["v3"]["data_sha256"] = data_sha
+
+    split = prefix(read_log(log_path), n, float(config["v3"]["train_share"]))
+    micro = int(train_cfg["micro_batch"])
+    effective = int(train_cfg["effective_batch"])
+    accumulation = max(1, effective // micro)
+    total_steps = log_steps(len(split.train), int(config["v3"]["epochs"]), int(config["v3"]["min_steps"]), effective)
+    config["v3"].update({"n_train": len(split.train), "n_select": len(split.select), "steps": total_steps})
+    warmup = int(train_cfg["warmup_steps"])
+    max_tokens = int(train_cfg["max_tokens"])
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
+    (run_dir / "model_id.txt").write_text(f"jevmark-{config['run_name']}\n")
+    log_path_out = run_dir / "training_log.jsonl"
+    torch.manual_seed(seed)
+
+    jev = JevMark.load(config, device=args.device)
+    records = {r["id"]: r for r in read_jsonl(data_path)}
+    train_all = log_examples(split.train, records, jev, max_tokens, noisy, with_gold=arm == "full_sft")
+    used = [k for k, e in enumerate(train_all) if arm != "positive_sft" or e.outcome == 1]
+    pool = [train_all[k] for k in used]
+    select = log_examples(split.select, records, jev, max_tokens, noisy, with_gold=False)
+    if not pool:
+        raise SystemExit(f"{arm}: no training interactions in the first {len(split.train)} (positive_sft needs outcome-1 interactions)")
+    say(f"run {config['run_name']}: arm {arm}, log {log_path} (seed {log_seed}), N {n}: train on {len(split.train)} ({len(pool)} used), select on {len(select)}; {total_steps} steps; {jev.device}, autocast {jev.autocast_dtype}")
+
+    fallback_used = False
+    if not args.resume:
+        with torch.no_grad():
+            finite = all(torch.isfinite(x).all().item() for x in jev.slot_logits([e.encoded for e in pool[:micro]]))
+        if not finite:
+            if jev.autocast_dtype is None:
+                raise RuntimeError("first-batch slot logits contain NaN or inf in fp32; not a precision problem")
+            say("WARNING: NaN or inf in first-batch slot logits under fp16; reloading the model in fp32 (decision 28)")
+            jev.use_fp32()
+            fallback_used = True
+        log_line(log_path_out, {"event": "start", "arm": arm, "log": str(log_path), "log_sha256": log_sha, "log_seed": log_seed, "n": n, "n_train": len(split.train), "n_used": len(pool), "n_select": len(select), "noisy": noisy, "init": str(init_dir), "init_adapter_sha256": config["v3"]["init_adapter_sha256"], "fp32_fallback_used": fallback_used, "autocast": str(jev.autocast_dtype), "total_steps": total_steps, "warmup_steps": warmup, "accumulation": accumulation})
+
+    attach_sft_adapter(jev, init_dir / "adapter", config)
+    trainable = [p for p in jev.model.parameters() if p.requires_grad]
+    optimizer = torch.optim.AdamW(trainable, lr=float(train_cfg["lr"]), weight_decay=float(train_cfg["weight_decay"]))
+    scheduler = get_linear_schedule_with_warmup(optimizer, warmup, total_steps)
+    scaler = torch.amp.GradScaler("cuda", enabled=jev.device.type == "cuda" and jev.autocast_dtype == torch.float16)
+
+    # Pre-flight on the longest training records with a cross-entropy loss of the same shape (decision 45). Its
+    # records carry the first option as a stand-in gold, so no arm but full_sft ever reads a gold label.
+    pool_records = []
+    for k in used:
+        record = records[split.train[k].record_id]
+        stand_in = {qid: next(iter(q["criteria"])) for qid, q in record["questions"].items()}
+        pool_records.append({**record, "gold": stand_in})
+    pool_records = list({r["id"]: r for r in pool_records}.values())
+    _, _, lengths = fits(pool_records, jev, max_tokens)
+
+    def preflight_loss(model: JevMark, batch: Sequence[Any]) -> torch.Tensor:
+        return torch.stack([-F.log_softmax(z.float(), dim=-1)[e.targets[0]] for z, e in zip(model.slot_logits([e.encoded for e in batch]), batch)]).mean()
+
+    try:
+        check = preflight(jev, pool_records, lengths, micro, max_tokens, seed, scaler, preflight_loss)
+    except PreflightError as err:
+        log_line(log_path_out, {"event": "preflight", "passed": False, "error": str(err)[:500]})
+        say(f"PREFLIGHT FAIL: {err}")
+        raise SystemExit(f"PREFLIGHT FAIL: {config['run_name']} cannot train at micro-batch {micro}; lower training.micro_batch") from err
+    log_line(log_path_out, {"event": "preflight", "passed": True, **check})
+    memory = f"peak {check['peak_gib']:.2f} GiB of {check['total_gib']:.2f} GiB" if "peak_gib" in check else "peak memory not measured on CPU"
+    say(f"PREFLIGHT PASS: worst-case micro-batch of {check['records']} records ({check['longest_tokens']} tokens): {memory}")
+
+    progress: dict[str, Any] = {"step": 0, "epoch": 0, "micro_done": 0, "best_criterion": None, "best_step": None, "fp32_fallback_used": fallback_used, "init_select": None, "curve": []}
+    if args.resume:
+        progress = load_state(run_dir, jev, optimizer, scheduler, scaler)
+        log_line(log_path_out, {"event": "resume", "step": progress["step"], "epoch": progress["epoch"]})
+        say(f"resumed at step {progress['step']}, epoch {progress['epoch']}, micro-batch {progress['micro_done']}")
+    else:
+        init_select = select_score(jev, select, micro * 2)
+        progress["init_select"] = init_select
+        progress["curve"].append({"step": 0, **init_select})
+        log_line(log_path_out, {"event": "select", "step": 0, **init_select})
+        say(f"step 0 (the starting adapter): selection log-likelihood {init_select['criterion']:.4f}, mean p(action) {init_select['mean_p_action']:.4f}")
+
+    limit = min(total_steps, args.limit_steps) if args.limit_steps else total_steps
+    deadline = started + args.max_hours * 3600
+
+    def run_selection(step: int) -> None:
+        result = select_score(jev, select, micro * 2)
+        progress["curve"].append({"step": step, **result})
+        log_line(log_path_out, {"event": "select", "step": step, **result})
+        say(f"step {step}: selection log-likelihood {result['criterion']:.4f}, mean p(action) {result['mean_p_action']:.4f}")
+        if progress["best_criterion"] is None or result["criterion"] > progress["best_criterion"]:
+            progress["best_criterion"], progress["best_step"] = result["criterion"], step
+            jev.model.save_pretrained(run_dir / "adapter")
+
+    stopped_by_time = False
+    last_selected = None
+    while progress["step"] < limit:
+        order = list(range(len(pool)))
+        random.Random(f"{seed}:epoch{progress['epoch']}").shuffle(order)
+        batches = [[pool[i] for i in order[j : j + micro]] for j in range(0, len(order), micro)]
+        groups = [batches[i : i + accumulation] for i in range(0, len(batches), accumulation)]
+        for group in groups[progress["micro_done"] // accumulation :]:
+            if progress["step"] >= limit:
+                break
+            losses, stats = [], []
+            for batch in group:
+                loss, stat = log_batch_loss(jev, batch, arm)
+                scaler.scale(loss / len(group)).backward()
+                losses.append(loss.item())
+                stats.append(stat)
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(trainable, float(train_cfg["grad_clip"]))
+            scaler.step(optimizer)
+            scaler.update()
+            optimizer.zero_grad(set_to_none=True)
+            scheduler.step()
+            progress["step"] += 1
+            progress["micro_done"] += len(group)
+            mean = {k: sum(x[k] for x in stats) / len(stats) for k in ("p_action", "outcome_rate")}
+            log_line(log_path_out, {"step": progress["step"], "epoch": progress["epoch"], "loss": sum(losses) / len(losses), **mean, "lr": scheduler.get_last_lr()[0], "elapsed_s": round(time.perf_counter() - started, 1)})
+            at_end = progress["step"] == limit
+            if progress["step"] % int(train_cfg["eval_every"]) == 0 or at_end:
+                run_selection(progress["step"])
+                last_selected = progress["step"]
+                save_state(run_dir, jev, optimizer, scheduler, scaler, progress)
+            if time.perf_counter() > deadline and not at_end:
+                stopped_by_time = True
+                break
+        if stopped_by_time:
+            break
+        if progress["micro_done"] >= len(batches):
+            progress["epoch"] += 1
+            progress["micro_done"] = 0
+
+    if last_selected != progress["step"] and progress["step"] > 0 and not stopped_by_time:
+        run_selection(progress["step"])
+    save_state(run_dir, jev, optimizer, scheduler, scaler, progress)
+    if stopped_by_time:
+        log_line(log_path_out, {"event": "time_limit", "step": progress["step"], "max_hours": args.max_hours})
+        say(f"time limit of {args.max_hours} h reached at step {progress['step']}; saved {run_dir / 'last'}; continue with --resume")
+        return 0
+    if progress["best_step"] is None:
+        raise RuntimeError("no selection ran, so no best adapter exists")
+    jev.model.save_pretrained(run_dir / "adapter_last")
+    (run_dir / "calibration.json").write_text(json.dumps({"temperature": 1.0}) + "\n")
+    summary = {
+        "run_name": config["run_name"],
+        "arm": arm,
+        "mode": "log",
+        "finished": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+        "steps": progress["step"],
+        "total_steps": total_steps,
+        "limit_steps": args.limit_steps,
+        "best_step": progress["best_step"],
+        "best_by": "mean Bernoulli log-likelihood of the logged outcomes under p(logged action), last 0.1 N",
+        "best_criterion": progress["best_criterion"],
+        "log": str(log_path),
+        "log_sha256": log_sha,
+        "log_seed": log_seed,
+        "data_sha256": data_sha,
+        "n": n,
+        "n_train": len(split.train),
+        "n_used": len(pool),
+        "n_select": len(select),
+        "noisy": noisy,
+        "init": str(init_dir),
+        "init_adapter_sha256": config["v3"]["init_adapter_sha256"],
+        "init_select": progress["init_select"],
+        "selection_curve": progress["curve"],
+        "fp32_fallback_used": progress["fp32_fallback_used"],
+        "autocast": str(jev.autocast_dtype),
+        "wall_clock_seconds_this_session": round(time.perf_counter() - started, 1),
+    }
+    (run_dir / "train_summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+    say(f"done at step {progress['step']}: best step {progress['best_step']}, selection log-likelihood {progress['best_criterion']:.4f}")
+    return 0
+
+
 # Main
 
 
@@ -396,12 +725,20 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--device", default=None, help="cpu, cuda or cuda:N; default cuda when available")
     parser.add_argument("--runs-dir", default=str(REPO / "runs"))
     parser.add_argument("--data-dir", default=None, help="default: training.data_dir from the config, relative to the repository")
-    return parser.parse_args(argv)
+    parser.add_argument("--log", default=None, help="v3 log mode: a deployment-feedback log, runs/v3_log_s<k>/log.jsonl, with configs/v3_06b.yaml; replaces sampling by the logged interactions")
+    parser.add_argument("--n", type=int, default=None, help="log mode: the learner sees the first N logged interactions, trains on the first 0.9 N and selects on the last 0.1 N")
+    parser.add_argument("--noisy", action="store_true", help="log mode: the outcome is the logged one flipped with probability 0.2 (the noisy condition); refused for full_sft")
+    args = parser.parse_args(argv)
+    if (args.n is not None or args.noisy) and args.log is None:
+        parser.error("--n and --noisy are log-mode options; they need --log")
+    return args
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     started = time.perf_counter()
+    if args.log is not None:
+        return main_log(args, started)
     config = load_config(args.config, args.overrides)
     config["env"] = args.env
     config["run_name"] = resolve_run_name(config)

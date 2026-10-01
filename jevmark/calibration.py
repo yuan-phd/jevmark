@@ -79,3 +79,35 @@ def fit_temperature(results: Sequence[QuestionResult]) -> float:
     logp, gold = _padded_log_probs(results)
     found = minimize_scalar(lambda u: _mean_nll(logp, gold, math.exp(u)), bounds=LOG_T_BOUNDS, method="bounded", options={"xatol": 1e-6})
     return math.exp(float(found.x))
+
+
+# v3: a temperature fitted on bandit outcomes (task 3.3, decision 56)
+
+
+def _log_probs_at(probs: Sequence[Sequence[float]], actions: Sequence[int], temperature: float) -> np.ndarray:
+    """log softmax(log p / T)[a] for each row, rows of any length."""
+    out = np.empty(len(probs))
+    for i, (p, a) in enumerate(zip(probs, actions)):
+        z = np.log(np.maximum(np.asarray(p, dtype=float), PROB_FLOOR)) / temperature
+        top = z.max()
+        out[i] = z[a] - (top + math.log(np.exp(z - top).sum()))
+    return out
+
+
+def outcome_log_likelihood(probs: Sequence[Sequence[float]], actions: Sequence[int], outcomes: Sequence[int], temperature: float, clip: float = 1e-6) -> float:
+    """Mean Bernoulli log-likelihood of the outcomes under softmax(log p / T)[a], probabilities clipped to [clip, 1 - clip]."""
+    p = np.clip(np.exp(_log_probs_at(probs, actions, temperature)), clip, 1.0 - clip)
+    r = np.asarray(outcomes, dtype=float)
+    return float(np.mean(r * np.log(p) + (1.0 - r) * np.log(1.0 - p)))
+
+
+def fit_outcome_temperature(probs: Sequence[Sequence[float]], actions: Sequence[int], outcomes: Sequence[int]) -> float:
+    """The T in [0.05, 20] maximising the Bernoulli log-likelihood of revealed outcomes of chosen actions (bounded Brent over log T).
+
+    The temperature learner of v3: it sees only (p, chosen action, outcome) per logged
+    interaction, the same feedback the trained learners see.
+    """
+    if not len(outcomes):
+        raise ValueError("cannot fit a temperature on no outcomes")
+    found = minimize_scalar(lambda u: -outcome_log_likelihood(probs, actions, outcomes, math.exp(u)), bounds=LOG_T_BOUNDS, method="bounded", options={"xatol": 1e-6})
+    return math.exp(float(found.x))
