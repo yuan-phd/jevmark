@@ -1,0 +1,5890 @@
+{
+  "run_name": "v3_06b_zeroshot",
+  "model_id": "jevmark-sft_06b",
+  "ckpt": "runs/sft_06b",
+  "config": "runs/sft_06b/config.yaml",
+  "git": {
+    "commit": "b5913eff27e1dc6290bd215e7d83b533b105ad83",
+    "dirty": false
+  },
+  "created": "2026-10-02T09:01:17+00:00",
+  "limit": null,
+  "shuffle_questions": null,
+  "device": "cuda:0",
+  "precision": {
+    "autocast": "torch.float16",
+    "fp32_fallback_used": false
+  },
+  "temperature": 1.0,
+  "lora_merged": true,
+  "adapter_sha256": "5d2681f3ba7a72cd4c0f1413e89c5e21c7bb96cee8645fa2a498516d67568809",
+  "init_adapter_sha256": null,
+  "v3": null,
+  "data_files_sha256": {
+    "v3_banking77_test_full.jsonl": "d7428065a9585d01c7eb7d9b962606e9c6801d0ec89c3816c640a9d8e7fb8fbd",
+    "test_banking77.jsonl": "5f05145341ed3174e89e13e8efe13c9171cda43f0f14dae6bfacb57ae453f5fe",
+    "test_indomain.jsonl": "c68c7fd03f1ba2a35eb60eba6b9e3d3ea7bffa096f33c6823a5b1dfcdbdbd1cf",
+    "test_unseen_intents.jsonl": "3b1a0ff126504f99c9450b6fa321651acd21737377184e66a1969df289e6b847"
+  },
+  "confidence_note": "ECE and reliability use the top-1 probability; coverage uses the response confidence field (1 - H/ln K for choice and score, max(p, 1 - p) for noul).",
+  "splits": {
+    "v3_banking77_test_full": {
+      "overall": {
+        "n": 3080,
+        "accuracy": 0.8506493506493507,
+        "ece": 0.06328791365414464,
+        "brier": 0.2291423845478573,
+        "nll": 0.5821312113469287,
+        "reliability": [
+          {
+            "lower": 0.0,
+            "upper": 0.066667,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.066667,
+            "upper": 0.133333,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.133333,
+            "upper": 0.2,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.2,
+            "upper": 0.266667,
+            "count": 1,
+            "mean_confidence": 0.2601577043533325,
+            "mean_accuracy": 0.0
+          },
+          {
+            "lower": 0.266667,
+            "upper": 0.333333,
+            "count": 2,
+            "mean_confidence": 0.31933778524398804,
+            "mean_accuracy": 0.5
+          },
+          {
+            "lower": 0.333333,
+            "upper": 0.4,
+            "count": 19,
+            "mean_confidence": 0.37394609733631734,
+            "mean_accuracy": 0.15789473684210525
+          },
+          {
+            "lower": 0.4,
+            "upper": 0.466667,
+            "count": 42,
+            "mean_confidence": 0.4390612549725033,
+            "mean_accuracy": 0.3333333333333333
+          },
+          {
+            "lower": 0.466667,
+            "upper": 0.533333,
+            "count": 82,
+            "mean_confidence": 0.5037634252775006,
+            "mean_accuracy": 0.34146341463414637
+          },
+          {
+            "lower": 0.533333,
+            "upper": 0.6,
+            "count": 92,
+            "mean_confidence": 0.5682273746832557,
+            "mean_accuracy": 0.43478260869565216
+          },
+          {
+            "lower": 0.6,
+            "upper": 0.666667,
+            "count": 95,
+            "mean_confidence": 0.6335212701245359,
+            "mean_accuracy": 0.6421052631578947
+          },
+          {
+            "lower": 0.666667,
+            "upper": 0.733333,
+            "count": 90,
+            "mean_confidence": 0.7019164495997958,
+            "mean_accuracy": 0.5444444444444444
+          },
+          {
+            "lower": 0.733333,
+            "upper": 0.8,
+            "count": 116,
+            "mean_confidence": 0.7682769051913557,
+            "mean_accuracy": 0.5603448275862069
+          },
+          {
+            "lower": 0.8,
+            "upper": 0.866667,
+            "count": 130,
+            "mean_confidence": 0.8343919171736791,
+            "mean_accuracy": 0.6615384615384615
+          },
+          {
+            "lower": 0.866667,
+            "upper": 0.933333,
+            "count": 197,
+            "mean_confidence": 0.9013570165876205,
+            "mean_accuracy": 0.7208121827411168
+          },
+          {
+            "lower": 0.933333,
+            "upper": 1.0,
+            "count": 2214,
+            "mean_confidence": 0.9909791606659273,
+            "mean_accuracy": 0.9625112917795845
+          }
+        ],
+        "accuracy_ci": [
+          0.8383035714285715,
+          0.862987012987013
+        ],
+        "ece_ci": [
+          0.0536986658937455,
+          0.07540736113517701
+        ]
+      },
+      "letter_bias": {
+        "by_position": {
+          "0": {
+            "n": 287,
+            "accuracy": 0.8885017421602788,
+            "mean_gold_probability": 0.8684767825959554,
+            "accuracy_ci": [
+              0.8501742160278746,
+              0.9233449477351916
+            ]
+          },
+          "1": {
+            "n": 332,
+            "accuracy": 0.8704819277108434,
+            "mean_gold_probability": 0.8468658082846922,
+            "accuracy_ci": [
+              0.8283132530120482,
+              0.9036144578313253
+            ]
+          },
+          "2": {
+            "n": 305,
+            "accuracy": 0.8622950819672132,
+            "mean_gold_probability": 0.8301312932321901,
+            "accuracy_ci": [
+              0.8229508196721311,
+              0.9016393442622951
+            ]
+          },
+          "3": {
+            "n": 334,
+            "accuracy": 0.8622754491017964,
+            "mean_gold_probability": 0.8419175003504508,
+            "accuracy_ci": [
+              0.8233532934131736,
+              0.8982035928143712
+            ]
+          },
+          "4": {
+            "n": 288,
+            "accuracy": 0.8576388888888888,
+            "mean_gold_probability": 0.8299999222305764,
+            "accuracy_ci": [
+              0.8159722222222222,
+              0.8958333333333334
+            ]
+          },
+          "5": {
+            "n": 297,
+            "accuracy": 0.8451178451178452,
+            "mean_gold_probability": 0.8121169745587419,
+            "accuracy_ci": [
+              0.8013468013468014,
+              0.8822390572390572
+            ]
+          },
+          "6": {
+            "n": 317,
+            "accuracy": 0.832807570977918,
+            "mean_gold_probability": 0.8070549049395598,
+            "accuracy_ci": [
+              0.7917981072555205,
+              0.8706624605678234
+            ]
+          },
+          "7": {
+            "n": 283,
+            "accuracy": 0.8480565371024735,
+            "mean_gold_probability": 0.8006896503052576,
+            "accuracy_ci": [
+              0.8056537102473498,
+              0.8904593639575972
+            ]
+          },
+          "8": {
+            "n": 318,
+            "accuracy": 0.8238993710691824,
+            "mean_gold_probability": 0.8018089647403889,
+            "accuracy_ci": [
+              0.7830188679245284,
+              0.8647798742138365
+            ]
+          },
+          "9": {
+            "n": 319,
+            "accuracy": 0.8181818181818182,
+            "mean_gold_probability": 0.7865867139565846,
+            "accuracy_ci": [
+              0.774294670846395,
+              0.8557993730407524
+            ]
+          }
+        },
+        "by_k": {
+          "10": {
+            "n": 3080,
+            "accuracy": 0.8506493506493507,
+            "mean_gold_probability": 0.8225225590898053,
+            "accuracy_ci": [
+              0.8383035714285715,
+              0.862987012987013
+            ]
+          }
+        },
+        "by_k_position": {
+          "10": {
+            "0": {
+              "n": 287,
+              "accuracy": 0.8885017421602788,
+              "mean_gold_probability": 0.8684767825959554,
+              "accuracy_ci": [
+                0.8501742160278746,
+                0.9233449477351916
+              ]
+            },
+            "1": {
+              "n": 332,
+              "accuracy": 0.8704819277108434,
+              "mean_gold_probability": 0.8468658082846922,
+              "accuracy_ci": [
+                0.8283132530120482,
+                0.9036144578313253
+              ]
+            },
+            "2": {
+              "n": 305,
+              "accuracy": 0.8622950819672132,
+              "mean_gold_probability": 0.8301312932321901,
+              "accuracy_ci": [
+                0.8229508196721311,
+                0.9016393442622951
+              ]
+            },
+            "3": {
+              "n": 334,
+              "accuracy": 0.8622754491017964,
+              "mean_gold_probability": 0.8419175003504508,
+              "accuracy_ci": [
+                0.8233532934131736,
+                0.8982035928143712
+              ]
+            },
+            "4": {
+              "n": 288,
+              "accuracy": 0.8576388888888888,
+              "mean_gold_probability": 0.8299999222305764,
+              "accuracy_ci": [
+                0.8159722222222222,
+                0.8958333333333334
+              ]
+            },
+            "5": {
+              "n": 297,
+              "accuracy": 0.8451178451178452,
+              "mean_gold_probability": 0.8121169745587419,
+              "accuracy_ci": [
+                0.8013468013468014,
+                0.8822390572390572
+              ]
+            },
+            "6": {
+              "n": 317,
+              "accuracy": 0.832807570977918,
+              "mean_gold_probability": 0.8070549049395598,
+              "accuracy_ci": [
+                0.7917981072555205,
+                0.8706624605678234
+              ]
+            },
+            "7": {
+              "n": 283,
+              "accuracy": 0.8480565371024735,
+              "mean_gold_probability": 0.8006896503052576,
+              "accuracy_ci": [
+                0.8056537102473498,
+                0.8904593639575972
+              ]
+            },
+            "8": {
+              "n": 318,
+              "accuracy": 0.8238993710691824,
+              "mean_gold_probability": 0.8018089647403889,
+              "accuracy_ci": [
+                0.7830188679245284,
+                0.8647798742138365
+              ]
+            },
+            "9": {
+              "n": 319,
+              "accuracy": 0.8181818181818182,
+              "mean_gold_probability": 0.7865867139565846,
+              "accuracy_ci": [
+                0.774294670846395,
+                0.8557993730407524
+              ]
+            }
+          }
+        }
+      },
+      "choice": {
+        "n": 3080,
+        "accuracy": 0.8506493506493507,
+        "ece": 0.06328791365414464,
+        "brier": 0.2291423845478573,
+        "nll": 0.5821312113469287,
+        "reliability": [
+          {
+            "lower": 0.0,
+            "upper": 0.066667,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.066667,
+            "upper": 0.133333,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.133333,
+            "upper": 0.2,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.2,
+            "upper": 0.266667,
+            "count": 1,
+            "mean_confidence": 0.2601577043533325,
+            "mean_accuracy": 0.0
+          },
+          {
+            "lower": 0.266667,
+            "upper": 0.333333,
+            "count": 2,
+            "mean_confidence": 0.31933778524398804,
+            "mean_accuracy": 0.5
+          },
+          {
+            "lower": 0.333333,
+            "upper": 0.4,
+            "count": 19,
+            "mean_confidence": 0.37394609733631734,
+            "mean_accuracy": 0.15789473684210525
+          },
+          {
+            "lower": 0.4,
+            "upper": 0.466667,
+            "count": 42,
+            "mean_confidence": 0.4390612549725033,
+            "mean_accuracy": 0.3333333333333333
+          },
+          {
+            "lower": 0.466667,
+            "upper": 0.533333,
+            "count": 82,
+            "mean_confidence": 0.5037634252775006,
+            "mean_accuracy": 0.34146341463414637
+          },
+          {
+            "lower": 0.533333,
+            "upper": 0.6,
+            "count": 92,
+            "mean_confidence": 0.5682273746832557,
+            "mean_accuracy": 0.43478260869565216
+          },
+          {
+            "lower": 0.6,
+            "upper": 0.666667,
+            "count": 95,
+            "mean_confidence": 0.6335212701245359,
+            "mean_accuracy": 0.6421052631578947
+          },
+          {
+            "lower": 0.666667,
+            "upper": 0.733333,
+            "count": 90,
+            "mean_confidence": 0.7019164495997958,
+            "mean_accuracy": 0.5444444444444444
+          },
+          {
+            "lower": 0.733333,
+            "upper": 0.8,
+            "count": 116,
+            "mean_confidence": 0.7682769051913557,
+            "mean_accuracy": 0.5603448275862069
+          },
+          {
+            "lower": 0.8,
+            "upper": 0.866667,
+            "count": 130,
+            "mean_confidence": 0.8343919171736791,
+            "mean_accuracy": 0.6615384615384615
+          },
+          {
+            "lower": 0.866667,
+            "upper": 0.933333,
+            "count": 197,
+            "mean_confidence": 0.9013570165876205,
+            "mean_accuracy": 0.7208121827411168
+          },
+          {
+            "lower": 0.933333,
+            "upper": 1.0,
+            "count": 2214,
+            "mean_confidence": 0.9909791606659273,
+            "mean_accuracy": 0.9625112917795845
+          }
+        ],
+        "accuracy_ci": [
+          0.8383035714285715,
+          0.862987012987013
+        ],
+        "ece_ci": [
+          0.0536986658937455,
+          0.07540736113517701
+        ],
+        "coverage": [
+          {
+            "threshold": 0.0,
+            "coverage": 1.0,
+            "n": 3080,
+            "accuracy": 0.8506493506493507
+          },
+          {
+            "threshold": 0.05,
+            "coverage": 1.0,
+            "n": 3080,
+            "accuracy": 0.8506493506493507
+          },
+          {
+            "threshold": 0.1,
+            "coverage": 1.0,
+            "n": 3080,
+            "accuracy": 0.8506493506493507
+          },
+          {
+            "threshold": 0.15,
+            "coverage": 1.0,
+            "n": 3080,
+            "accuracy": 0.8506493506493507
+          },
+          {
+            "threshold": 0.2,
+            "coverage": 1.0,
+            "n": 3080,
+            "accuracy": 0.8506493506493507
+          },
+          {
+            "threshold": 0.25,
+            "coverage": 0.9993506493506493,
+            "n": 3078,
+            "accuracy": 0.8512020792722547
+          },
+          {
+            "threshold": 0.3,
+            "coverage": 0.9983766233766234,
+            "n": 3075,
+            "accuracy": 0.8517073170731707
+          },
+          {
+            "threshold": 0.35,
+            "coverage": 0.9957792207792208,
+            "n": 3067,
+            "accuracy": 0.8536028692533421
+          },
+          {
+            "threshold": 0.4,
+            "coverage": 0.9886363636363636,
+            "n": 3045,
+            "accuracy": 0.8574712643678161
+          },
+          {
+            "threshold": 0.45,
+            "coverage": 0.9775974025974026,
+            "n": 3011,
+            "accuracy": 0.8625041514447027
+          },
+          {
+            "threshold": 0.5,
+            "coverage": 0.9590909090909091,
+            "n": 2954,
+            "accuracy": 0.8733920108327691
+          },
+          {
+            "threshold": 0.55,
+            "coverage": 0.9415584415584416,
+            "n": 2900,
+            "accuracy": 0.8810344827586207
+          },
+          {
+            "threshold": 0.6,
+            "coverage": 0.9165584415584416,
+            "n": 2823,
+            "accuracy": 0.8901877435352462
+          },
+          {
+            "threshold": 0.65,
+            "coverage": 0.8824675324675325,
+            "n": 2718,
+            "accuracy": 0.9076526857983812
+          },
+          {
+            "threshold": 0.7,
+            "coverage": 0.8415584415584415,
+            "n": 2592,
+            "accuracy": 0.9251543209876543
+          },
+          {
+            "threshold": 0.75,
+            "coverage": 0.8081168831168831,
+            "n": 2489,
+            "accuracy": 0.9369224588188028
+          },
+          {
+            "threshold": 0.8,
+            "coverage": 0.7724025974025974,
+            "n": 2379,
+            "accuracy": 0.9482976040353089
+          },
+          {
+            "threshold": 0.85,
+            "coverage": 0.7298701298701299,
+            "n": 2248,
+            "accuracy": 0.9617437722419929
+          },
+          {
+            "threshold": 0.9,
+            "coverage": 0.687987012987013,
+            "n": 2119,
+            "accuracy": 0.9674374705049552
+          },
+          {
+            "threshold": 0.95,
+            "coverage": 0.6074675324675325,
+            "n": 1871,
+            "accuracy": 0.977552111170497
+          },
+          {
+            "threshold": 1.0,
+            "coverage": 0.0,
+            "n": 0,
+            "accuracy": null
+          }
+        ],
+        "macro_f1": 0.8645446407993571,
+        "by_gold_other": {
+          "n_offering_other": 3080,
+          "accuracy_ci": [
+            0.8383035714285715,
+            0.862987012987013
+          ],
+          "predicted_other_rate": 0.05162337662337663,
+          "gold_named": {
+            "n": 3080,
+            "accuracy": 0.8506493506493507,
+            "predicted_other_rate": 0.05162337662337663,
+            "accuracy_ci": [
+              0.8383035714285715,
+              0.862987012987013
+            ]
+          }
+        },
+        "by_question_position": {
+          "first": {
+            "n": 3080,
+            "accuracy": 0.8506493506493507,
+            "ece": 0.06328791365414464,
+            "accuracy_ci": [
+              0.8383035714285715,
+              0.862987012987013
+            ],
+            "ece_ci": [
+              0.0536986658937455,
+              0.07540736113517701
+            ]
+          }
+        }
+      },
+      "n_records": 3080
+    },
+    "test_banking77": {
+      "overall": {
+        "n": 1000,
+        "accuracy": 0.851,
+        "ece": 0.06691485756635665,
+        "brier": 0.22265132046280914,
+        "nll": 0.5446286372281609,
+        "reliability": [
+          {
+            "lower": 0.0,
+            "upper": 0.066667,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.066667,
+            "upper": 0.133333,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.133333,
+            "upper": 0.2,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.2,
+            "upper": 0.266667,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.266667,
+            "upper": 0.333333,
+            "count": 2,
+            "mean_confidence": 0.31933778524398804,
+            "mean_accuracy": 0.5
+          },
+          {
+            "lower": 0.333333,
+            "upper": 0.4,
+            "count": 7,
+            "mean_confidence": 0.37393437538828167,
+            "mean_accuracy": 0.0
+          },
+          {
+            "lower": 0.4,
+            "upper": 0.466667,
+            "count": 14,
+            "mean_confidence": 0.4422220949615751,
+            "mean_accuracy": 0.2857142857142857
+          },
+          {
+            "lower": 0.466667,
+            "upper": 0.533333,
+            "count": 24,
+            "mean_confidence": 0.5004821270704269,
+            "mean_accuracy": 0.25
+          },
+          {
+            "lower": 0.533333,
+            "upper": 0.6,
+            "count": 20,
+            "mean_confidence": 0.5650240331888199,
+            "mean_accuracy": 0.55
+          },
+          {
+            "lower": 0.6,
+            "upper": 0.666667,
+            "count": 31,
+            "mean_confidence": 0.6325929030295341,
+            "mean_accuracy": 0.5483870967741935
+          },
+          {
+            "lower": 0.666667,
+            "upper": 0.733333,
+            "count": 29,
+            "mean_confidence": 0.7043410066900582,
+            "mean_accuracy": 0.41379310344827586
+          },
+          {
+            "lower": 0.733333,
+            "upper": 0.8,
+            "count": 38,
+            "mean_confidence": 0.7686680869052285,
+            "mean_accuracy": 0.6052631578947368
+          },
+          {
+            "lower": 0.8,
+            "upper": 0.866667,
+            "count": 38,
+            "mean_confidence": 0.8354584872722626,
+            "mean_accuracy": 0.6578947368421053
+          },
+          {
+            "lower": 0.866667,
+            "upper": 0.933333,
+            "count": 70,
+            "mean_confidence": 0.9018545048577445,
+            "mean_accuracy": 0.6857142857142857
+          },
+          {
+            "lower": 0.933333,
+            "upper": 1.0,
+            "count": 727,
+            "mean_confidence": 0.990797712681546,
+            "mean_accuracy": 0.9683631361760661
+          }
+        ],
+        "accuracy_ci": [
+          0.827,
+          0.872
+        ],
+        "ece_ci": [
+          0.05312950398251415,
+          0.08816148564070463
+        ]
+      },
+      "letter_bias": {
+        "by_position": {
+          "0": {
+            "n": 108,
+            "accuracy": 0.8981481481481481,
+            "mean_gold_probability": 0.8740283715246564,
+            "accuracy_ci": [
+              0.8425925925925926,
+              0.9537037037037037
+            ]
+          },
+          "1": {
+            "n": 96,
+            "accuracy": 0.8854166666666666,
+            "mean_gold_probability": 0.869045802130131,
+            "accuracy_ci": [
+              0.8125,
+              0.9479166666666666
+            ]
+          },
+          "2": {
+            "n": 108,
+            "accuracy": 0.8240740740740741,
+            "mean_gold_probability": 0.7973062037746315,
+            "accuracy_ci": [
+              0.75,
+              0.8888888888888888
+            ]
+          },
+          "3": {
+            "n": 127,
+            "accuracy": 0.8582677165354331,
+            "mean_gold_probability": 0.8468995851805565,
+            "accuracy_ci": [
+              0.7952755905511811,
+              0.9133858267716536
+            ]
+          },
+          "4": {
+            "n": 93,
+            "accuracy": 0.8924731182795699,
+            "mean_gold_probability": 0.8679634220097013,
+            "accuracy_ci": [
+              0.8279569892473119,
+              0.946236559139785
+            ]
+          },
+          "5": {
+            "n": 88,
+            "accuracy": 0.7954545454545454,
+            "mean_gold_probability": 0.7732208876366464,
+            "accuracy_ci": [
+              0.7045454545454546,
+              0.875
+            ]
+          },
+          "6": {
+            "n": 89,
+            "accuracy": 0.8876404494382022,
+            "mean_gold_probability": 0.8640045521812242,
+            "accuracy_ci": [
+              0.8202247191011236,
+              0.9438202247191011
+            ]
+          },
+          "7": {
+            "n": 92,
+            "accuracy": 0.8695652173913043,
+            "mean_gold_probability": 0.8078433737796529,
+            "accuracy_ci": [
+              0.8043478260869565,
+              0.9347826086956522
+            ]
+          },
+          "8": {
+            "n": 105,
+            "accuracy": 0.8,
+            "mean_gold_probability": 0.7962776849576455,
+            "accuracy_ci": [
+              0.7238095238095238,
+              0.8669047619047617
+            ]
+          },
+          "9": {
+            "n": 94,
+            "accuracy": 0.7978723404255319,
+            "mean_gold_probability": 0.7787846581463298,
+            "accuracy_ci": [
+              0.7127659574468085,
+              0.8723404255319149
+            ]
+          }
+        },
+        "by_k": {
+          "10": {
+            "n": 1000,
+            "accuracy": 0.851,
+            "mean_gold_probability": 0.8282857251318383,
+            "accuracy_ci": [
+              0.827,
+              0.872
+            ]
+          }
+        },
+        "by_k_position": {
+          "10": {
+            "0": {
+              "n": 108,
+              "accuracy": 0.8981481481481481,
+              "mean_gold_probability": 0.8740283715246564,
+              "accuracy_ci": [
+                0.8425925925925926,
+                0.9537037037037037
+              ]
+            },
+            "1": {
+              "n": 96,
+              "accuracy": 0.8854166666666666,
+              "mean_gold_probability": 0.869045802130131,
+              "accuracy_ci": [
+                0.8125,
+                0.9479166666666666
+              ]
+            },
+            "2": {
+              "n": 108,
+              "accuracy": 0.8240740740740741,
+              "mean_gold_probability": 0.7973062037746315,
+              "accuracy_ci": [
+                0.75,
+                0.8888888888888888
+              ]
+            },
+            "3": {
+              "n": 127,
+              "accuracy": 0.8582677165354331,
+              "mean_gold_probability": 0.8468995851805565,
+              "accuracy_ci": [
+                0.7952755905511811,
+                0.9133858267716536
+              ]
+            },
+            "4": {
+              "n": 93,
+              "accuracy": 0.8924731182795699,
+              "mean_gold_probability": 0.8679634220097013,
+              "accuracy_ci": [
+                0.8279569892473119,
+                0.946236559139785
+              ]
+            },
+            "5": {
+              "n": 88,
+              "accuracy": 0.7954545454545454,
+              "mean_gold_probability": 0.7732208876366464,
+              "accuracy_ci": [
+                0.7045454545454546,
+                0.875
+              ]
+            },
+            "6": {
+              "n": 89,
+              "accuracy": 0.8876404494382022,
+              "mean_gold_probability": 0.8640045521812242,
+              "accuracy_ci": [
+                0.8202247191011236,
+                0.9438202247191011
+              ]
+            },
+            "7": {
+              "n": 92,
+              "accuracy": 0.8695652173913043,
+              "mean_gold_probability": 0.8078433737796529,
+              "accuracy_ci": [
+                0.8043478260869565,
+                0.9347826086956522
+              ]
+            },
+            "8": {
+              "n": 105,
+              "accuracy": 0.8,
+              "mean_gold_probability": 0.7962776849576455,
+              "accuracy_ci": [
+                0.7238095238095238,
+                0.8669047619047617
+              ]
+            },
+            "9": {
+              "n": 94,
+              "accuracy": 0.7978723404255319,
+              "mean_gold_probability": 0.7787846581463298,
+              "accuracy_ci": [
+                0.7127659574468085,
+                0.8723404255319149
+              ]
+            }
+          }
+        }
+      },
+      "choice": {
+        "n": 1000,
+        "accuracy": 0.851,
+        "ece": 0.06691485756635665,
+        "brier": 0.22265132046280914,
+        "nll": 0.5446286372281609,
+        "reliability": [
+          {
+            "lower": 0.0,
+            "upper": 0.066667,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.066667,
+            "upper": 0.133333,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.133333,
+            "upper": 0.2,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.2,
+            "upper": 0.266667,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.266667,
+            "upper": 0.333333,
+            "count": 2,
+            "mean_confidence": 0.31933778524398804,
+            "mean_accuracy": 0.5
+          },
+          {
+            "lower": 0.333333,
+            "upper": 0.4,
+            "count": 7,
+            "mean_confidence": 0.37393437538828167,
+            "mean_accuracy": 0.0
+          },
+          {
+            "lower": 0.4,
+            "upper": 0.466667,
+            "count": 14,
+            "mean_confidence": 0.4422220949615751,
+            "mean_accuracy": 0.2857142857142857
+          },
+          {
+            "lower": 0.466667,
+            "upper": 0.533333,
+            "count": 24,
+            "mean_confidence": 0.5004821270704269,
+            "mean_accuracy": 0.25
+          },
+          {
+            "lower": 0.533333,
+            "upper": 0.6,
+            "count": 20,
+            "mean_confidence": 0.5650240331888199,
+            "mean_accuracy": 0.55
+          },
+          {
+            "lower": 0.6,
+            "upper": 0.666667,
+            "count": 31,
+            "mean_confidence": 0.6325929030295341,
+            "mean_accuracy": 0.5483870967741935
+          },
+          {
+            "lower": 0.666667,
+            "upper": 0.733333,
+            "count": 29,
+            "mean_confidence": 0.7043410066900582,
+            "mean_accuracy": 0.41379310344827586
+          },
+          {
+            "lower": 0.733333,
+            "upper": 0.8,
+            "count": 38,
+            "mean_confidence": 0.7686680869052285,
+            "mean_accuracy": 0.6052631578947368
+          },
+          {
+            "lower": 0.8,
+            "upper": 0.866667,
+            "count": 38,
+            "mean_confidence": 0.8354584872722626,
+            "mean_accuracy": 0.6578947368421053
+          },
+          {
+            "lower": 0.866667,
+            "upper": 0.933333,
+            "count": 70,
+            "mean_confidence": 0.9018545048577445,
+            "mean_accuracy": 0.6857142857142857
+          },
+          {
+            "lower": 0.933333,
+            "upper": 1.0,
+            "count": 727,
+            "mean_confidence": 0.990797712681546,
+            "mean_accuracy": 0.9683631361760661
+          }
+        ],
+        "accuracy_ci": [
+          0.827,
+          0.872
+        ],
+        "ece_ci": [
+          0.05312950398251415,
+          0.08816148564070463
+        ],
+        "coverage": [
+          {
+            "threshold": 0.0,
+            "coverage": 1.0,
+            "n": 1000,
+            "accuracy": 0.851
+          },
+          {
+            "threshold": 0.05,
+            "coverage": 1.0,
+            "n": 1000,
+            "accuracy": 0.851
+          },
+          {
+            "threshold": 0.1,
+            "coverage": 1.0,
+            "n": 1000,
+            "accuracy": 0.851
+          },
+          {
+            "threshold": 0.15,
+            "coverage": 1.0,
+            "n": 1000,
+            "accuracy": 0.851
+          },
+          {
+            "threshold": 0.2,
+            "coverage": 1.0,
+            "n": 1000,
+            "accuracy": 0.851
+          },
+          {
+            "threshold": 0.25,
+            "coverage": 1.0,
+            "n": 1000,
+            "accuracy": 0.851
+          },
+          {
+            "threshold": 0.3,
+            "coverage": 1.0,
+            "n": 1000,
+            "accuracy": 0.851
+          },
+          {
+            "threshold": 0.35,
+            "coverage": 0.996,
+            "n": 996,
+            "accuracy": 0.8534136546184738
+          },
+          {
+            "threshold": 0.4,
+            "coverage": 0.988,
+            "n": 988,
+            "accuracy": 0.8582995951417004
+          },
+          {
+            "threshold": 0.45,
+            "coverage": 0.981,
+            "n": 981,
+            "accuracy": 0.8623853211009175
+          },
+          {
+            "threshold": 0.5,
+            "coverage": 0.96,
+            "n": 960,
+            "accuracy": 0.875
+          },
+          {
+            "threshold": 0.55,
+            "coverage": 0.942,
+            "n": 942,
+            "accuracy": 0.8842887473460722
+          },
+          {
+            "threshold": 0.6,
+            "coverage": 0.92,
+            "n": 920,
+            "accuracy": 0.8913043478260869
+          },
+          {
+            "threshold": 0.65,
+            "coverage": 0.885,
+            "n": 885,
+            "accuracy": 0.911864406779661
+          },
+          {
+            "threshold": 0.7,
+            "coverage": 0.855,
+            "n": 855,
+            "accuracy": 0.9251461988304094
+          },
+          {
+            "threshold": 0.75,
+            "coverage": 0.818,
+            "n": 818,
+            "accuracy": 0.9400977995110025
+          },
+          {
+            "threshold": 0.8,
+            "coverage": 0.785,
+            "n": 785,
+            "accuracy": 0.9515923566878981
+          },
+          {
+            "threshold": 0.85,
+            "coverage": 0.735,
+            "n": 735,
+            "accuracy": 0.9687074829931973
+          },
+          {
+            "threshold": 0.9,
+            "coverage": 0.694,
+            "n": 694,
+            "accuracy": 0.9711815561959655
+          },
+          {
+            "threshold": 0.95,
+            "coverage": 0.608,
+            "n": 608,
+            "accuracy": 0.9802631578947368
+          },
+          {
+            "threshold": 1.0,
+            "coverage": 0.0,
+            "n": 0,
+            "accuracy": null
+          }
+        ],
+        "macro_f1": 0.8612171933430768,
+        "by_gold_other": {
+          "n_offering_other": 1000,
+          "accuracy_ci": [
+            0.827,
+            0.872
+          ],
+          "predicted_other_rate": 0.049,
+          "gold_named": {
+            "n": 1000,
+            "accuracy": 0.851,
+            "predicted_other_rate": 0.049,
+            "accuracy_ci": [
+              0.827,
+              0.872
+            ]
+          }
+        },
+        "by_question_position": {
+          "first": {
+            "n": 1000,
+            "accuracy": 0.851,
+            "ece": 0.06691485756635665,
+            "accuracy_ci": [
+              0.827,
+              0.872
+            ],
+            "ece_ci": [
+              0.05312950398251415,
+              0.08816148564070463
+            ]
+          }
+        }
+      },
+      "n_records": 1000
+    },
+    "test_indomain": {
+      "overall": {
+        "n": 11800,
+        "accuracy": 0.9561864406779661,
+        "ece": 0.013161054791535341,
+        "brier": 0.06743740360975305,
+        "nll": 0.12251817605966149,
+        "reliability": [
+          {
+            "lower": 0.0,
+            "upper": 0.066667,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.066667,
+            "upper": 0.133333,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.133333,
+            "upper": 0.2,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.2,
+            "upper": 0.266667,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.266667,
+            "upper": 0.333333,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.333333,
+            "upper": 0.4,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.4,
+            "upper": 0.466667,
+            "count": 2,
+            "mean_confidence": 0.45330964028835297,
+            "mean_accuracy": 0.5
+          },
+          {
+            "lower": 0.466667,
+            "upper": 0.533333,
+            "count": 66,
+            "mean_confidence": 0.5162126150998202,
+            "mean_accuracy": 0.5151515151515151
+          },
+          {
+            "lower": 0.533333,
+            "upper": 0.6,
+            "count": 135,
+            "mean_confidence": 0.5674907675495854,
+            "mean_accuracy": 0.6074074074074074
+          },
+          {
+            "lower": 0.6,
+            "upper": 0.666667,
+            "count": 153,
+            "mean_confidence": 0.6323142199734457,
+            "mean_accuracy": 0.6209150326797386
+          },
+          {
+            "lower": 0.666667,
+            "upper": 0.733333,
+            "count": 180,
+            "mean_confidence": 0.6971644630034765,
+            "mean_accuracy": 0.6833333333333333
+          },
+          {
+            "lower": 0.733333,
+            "upper": 0.8,
+            "count": 176,
+            "mean_confidence": 0.7697091749445959,
+            "mean_accuracy": 0.7159090909090909
+          },
+          {
+            "lower": 0.8,
+            "upper": 0.866667,
+            "count": 233,
+            "mean_confidence": 0.8334896326576692,
+            "mean_accuracy": 0.7296137339055794
+          },
+          {
+            "lower": 0.866667,
+            "upper": 0.933333,
+            "count": 412,
+            "mean_confidence": 0.9036089354059071,
+            "mean_accuracy": 0.8276699029126213
+          },
+          {
+            "lower": 0.933333,
+            "upper": 1.0,
+            "count": 10443,
+            "mean_confidence": 0.9950738128181573,
+            "mean_accuracy": 0.9873599540361965
+          }
+        ],
+        "accuracy_ci": [
+          0.9522033898305085,
+          0.96
+        ],
+        "ece_ci": [
+          0.010865677138822059,
+          0.017232847046422757
+        ]
+      },
+      "noul": {
+        "n": 5900,
+        "accuracy": 0.9371186440677967,
+        "ece": 0.01883577869100091,
+        "brier": 0.09399258524561029,
+        "nll": 0.15919361926431588,
+        "reliability": [
+          {
+            "lower": 0.0,
+            "upper": 0.066667,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.066667,
+            "upper": 0.133333,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.133333,
+            "upper": 0.2,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.2,
+            "upper": 0.266667,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.266667,
+            "upper": 0.333333,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.333333,
+            "upper": 0.4,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.4,
+            "upper": 0.466667,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.466667,
+            "upper": 0.533333,
+            "count": 48,
+            "mean_confidence": 0.518144104629755,
+            "mean_accuracy": 0.5208333333333334
+          },
+          {
+            "lower": 0.533333,
+            "upper": 0.6,
+            "count": 103,
+            "mean_confidence": 0.5684292310649909,
+            "mean_accuracy": 0.5825242718446602
+          },
+          {
+            "lower": 0.6,
+            "upper": 0.666667,
+            "count": 114,
+            "mean_confidence": 0.634153905144909,
+            "mean_accuracy": 0.5877192982456141
+          },
+          {
+            "lower": 0.666667,
+            "upper": 0.733333,
+            "count": 126,
+            "mean_confidence": 0.6964376970889077,
+            "mean_accuracy": 0.6666666666666666
+          },
+          {
+            "lower": 0.733333,
+            "upper": 0.8,
+            "count": 131,
+            "mean_confidence": 0.7693142868180312,
+            "mean_accuracy": 0.7175572519083969
+          },
+          {
+            "lower": 0.8,
+            "upper": 0.866667,
+            "count": 176,
+            "mean_confidence": 0.8336658047681506,
+            "mean_accuracy": 0.7386363636363636
+          },
+          {
+            "lower": 0.866667,
+            "upper": 0.933333,
+            "count": 289,
+            "mean_confidence": 0.9035956315103286,
+            "mean_accuracy": 0.8339100346020761
+          },
+          {
+            "lower": 0.933333,
+            "upper": 1.0,
+            "count": 4913,
+            "mean_confidence": 0.9942725496357142,
+            "mean_accuracy": 0.9826989619377162
+          }
+        ],
+        "accuracy_ci": [
+          0.9305084745762712,
+          0.9427118644067797
+        ],
+        "ece_ci": [
+          0.015545236294804993,
+          0.025463122783576028
+        ],
+        "coverage": [
+          {
+            "threshold": 0.0,
+            "coverage": 1.0,
+            "n": 5900,
+            "accuracy": 0.9371186440677967
+          },
+          {
+            "threshold": 0.05,
+            "coverage": 1.0,
+            "n": 5900,
+            "accuracy": 0.9371186440677967
+          },
+          {
+            "threshold": 0.1,
+            "coverage": 1.0,
+            "n": 5900,
+            "accuracy": 0.9371186440677967
+          },
+          {
+            "threshold": 0.15,
+            "coverage": 1.0,
+            "n": 5900,
+            "accuracy": 0.9371186440677967
+          },
+          {
+            "threshold": 0.2,
+            "coverage": 1.0,
+            "n": 5900,
+            "accuracy": 0.9371186440677967
+          },
+          {
+            "threshold": 0.25,
+            "coverage": 1.0,
+            "n": 5900,
+            "accuracy": 0.9371186440677967
+          },
+          {
+            "threshold": 0.3,
+            "coverage": 1.0,
+            "n": 5900,
+            "accuracy": 0.9371186440677967
+          },
+          {
+            "threshold": 0.35,
+            "coverage": 1.0,
+            "n": 5900,
+            "accuracy": 0.9371186440677967
+          },
+          {
+            "threshold": 0.4,
+            "coverage": 1.0,
+            "n": 5900,
+            "accuracy": 0.9371186440677967
+          },
+          {
+            "threshold": 0.45,
+            "coverage": 1.0,
+            "n": 5900,
+            "accuracy": 0.9371186440677967
+          },
+          {
+            "threshold": 0.5,
+            "coverage": 1.0,
+            "n": 5900,
+            "accuracy": 0.9371186440677967
+          },
+          {
+            "threshold": 0.55,
+            "coverage": 0.9879661016949153,
+            "n": 5829,
+            "accuracy": 0.9423571796191457
+          },
+          {
+            "threshold": 0.6,
+            "coverage": 0.974406779661017,
+            "n": 5749,
+            "accuracy": 0.9469472951817708
+          },
+          {
+            "threshold": 0.65,
+            "coverage": 0.9594915254237288,
+            "n": 5661,
+            "accuracy": 0.9524818936583642
+          },
+          {
+            "threshold": 0.7,
+            "coverage": 0.9432203389830508,
+            "n": 5565,
+            "accuracy": 0.9581311769991016
+          },
+          {
+            "threshold": 0.75,
+            "coverage": 0.9289830508474576,
+            "n": 5481,
+            "accuracy": 0.9625980660463419
+          },
+          {
+            "threshold": 0.8,
+            "coverage": 0.9115254237288135,
+            "n": 5378,
+            "accuracy": 0.9667162513945705
+          },
+          {
+            "threshold": 0.85,
+            "coverage": 0.8894915254237288,
+            "n": 5248,
+            "accuracy": 0.9725609756097561
+          },
+          {
+            "threshold": 0.9,
+            "coverage": 0.8615254237288136,
+            "n": 5083,
+            "accuracy": 0.9781625024591777
+          },
+          {
+            "threshold": 0.95,
+            "coverage": 0.8147457627118644,
+            "n": 4807,
+            "accuracy": 0.9868941127522364
+          },
+          {
+            "threshold": 1.0,
+            "coverage": 0.0,
+            "n": 0,
+            "accuracy": null
+          }
+        ],
+        "yes_rate": 0.49101694915254235,
+        "by_kind": {
+          "about_domain": {
+            "n": 1949,
+            "accuracy": 0.9697280656747049,
+            "ece": 0.016182341992763298,
+            "yes_rate": 0.4976911236531555,
+            "accuracy_ci": [
+              0.9620318111852232,
+              0.9769112365315546
+            ],
+            "ece_ci": [
+              0.010774242908542373,
+              0.023930170850731767
+            ],
+            "by_question_position": {
+              "later": {
+                "n": 1949,
+                "accuracy": 0.9697280656747049,
+                "ece": 0.016182341992763298,
+                "accuracy_ci": [
+                  0.9620318111852232,
+                  0.9769112365315546
+                ],
+                "ece_ci": [
+                  0.010774242908542373,
+                  0.023930170850731767
+                ]
+              }
+            }
+          },
+          "about_intent": {
+            "n": 1951,
+            "accuracy": 0.9938493080471553,
+            "ece": 0.00462633728797711,
+            "yes_rate": 0.49769349051768325,
+            "accuracy_ci": [
+              0.9897488467452589,
+              0.9974372116863147
+            ],
+            "ece_ci": [
+              0.0026993363828368214,
+              0.00892665830026951
+            ],
+            "by_question_position": {
+              "later": {
+                "n": 1951,
+                "accuracy": 0.9938493080471553,
+                "ece": 0.00462633728797711,
+                "accuracy_ci": [
+                  0.9897488467452589,
+                  0.9974372116863147
+                ],
+                "ece_ci": [
+                  0.0026993363828368214,
+                  0.00892665830026951
+                ]
+              }
+            }
+          },
+          "out_of_scope": {
+            "n": 2000,
+            "accuracy": 0.85,
+            "ece": 0.03868000560998919,
+            "yes_rate": 0.478,
+            "accuracy_ci": [
+              0.834,
+              0.8655
+            ],
+            "ece_ci": [
+              0.030844539995491506,
+              0.055868807632476085
+            ],
+            "by_question_position": {
+              "later": {
+                "n": 2000,
+                "accuracy": 0.85,
+                "ece": 0.03868000560998919,
+                "accuracy_ci": [
+                  0.834,
+                  0.8655
+                ],
+                "ece_ci": [
+                  0.030844539995491506,
+                  0.055868807632476085
+                ]
+              }
+            }
+          }
+        },
+        "by_question_position": {
+          "later": {
+            "n": 5900,
+            "accuracy": 0.9371186440677967,
+            "ece": 0.01883577869100091,
+            "accuracy_ci": [
+              0.9305084745762712,
+              0.9427118644067797
+            ],
+            "ece_ci": [
+              0.015545236294804993,
+              0.025463122783576028
+            ]
+          }
+        }
+      },
+      "letter_bias": {
+        "by_position": {
+          "0": {
+            "n": 918,
+            "accuracy": 0.9771241830065359,
+            "mean_gold_probability": 0.9721717676259415,
+            "accuracy_ci": [
+              0.9673202614379085,
+              0.9869281045751634
+            ]
+          },
+          "1": {
+            "n": 845,
+            "accuracy": 0.9715976331360947,
+            "mean_gold_probability": 0.9638091844044172,
+            "accuracy_ci": [
+              0.9597633136094674,
+              0.9834319526627219
+            ]
+          },
+          "2": {
+            "n": 855,
+            "accuracy": 0.9801169590643275,
+            "mean_gold_probability": 0.9747018357922667,
+            "accuracy_ci": [
+              0.9707602339181286,
+              0.9883040935672515
+            ]
+          },
+          "3": {
+            "n": 739,
+            "accuracy": 0.9824086603518268,
+            "mean_gold_probability": 0.9718096803552256,
+            "accuracy_ci": [
+              0.9715832205683356,
+              0.9918809201623816
+            ]
+          },
+          "4": {
+            "n": 579,
+            "accuracy": 0.9775474956822107,
+            "mean_gold_probability": 0.9683558410366343,
+            "accuracy_ci": [
+              0.9654576856649395,
+              0.9879101899827288
+            ]
+          },
+          "5": {
+            "n": 448,
+            "accuracy": 0.9776785714285714,
+            "mean_gold_probability": 0.9607181954018286,
+            "accuracy_ci": [
+              0.9642857142857143,
+              0.9910714285714286
+            ]
+          },
+          "6": {
+            "n": 373,
+            "accuracy": 0.9705093833780161,
+            "mean_gold_probability": 0.954312906647975,
+            "accuracy_ci": [
+              0.9517426273458445,
+              0.9865951742627346
+            ]
+          },
+          "7": {
+            "n": 306,
+            "accuracy": 0.9771241830065359,
+            "mean_gold_probability": 0.9652898789283034,
+            "accuracy_ci": [
+              0.9575163398692811,
+              0.9901960784313726
+            ]
+          },
+          "8": {
+            "n": 268,
+            "accuracy": 0.9589552238805971,
+            "mean_gold_probability": 0.9497938460736438,
+            "accuracy_ci": [
+              0.9365671641791045,
+              0.9813432835820896
+            ]
+          },
+          "9": {
+            "n": 205,
+            "accuracy": 0.9707317073170731,
+            "mean_gold_probability": 0.953929667283849,
+            "accuracy_ci": [
+              0.9463414634146341,
+              0.9902439024390244
+            ]
+          },
+          "10": {
+            "n": 159,
+            "accuracy": 0.9685534591194969,
+            "mean_gold_probability": 0.9478130407138828,
+            "accuracy_ci": [
+              0.9371069182389937,
+              0.9937106918238994
+            ]
+          },
+          "11": {
+            "n": 98,
+            "accuracy": 0.9387755102040817,
+            "mean_gold_probability": 0.9260141621961505,
+            "accuracy_ci": [
+              0.8877551020408163,
+              0.9795918367346939
+            ]
+          },
+          "12": {
+            "n": 73,
+            "accuracy": 0.9863013698630136,
+            "mean_gold_probability": 0.9684334899464698,
+            "accuracy_ci": [
+              0.958904109589041,
+              1.0
+            ]
+          },
+          "13": {
+            "n": 34,
+            "accuracy": 0.9705882352941176,
+            "mean_gold_probability": 0.9537460140007383,
+            "accuracy_ci": [
+              0.9117647058823529,
+              1.0
+            ]
+          }
+        },
+        "by_k": {
+          "3": {
+            "n": 508,
+            "accuracy": 0.9881889763779528,
+            "mean_gold_probability": 0.9837129920791293,
+            "accuracy_ci": [
+              0.9783464566929134,
+              0.9960629921259843
+            ]
+          },
+          "4": {
+            "n": 505,
+            "accuracy": 0.9881188118811881,
+            "mean_gold_probability": 0.9800480337836549,
+            "accuracy_ci": [
+              0.9762376237623762,
+              0.996039603960396
+            ]
+          },
+          "5": {
+            "n": 490,
+            "accuracy": 0.9816326530612245,
+            "mean_gold_probability": 0.9750931703580581,
+            "accuracy_ci": [
+              0.9693877551020408,
+              0.9918367346938776
+            ]
+          },
+          "6": {
+            "n": 486,
+            "accuracy": 0.9835390946502057,
+            "mean_gold_probability": 0.9742797717589544,
+            "accuracy_ci": [
+              0.9711934156378601,
+              0.9938271604938271
+            ]
+          },
+          "7": {
+            "n": 471,
+            "accuracy": 0.9872611464968153,
+            "mean_gold_probability": 0.9769840351290577,
+            "accuracy_ci": [
+              0.9766454352441614,
+              0.9957537154989384
+            ]
+          },
+          "8": {
+            "n": 505,
+            "accuracy": 0.9683168316831683,
+            "mean_gold_probability": 0.959409495193562,
+            "accuracy_ci": [
+              0.9524752475247524,
+              0.9821782178217822
+            ]
+          },
+          "9": {
+            "n": 508,
+            "accuracy": 0.9783464566929134,
+            "mean_gold_probability": 0.9647076029241577,
+            "accuracy_ci": [
+              0.9645669291338582,
+              0.9901574803149606
+            ]
+          },
+          "10": {
+            "n": 480,
+            "accuracy": 0.95625,
+            "mean_gold_probability": 0.9522593593520772,
+            "accuracy_ci": [
+              0.9375,
+              0.9729687499999999
+            ]
+          },
+          "11": {
+            "n": 448,
+            "accuracy": 0.9553571428571429,
+            "mean_gold_probability": 0.9481359252869684,
+            "accuracy_ci": [
+              0.9352120535714286,
+              0.9732142857142857
+            ]
+          },
+          "12": {
+            "n": 524,
+            "accuracy": 0.9770992366412213,
+            "mean_gold_probability": 0.965305692150831,
+            "accuracy_ci": [
+              0.9637404580152672,
+              0.9885496183206107
+            ]
+          },
+          "13": {
+            "n": 489,
+            "accuracy": 0.967280163599182,
+            "mean_gold_probability": 0.9473627883118886,
+            "accuracy_ci": [
+              0.950920245398773,
+              0.9815950920245399
+            ]
+          },
+          "14": {
+            "n": 486,
+            "accuracy": 0.9691358024691358,
+            "mean_gold_probability": 0.9545129217914547,
+            "accuracy_ci": [
+              0.9526748971193416,
+              0.9835390946502057
+            ]
+          }
+        },
+        "by_k_position": {
+          "3": {
+            "0": {
+              "n": 183,
+              "accuracy": 0.9836065573770492,
+              "mean_gold_probability": 0.9814866640569408,
+              "accuracy_ci": [
+                0.9617486338797814,
+                1.0
+              ]
+            },
+            "1": {
+              "n": 178,
+              "accuracy": 0.9943820224719101,
+              "mean_gold_probability": 0.9867886911132281,
+              "accuracy_ci": [
+                0.9831460674157303,
+                1.0
+              ]
+            },
+            "2": {
+              "n": 147,
+              "accuracy": 0.9863945578231292,
+              "mean_gold_probability": 0.982760227453217,
+              "accuracy_ci": [
+                0.9659863945578231,
+                1.0
+              ]
+            }
+          },
+          "4": {
+            "0": {
+              "n": 126,
+              "accuracy": 0.9920634920634921,
+              "mean_gold_probability": 0.9884474097181939,
+              "accuracy_ci": [
+                0.9761904761904762,
+                1.0
+              ]
+            },
+            "1": {
+              "n": 130,
+              "accuracy": 0.9923076923076923,
+              "mean_gold_probability": 0.9802830829840297,
+              "accuracy_ci": [
+                0.9769230769230769,
+                1.0
+              ]
+            },
+            "2": {
+              "n": 115,
+              "accuracy": 0.9826086956521739,
+              "mean_gold_probability": 0.9760588034582527,
+              "accuracy_ci": [
+                0.9565217391304348,
+                1.0
+              ]
+            },
+            "3": {
+              "n": 134,
+              "accuracy": 0.9850746268656716,
+              "mean_gold_probability": 0.975345673512167,
+              "accuracy_ci": [
+                0.9626865671641791,
+                1.0
+              ]
+            }
+          },
+          "5": {
+            "0": {
+              "n": 86,
+              "accuracy": 0.9883720930232558,
+              "mean_gold_probability": 0.9761723930741725,
+              "accuracy_ci": [
+                0.9651162790697675,
+                1.0
+              ]
+            },
+            "1": {
+              "n": 93,
+              "accuracy": 0.978494623655914,
+              "mean_gold_probability": 0.9687321456049078,
+              "accuracy_ci": [
+                0.946236559139785,
+                1.0
+              ]
+            },
+            "2": {
+              "n": 101,
+              "accuracy": 0.9900990099009901,
+              "mean_gold_probability": 0.9907121519641121,
+              "accuracy_ci": [
+                0.9702970297029703,
+                1.0
+              ]
+            },
+            "3": {
+              "n": 94,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.990539347871821,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            },
+            "4": {
+              "n": 116,
+              "accuracy": 0.9568965517241379,
+              "mean_gold_probability": 0.9532768282886788,
+              "accuracy_ci": [
+                0.9224137931034483,
+                0.9913793103448276
+              ]
+            }
+          },
+          "6": {
+            "0": {
+              "n": 92,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.9904972891444745,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            },
+            "1": {
+              "n": 77,
+              "accuracy": 0.948051948051948,
+              "mean_gold_probability": 0.9402210538248326,
+              "accuracy_ci": [
+                0.8961038961038961,
+                0.987012987012987
+              ]
+            },
+            "2": {
+              "n": 78,
+              "accuracy": 0.9615384615384616,
+              "mean_gold_probability": 0.9623206188866439,
+              "accuracy_ci": [
+                0.9102564102564102,
+                1.0
+              ]
+            },
+            "3": {
+              "n": 81,
+              "accuracy": 0.9876543209876543,
+              "mean_gold_probability": 0.9767408964718566,
+              "accuracy_ci": [
+                0.9629629629629629,
+                1.0
+              ]
+            },
+            "4": {
+              "n": 85,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.9854933871942408,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            },
+            "5": {
+              "n": 73,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.9867566921939589,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            }
+          },
+          "7": {
+            "0": {
+              "n": 81,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.9873107002105241,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            },
+            "1": {
+              "n": 62,
+              "accuracy": 0.9838709677419355,
+              "mean_gold_probability": 0.9651435801098424,
+              "accuracy_ci": [
+                0.9516129032258065,
+                1.0
+              ]
+            },
+            "2": {
+              "n": 63,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.9895967651927282,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            },
+            "3": {
+              "n": 72,
+              "accuracy": 0.9861111111111112,
+              "mean_gold_probability": 0.9810682520684268,
+              "accuracy_ci": [
+                0.9583333333333334,
+                1.0
+              ]
+            },
+            "4": {
+              "n": 59,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.9964878579317513,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            },
+            "5": {
+              "n": 65,
+              "accuracy": 0.9538461538461539,
+              "mean_gold_probability": 0.933058264452176,
+              "accuracy_ci": [
+                0.8923076923076924,
+                1.0
+              ]
+            },
+            "6": {
+              "n": 69,
+              "accuracy": 0.9855072463768116,
+              "mean_gold_probability": 0.9844250825868137,
+              "accuracy_ci": [
+                0.9565217391304348,
+                1.0
+              ]
+            }
+          },
+          "8": {
+            "0": {
+              "n": 72,
+              "accuracy": 0.9583333333333334,
+              "mean_gold_probability": 0.9611829048759924,
+              "accuracy_ci": [
+                0.9166666666666666,
+                1.0
+              ]
+            },
+            "1": {
+              "n": 52,
+              "accuracy": 0.9807692307692307,
+              "mean_gold_probability": 0.9669140898264371,
+              "accuracy_ci": [
+                0.9423076923076923,
+                1.0
+              ]
+            },
+            "2": {
+              "n": 65,
+              "accuracy": 0.9692307692307692,
+              "mean_gold_probability": 0.96421901595134,
+              "accuracy_ci": [
+                0.9230769230769231,
+                1.0
+              ]
+            },
+            "3": {
+              "n": 71,
+              "accuracy": 0.9577464788732394,
+              "mean_gold_probability": 0.951507528059178,
+              "accuracy_ci": [
+                0.9014084507042254,
+                1.0
+              ]
+            },
+            "4": {
+              "n": 61,
+              "accuracy": 0.9672131147540983,
+              "mean_gold_probability": 0.9595648675668434,
+              "accuracy_ci": [
+                0.9180327868852459,
+                1.0
+              ]
+            },
+            "5": {
+              "n": 62,
+              "accuracy": 0.967741935483871,
+              "mean_gold_probability": 0.9619007986639777,
+              "accuracy_ci": [
+                0.9193548387096774,
+                1.0
+              ]
+            },
+            "6": {
+              "n": 58,
+              "accuracy": 0.9655172413793104,
+              "mean_gold_probability": 0.9369214408998859,
+              "accuracy_ci": [
+                0.9137931034482759,
+                1.0
+              ]
+            },
+            "7": {
+              "n": 64,
+              "accuracy": 0.984375,
+              "mean_gold_probability": 0.9730167611051002,
+              "accuracy_ci": [
+                0.953125,
+                1.0
+              ]
+            }
+          },
+          "9": {
+            "0": {
+              "n": 56,
+              "accuracy": 0.9821428571428571,
+              "mean_gold_probability": 0.9739404592130866,
+              "accuracy_ci": [
+                0.9464285714285714,
+                1.0
+              ]
+            },
+            "1": {
+              "n": 51,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.9937500357627869,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            },
+            "2": {
+              "n": 55,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.9858643927357413,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            },
+            "3": {
+              "n": 65,
+              "accuracy": 0.9846153846153847,
+              "mean_gold_probability": 0.9623222718445155,
+              "accuracy_ci": [
+                0.9538461538461539,
+                1.0
+              ]
+            },
+            "4": {
+              "n": 45,
+              "accuracy": 0.9777777777777777,
+              "mean_gold_probability": 0.9617398311694463,
+              "accuracy_ci": [
+                0.9327777777777778,
+                1.0
+              ]
+            },
+            "5": {
+              "n": 53,
+              "accuracy": 0.9811320754716981,
+              "mean_gold_probability": 0.9526719280852461,
+              "accuracy_ci": [
+                0.9433962264150944,
+                1.0
+              ]
+            },
+            "6": {
+              "n": 59,
+              "accuracy": 0.9830508474576272,
+              "mean_gold_probability": 0.9665675870442795,
+              "accuracy_ci": [
+                0.9491525423728814,
+                1.0
+              ]
+            },
+            "7": {
+              "n": 56,
+              "accuracy": 0.9642857142857143,
+              "mean_gold_probability": 0.9555885273855113,
+              "accuracy_ci": [
+                0.9107142857142857,
+                1.0
+              ]
+            },
+            "8": {
+              "n": 68,
+              "accuracy": 0.9411764705882353,
+              "mean_gold_probability": 0.937730966396082,
+              "accuracy_ci": [
+                0.8823529411764706,
+                0.9852941176470589
+              ]
+            }
+          },
+          "10": {
+            "0": {
+              "n": 38,
+              "accuracy": 0.9210526315789473,
+              "mean_gold_probability": 0.929561350188267,
+              "accuracy_ci": [
+                0.8421052631578947,
+                1.0
+              ]
+            },
+            "1": {
+              "n": 58,
+              "accuracy": 0.896551724137931,
+              "mean_gold_probability": 0.903275833304586,
+              "accuracy_ci": [
+                0.8103448275862069,
+                0.9655172413793104
+              ]
+            },
+            "2": {
+              "n": 43,
+              "accuracy": 0.9767441860465116,
+              "mean_gold_probability": 0.9714883007542339,
+              "accuracy_ci": [
+                0.9302325581395349,
+                1.0
+              ]
+            },
+            "3": {
+              "n": 47,
+              "accuracy": 0.9787234042553191,
+              "mean_gold_probability": 0.9771136543218125,
+              "accuracy_ci": [
+                0.9361702127659575,
+                1.0
+              ]
+            },
+            "4": {
+              "n": 49,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.9939418836515777,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            },
+            "5": {
+              "n": 48,
+              "accuracy": 0.9791666666666666,
+              "mean_gold_probability": 0.9693890971102519,
+              "accuracy_ci": [
+                0.9375,
+                1.0
+              ]
+            },
+            "6": {
+              "n": 39,
+              "accuracy": 0.8974358974358975,
+              "mean_gold_probability": 0.9011190042663844,
+              "accuracy_ci": [
+                0.7948717948717948,
+                0.9743589743589743
+              ]
+            },
+            "7": {
+              "n": 53,
+              "accuracy": 0.9622641509433962,
+              "mean_gold_probability": 0.9569560518523432,
+              "accuracy_ci": [
+                0.9056603773584906,
+                1.0
+              ]
+            },
+            "8": {
+              "n": 56,
+              "accuracy": 0.9821428571428571,
+              "mean_gold_probability": 0.9710720506014435,
+              "accuracy_ci": [
+                0.9464285714285714,
+                1.0
+              ]
+            },
+            "9": {
+              "n": 49,
+              "accuracy": 0.9591836734693877,
+              "mean_gold_probability": 0.9427887440031889,
+              "accuracy_ci": [
+                0.8979591836734694,
+                1.0
+              ]
+            }
+          },
+          "11": {
+            "0": {
+              "n": 42,
+              "accuracy": 0.9047619047619048,
+              "mean_gold_probability": 0.9113397129944393,
+              "accuracy_ci": [
+                0.8095238095238095,
+                0.9761904761904762
+              ]
+            },
+            "1": {
+              "n": 40,
+              "accuracy": 0.95,
+              "mean_gold_probability": 0.9494974153116346,
+              "accuracy_ci": [
+                0.875,
+                1.0
+              ]
+            },
+            "2": {
+              "n": 50,
+              "accuracy": 0.92,
+              "mean_gold_probability": 0.9065353613882325,
+              "accuracy_ci": [
+                0.84,
+                0.98
+              ]
+            },
+            "3": {
+              "n": 45,
+              "accuracy": 0.9777777777777777,
+              "mean_gold_probability": 0.9771315144168006,
+              "accuracy_ci": [
+                0.9333333333333333,
+                1.0
+              ]
+            },
+            "4": {
+              "n": 46,
+              "accuracy": 0.9782608695652174,
+              "mean_gold_probability": 0.978824861023737,
+              "accuracy_ci": [
+                0.9347826086956522,
+                1.0
+              ]
+            },
+            "5": {
+              "n": 44,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.9782582900740884,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            },
+            "6": {
+              "n": 31,
+              "accuracy": 0.967741935483871,
+              "mean_gold_probability": 0.9665656628147248,
+              "accuracy_ci": [
+                0.9032258064516129,
+                1.0
+              ]
+            },
+            "7": {
+              "n": 35,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.9884746636663164,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            },
+            "8": {
+              "n": 33,
+              "accuracy": 0.9090909090909091,
+              "mean_gold_probability": 0.9115875144065781,
+              "accuracy_ci": [
+                0.7878787878787878,
+                1.0
+              ]
+            },
+            "9": {
+              "n": 38,
+              "accuracy": 0.9736842105263158,
+              "mean_gold_probability": 0.954749763796204,
+              "accuracy_ci": [
+                0.9210526315789473,
+                1.0
+              ]
+            },
+            "10": {
+              "n": 44,
+              "accuracy": 0.9318181818181818,
+              "mean_gold_probability": 0.9140615365127318,
+              "accuracy_ci": [
+                0.8636363636363636,
+                1.0
+              ]
+            }
+          },
+          "12": {
+            "0": {
+              "n": 48,
+              "accuracy": 0.9791666666666666,
+              "mean_gold_probability": 0.9738837756837407,
+              "accuracy_ci": [
+                0.9375,
+                1.0
+              ]
+            },
+            "1": {
+              "n": 38,
+              "accuracy": 0.9736842105263158,
+              "mean_gold_probability": 0.9607446974631259,
+              "accuracy_ci": [
+                0.9210526315789473,
+                1.0
+              ]
+            },
+            "2": {
+              "n": 57,
+              "accuracy": 0.9824561403508771,
+              "mean_gold_probability": 0.9748778796117556,
+              "accuracy_ci": [
+                0.9298245614035088,
+                1.0
+              ]
+            },
+            "3": {
+              "n": 45,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.9803100691901313,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            },
+            "4": {
+              "n": 47,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.9665541065500137,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            },
+            "5": {
+              "n": 44,
+              "accuracy": 0.9545454545454546,
+              "mean_gold_probability": 0.9517106789756905,
+              "accuracy_ci": [
+                0.8863636363636364,
+                1.0
+              ]
+            },
+            "6": {
+              "n": 46,
+              "accuracy": 0.9782608695652174,
+              "mean_gold_probability": 0.9399724936355716,
+              "accuracy_ci": [
+                0.9347826086956522,
+                1.0
+              ]
+            },
+            "7": {
+              "n": 28,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.9814041725226811,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            },
+            "8": {
+              "n": 40,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.9885325089097023,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            },
+            "9": {
+              "n": 55,
+              "accuracy": 0.9636363636363636,
+              "mean_gold_probability": 0.9540425644679503,
+              "accuracy_ci": [
+                0.9090909090909091,
+                1.0
+              ]
+            },
+            "10": {
+              "n": 39,
+              "accuracy": 0.9743589743589743,
+              "mean_gold_probability": 0.967168961579983,
+              "accuracy_ci": [
+                0.9230769230769231,
+                1.0
+              ]
+            },
+            "11": {
+              "n": 37,
+              "accuracy": 0.918918918918919,
+              "mean_gold_probability": 0.9494290641836218,
+              "accuracy_ci": [
+                0.8108108108108109,
+                1.0
+              ]
+            }
+          },
+          "13": {
+            "0": {
+              "n": 54,
+              "accuracy": 0.9629629629629629,
+              "mean_gold_probability": 0.9566575462619463,
+              "accuracy_ci": [
+                0.9074074074074074,
+                1.0
+              ]
+            },
+            "1": {
+              "n": 37,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.9851281175742278,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            },
+            "2": {
+              "n": 44,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.9951030557805841,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            },
+            "3": {
+              "n": 50,
+              "accuracy": 0.94,
+              "mean_gold_probability": 0.9287854094058275,
+              "accuracy_ci": [
+                0.8795000000000001,
+                1.0
+              ]
+            },
+            "4": {
+              "n": 33,
+              "accuracy": 0.8787878787878788,
+              "mean_gold_probability": 0.8865744339806648,
+              "accuracy_ci": [
+                0.7575757575757576,
+                0.9696969696969697
+              ]
+            },
+            "5": {
+              "n": 31,
+              "accuracy": 0.967741935483871,
+              "mean_gold_probability": 0.931646729338794,
+              "accuracy_ci": [
+                0.9032258064516129,
+                1.0
+              ]
+            },
+            "6": {
+              "n": 34,
+              "accuracy": 0.9705882352941176,
+              "mean_gold_probability": 0.938460789511309,
+              "accuracy_ci": [
+                0.9117647058823529,
+                1.0
+              ]
+            },
+            "7": {
+              "n": 33,
+              "accuracy": 0.9696969696969697,
+              "mean_gold_probability": 0.9440185146081741,
+              "accuracy_ci": [
+                0.9090909090909091,
+                1.0
+              ]
+            },
+            "8": {
+              "n": 36,
+              "accuracy": 0.9444444444444444,
+              "mean_gold_probability": 0.9212884148582816,
+              "accuracy_ci": [
+                0.8611111111111112,
+                1.0
+              ]
+            },
+            "9": {
+              "n": 32,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.96464660204947,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            },
+            "10": {
+              "n": 36,
+              "accuracy": 0.9722222222222222,
+              "mean_gold_probability": 0.9444966092705727,
+              "accuracy_ci": [
+                0.9166666666666666,
+                1.0
+              ]
+            },
+            "11": {
+              "n": 30,
+              "accuracy": 0.9666666666666667,
+              "mean_gold_probability": 0.9249850504100323,
+              "accuracy_ci": [
+                0.9,
+                1.0
+              ]
+            },
+            "12": {
+              "n": 39,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.9728862643241882,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            }
+          },
+          "14": {
+            "0": {
+              "n": 40,
+              "accuracy": 0.95,
+              "mean_gold_probability": 0.9374285890022293,
+              "accuracy_ci": [
+                0.875,
+                1.0
+              ]
+            },
+            "1": {
+              "n": 29,
+              "accuracy": 0.8275862068965517,
+              "mean_gold_probability": 0.852304898973169,
+              "accuracy_ci": [
+                0.6896551724137931,
+                0.9655172413793104
+              ]
+            },
+            "2": {
+              "n": 37,
+              "accuracy": 0.972972972972973,
+              "mean_gold_probability": 0.9686461002440065,
+              "accuracy_ci": [
+                0.918918918918919,
+                1.0
+              ]
+            },
+            "3": {
+              "n": 35,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.9728840691702706,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            },
+            "4": {
+              "n": 38,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.9819040471001675,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            },
+            "5": {
+              "n": 28,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.973568007349968,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            },
+            "6": {
+              "n": 37,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.984077675922497,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            },
+            "7": {
+              "n": 37,
+              "accuracy": 0.972972972972973,
+              "mean_gold_probability": 0.9633908356363708,
+              "accuracy_ci": [
+                0.918918918918919,
+                1.0
+              ]
+            },
+            "8": {
+              "n": 35,
+              "accuracy": 0.9714285714285714,
+              "mean_gold_probability": 0.9602553980691092,
+              "accuracy_ci": [
+                0.9142857142857143,
+                1.0
+              ]
+            },
+            "9": {
+              "n": 31,
+              "accuracy": 0.967741935483871,
+              "mean_gold_probability": 0.9592712903695721,
+              "accuracy_ci": [
+                0.9032258064516129,
+                1.0
+              ]
+            },
+            "10": {
+              "n": 40,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.9690524607896804,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            },
+            "11": {
+              "n": 31,
+              "accuracy": 0.9354838709677419,
+              "mean_gold_probability": 0.8990632583267025,
+              "accuracy_ci": [
+                0.8387096774193549,
+                1.0
+              ]
+            },
+            "12": {
+              "n": 34,
+              "accuracy": 0.9705882352941176,
+              "mean_gold_probability": 0.9633258958073223,
+              "accuracy_ci": [
+                0.9110294117647059,
+                1.0
+              ]
+            },
+            "13": {
+              "n": 34,
+              "accuracy": 0.9705882352941176,
+              "mean_gold_probability": 0.9537460140007383,
+              "accuracy_ci": [
+                0.9117647058823529,
+                1.0
+              ]
+            }
+          }
+        }
+      },
+      "choice": {
+        "n": 5900,
+        "accuracy": 0.9752542372881355,
+        "ece": 0.009160940722893827,
+        "brier": 0.0408822219738958,
+        "nll": 0.0858427328550071,
+        "reliability": [
+          {
+            "lower": 0.0,
+            "upper": 0.066667,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.066667,
+            "upper": 0.133333,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.133333,
+            "upper": 0.2,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.2,
+            "upper": 0.266667,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.266667,
+            "upper": 0.333333,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.333333,
+            "upper": 0.4,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.4,
+            "upper": 0.466667,
+            "count": 2,
+            "mean_confidence": 0.45330964028835297,
+            "mean_accuracy": 0.5
+          },
+          {
+            "lower": 0.466667,
+            "upper": 0.533333,
+            "count": 18,
+            "mean_confidence": 0.5110619763533274,
+            "mean_accuracy": 0.5
+          },
+          {
+            "lower": 0.533333,
+            "upper": 0.6,
+            "count": 32,
+            "mean_confidence": 0.564470088109374,
+            "mean_accuracy": 0.6875
+          },
+          {
+            "lower": 0.6,
+            "upper": 0.666667,
+            "count": 39,
+            "mean_confidence": 0.6269366787030146,
+            "mean_accuracy": 0.717948717948718
+          },
+          {
+            "lower": 0.666667,
+            "upper": 0.733333,
+            "count": 54,
+            "mean_confidence": 0.6988602501374704,
+            "mean_accuracy": 0.7222222222222222
+          },
+          {
+            "lower": 0.733333,
+            "upper": 0.8,
+            "count": 45,
+            "mean_confidence": 0.7708587381574843,
+            "mean_accuracy": 0.7111111111111111
+          },
+          {
+            "lower": 0.8,
+            "upper": 0.866667,
+            "count": 57,
+            "mean_confidence": 0.8329456626323232,
+            "mean_accuracy": 0.7017543859649122
+          },
+          {
+            "lower": 0.866667,
+            "upper": 0.933333,
+            "count": 123,
+            "mean_confidence": 0.9036401941524288,
+            "mean_accuracy": 0.8130081300813008
+          },
+          {
+            "lower": 0.933333,
+            "upper": 1.0,
+            "count": 5530,
+            "mean_confidence": 0.9957856764737348,
+            "mean_accuracy": 0.9915009041591321
+          }
+        ],
+        "accuracy_ci": [
+          0.9710169491525423,
+          0.9791525423728814
+        ],
+        "ece_ci": [
+          0.006656219723492356,
+          0.013311955895969422
+        ],
+        "coverage": [
+          {
+            "threshold": 0.0,
+            "coverage": 1.0,
+            "n": 5900,
+            "accuracy": 0.9752542372881355
+          },
+          {
+            "threshold": 0.05,
+            "coverage": 1.0,
+            "n": 5900,
+            "accuracy": 0.9752542372881355
+          },
+          {
+            "threshold": 0.1,
+            "coverage": 1.0,
+            "n": 5900,
+            "accuracy": 0.9752542372881355
+          },
+          {
+            "threshold": 0.15,
+            "coverage": 1.0,
+            "n": 5900,
+            "accuracy": 0.9752542372881355
+          },
+          {
+            "threshold": 0.2,
+            "coverage": 1.0,
+            "n": 5900,
+            "accuracy": 0.9752542372881355
+          },
+          {
+            "threshold": 0.25,
+            "coverage": 1.0,
+            "n": 5900,
+            "accuracy": 0.9752542372881355
+          },
+          {
+            "threshold": 0.3,
+            "coverage": 1.0,
+            "n": 5900,
+            "accuracy": 0.9752542372881355
+          },
+          {
+            "threshold": 0.35,
+            "coverage": 0.9996610169491525,
+            "n": 5898,
+            "accuracy": 0.9754153950491692
+          },
+          {
+            "threshold": 0.4,
+            "coverage": 0.9994915254237288,
+            "n": 5897,
+            "accuracy": 0.9754112260471426
+          },
+          {
+            "threshold": 0.45,
+            "coverage": 0.9991525423728813,
+            "n": 5895,
+            "accuracy": 0.9754028837998303
+          },
+          {
+            "threshold": 0.5,
+            "coverage": 0.9979661016949153,
+            "n": 5888,
+            "accuracy": 0.9755434782608695
+          },
+          {
+            "threshold": 0.55,
+            "coverage": 0.9972881355932204,
+            "n": 5884,
+            "accuracy": 0.9760367097212781
+          },
+          {
+            "threshold": 0.6,
+            "coverage": 0.9949152542372881,
+            "n": 5870,
+            "accuracy": 0.9770017035775128
+          },
+          {
+            "threshold": 0.65,
+            "coverage": 0.9913559322033898,
+            "n": 5849,
+            "accuracy": 0.9779449478543341
+          },
+          {
+            "threshold": 0.7,
+            "coverage": 0.9796610169491525,
+            "n": 5780,
+            "accuracy": 0.9818339100346021
+          },
+          {
+            "threshold": 0.75,
+            "coverage": 0.9686440677966102,
+            "n": 5715,
+            "accuracy": 0.9844269466316711
+          },
+          {
+            "threshold": 0.8,
+            "coverage": 0.9567796610169491,
+            "n": 5645,
+            "accuracy": 0.987422497785651
+          },
+          {
+            "threshold": 0.85,
+            "coverage": 0.9450847457627118,
+            "n": 5576,
+            "accuracy": 0.9892395982783357
+          },
+          {
+            "threshold": 0.9,
+            "coverage": 0.9261016949152543,
+            "n": 5464,
+            "accuracy": 0.9917642752562226
+          },
+          {
+            "threshold": 0.95,
+            "coverage": 0.8922033898305085,
+            "n": 5264,
+            "accuracy": 0.9937310030395137
+          },
+          {
+            "threshold": 1.0,
+            "coverage": 0.0,
+            "n": 0,
+            "accuracy": null
+          }
+        ],
+        "macro_f1": 0.97440158980035,
+        "by_gold_other": {
+          "n_offering_other": 5900,
+          "accuracy_ci": [
+            0.9710169491525423,
+            0.9791525423728814
+          ],
+          "predicted_other_rate": 0.46152542372881356,
+          "gold_other": {
+            "n": 2761,
+            "accuracy": 0.9692140528793916,
+            "predicted_other_rate": 0.9692140528793916,
+            "accuracy_ci": [
+              0.9626946758420862,
+              0.9753802969938429
+            ]
+          },
+          "gold_named": {
+            "n": 3139,
+            "accuracy": 0.9805670595731124,
+            "predicted_other_rate": 0.014972921312519911,
+            "accuracy_ci": [
+              0.9757884676648614,
+              0.9850270786874801
+            ]
+          }
+        },
+        "by_question_position": {
+          "first": {
+            "n": 4554,
+            "accuracy": 0.9758454106280193,
+            "ece": 0.009973790943229949,
+            "accuracy_ci": [
+              0.971453667105841,
+              0.9800175669740887
+            ],
+            "ece_ci": [
+              0.007187484642413032,
+              0.014589652944753763
+            ]
+          },
+          "later": {
+            "n": 1346,
+            "accuracy": 0.9732540861812778,
+            "ece": 0.010427151224057062,
+            "accuracy_ci": [
+              0.9643202080237742,
+              0.9814264487369985
+            ],
+            "ece_ci": [
+              0.006817643183877174,
+              0.01980933330919909
+            ]
+          }
+        }
+      },
+      "form": {
+        "n": 4001,
+        "accuracy": 0.968507873031742,
+        "ece": 0.019179429003251484,
+        "brier": 0.04703662197853964,
+        "nll": 0.08608344425836686,
+        "reliability": [
+          {
+            "lower": 0.0,
+            "upper": 0.066667,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.066667,
+            "upper": 0.133333,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.133333,
+            "upper": 0.2,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.2,
+            "upper": 0.266667,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.266667,
+            "upper": 0.333333,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.333333,
+            "upper": 0.4,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.4,
+            "upper": 0.466667,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.466667,
+            "upper": 0.533333,
+            "count": 9,
+            "mean_confidence": 0.5100302033954196,
+            "mean_accuracy": 0.2222222222222222
+          },
+          {
+            "lower": 0.533333,
+            "upper": 0.6,
+            "count": 17,
+            "mean_confidence": 0.5736379307859084,
+            "mean_accuracy": 0.47058823529411764
+          },
+          {
+            "lower": 0.6,
+            "upper": 0.666667,
+            "count": 20,
+            "mean_confidence": 0.6304844737052917,
+            "mean_accuracy": 0.45
+          },
+          {
+            "lower": 0.666667,
+            "upper": 0.733333,
+            "count": 24,
+            "mean_confidence": 0.701684353252252,
+            "mean_accuracy": 0.5
+          },
+          {
+            "lower": 0.733333,
+            "upper": 0.8,
+            "count": 24,
+            "mean_confidence": 0.7697230006257693,
+            "mean_accuracy": 0.5
+          },
+          {
+            "lower": 0.8,
+            "upper": 0.866667,
+            "count": 25,
+            "mean_confidence": 0.8357132649421692,
+            "mean_accuracy": 0.56
+          },
+          {
+            "lower": 0.866667,
+            "upper": 0.933333,
+            "count": 51,
+            "mean_confidence": 0.9041218465449763,
+            "mean_accuracy": 0.7254901960784313
+          },
+          {
+            "lower": 0.933333,
+            "upper": 1.0,
+            "count": 3831,
+            "mean_confidence": 0.9977729749474193,
+            "mean_accuracy": 0.986948577394936
+          }
+        ],
+        "accuracy_ci": [
+          0.9625093726568358,
+          0.9735066233441639
+        ],
+        "ece_ci": [
+          0.015129066414533333,
+          0.024320328638601885
+        ],
+        "coverage": [
+          {
+            "threshold": 0.0,
+            "coverage": 1.0,
+            "n": 4001,
+            "accuracy": 0.968507873031742
+          },
+          {
+            "threshold": 0.05,
+            "coverage": 1.0,
+            "n": 4001,
+            "accuracy": 0.968507873031742
+          },
+          {
+            "threshold": 0.1,
+            "coverage": 1.0,
+            "n": 4001,
+            "accuracy": 0.968507873031742
+          },
+          {
+            "threshold": 0.15,
+            "coverage": 1.0,
+            "n": 4001,
+            "accuracy": 0.968507873031742
+          },
+          {
+            "threshold": 0.2,
+            "coverage": 1.0,
+            "n": 4001,
+            "accuracy": 0.968507873031742
+          },
+          {
+            "threshold": 0.25,
+            "coverage": 1.0,
+            "n": 4001,
+            "accuracy": 0.968507873031742
+          },
+          {
+            "threshold": 0.3,
+            "coverage": 1.0,
+            "n": 4001,
+            "accuracy": 0.968507873031742
+          },
+          {
+            "threshold": 0.35,
+            "coverage": 1.0,
+            "n": 4001,
+            "accuracy": 0.968507873031742
+          },
+          {
+            "threshold": 0.4,
+            "coverage": 1.0,
+            "n": 4001,
+            "accuracy": 0.968507873031742
+          },
+          {
+            "threshold": 0.45,
+            "coverage": 1.0,
+            "n": 4001,
+            "accuracy": 0.968507873031742
+          },
+          {
+            "threshold": 0.5,
+            "coverage": 1.0,
+            "n": 4001,
+            "accuracy": 0.968507873031742
+          },
+          {
+            "threshold": 0.55,
+            "coverage": 0.9972506873281679,
+            "n": 3990,
+            "accuracy": 0.9706766917293234
+          },
+          {
+            "threshold": 0.6,
+            "coverage": 0.9935016245938515,
+            "n": 3975,
+            "accuracy": 0.9723270440251572
+          },
+          {
+            "threshold": 0.65,
+            "coverage": 0.9890027493126718,
+            "n": 3957,
+            "accuracy": 0.9747283295425828
+          },
+          {
+            "threshold": 0.7,
+            "coverage": 0.9855036240939765,
+            "n": 3943,
+            "accuracy": 0.976667512046665
+          },
+          {
+            "threshold": 0.75,
+            "coverage": 0.981254686328418,
+            "n": 3926,
+            "accuracy": 0.978858889454916
+          },
+          {
+            "threshold": 0.8,
+            "coverage": 0.9765058735316171,
+            "n": 3907,
+            "accuracy": 0.9808036856923471
+          },
+          {
+            "threshold": 0.85,
+            "coverage": 0.9725068732816796,
+            "n": 3891,
+            "accuracy": 0.98278077615009
+          },
+          {
+            "threshold": 0.9,
+            "coverage": 0.9652586853286679,
+            "n": 3862,
+            "accuracy": 0.9860176074572761
+          },
+          {
+            "threshold": 0.95,
+            "coverage": 0.9505123719070232,
+            "n": 3803,
+            "accuracy": 0.9884301866947147
+          },
+          {
+            "threshold": 1.0,
+            "coverage": 0.0,
+            "n": 0,
+            "accuracy": null
+          }
+        ],
+        "yes_rate": 0.501374656335916,
+        "by_kind": {
+          "char_count_over": {
+            "n": 4001,
+            "accuracy": 0.968507873031742,
+            "ece": 0.019179429003251484,
+            "yes_rate": 0.501374656335916,
+            "accuracy_ci": [
+              0.9625093726568358,
+              0.9735066233441639
+            ],
+            "ece_ci": [
+              0.015129066414533333,
+              0.024320328638601885
+            ],
+            "by_question_position": {
+              "first": {
+                "n": 1346,
+                "accuracy": 0.9680534918276374,
+                "ece": 0.018275854314772945,
+                "accuracy_ci": [
+                  0.9591196136701338,
+                  0.9762258543833581
+                ],
+                "ece_ci": [
+                  0.012790347580392507,
+                  0.027399547126858232
+                ]
+              },
+              "later": {
+                "n": 2655,
+                "accuracy": 0.9687382297551789,
+                "ece": 0.01984206570519348,
+                "accuracy_ci": [
+                  0.9619585687382297,
+                  0.9751412429378531
+                ],
+                "ece_ci": [
+                  0.014837653153135726,
+                  0.026603372225541405
+                ]
+              }
+            }
+          }
+        },
+        "by_question_position": {
+          "first": {
+            "n": 1346,
+            "accuracy": 0.9680534918276374,
+            "ece": 0.018275854314772945,
+            "accuracy_ci": [
+              0.9591196136701338,
+              0.9762258543833581
+            ],
+            "ece_ci": [
+              0.012790347580392507,
+              0.027399547126858232
+            ]
+          },
+          "later": {
+            "n": 2655,
+            "accuracy": 0.9687382297551789,
+            "ece": 0.01984206570519348,
+            "accuracy_ci": [
+              0.9619585687382297,
+              0.9751412429378531
+            ],
+            "ece_ci": [
+              0.014837653153135726,
+              0.026603372225541405
+            ]
+          }
+        },
+        "symmetry": {
+          "n": 4001,
+          "mean_sum": 1.001376602109507,
+          "std_sum": 0.02058959509098752,
+          "argmax_consistent": 0.9962509372656836,
+          "by_kind": {
+            "char_count_over": {
+              "n": 4001,
+              "mean_sum": 1.001376602109507,
+              "std_sum": 0.02058959509098752,
+              "argmax_consistent": 0.9962509372656836
+            }
+          }
+        }
+      },
+      "n_records": 5900,
+      "symmetry": {
+        "n": 5900,
+        "mean_sum": 0.9784396962642921,
+        "std_sum": 0.07784728716107012,
+        "argmax_consistent": 0.9727118644067797,
+        "by_kind": {
+          "about_domain": {
+            "n": 1949,
+            "mean_sum": 0.9935086819415017,
+            "std_sum": 0.05293292043960692,
+            "argmax_consistent": 0.9928168291431503
+          },
+          "about_intent": {
+            "n": 1951,
+            "mean_sum": 0.9990828071371249,
+            "std_sum": 0.024225799149130395,
+            "argmax_consistent": 0.9969246540235777
+          },
+          "out_of_scope": {
+            "n": 2000,
+            "mean_sum": 0.9436176150654028,
+            "std_sum": 0.1128054746376396,
+            "argmax_consistent": 0.9295
+          }
+        }
+      }
+    },
+    "test_unseen_intents": {
+      "overall": {
+        "n": 6000,
+        "accuracy": 0.8918333333333334,
+        "ece": 0.0682398811827104,
+        "brier": 0.1741678421436377,
+        "nll": 0.3705668566140236,
+        "reliability": [
+          {
+            "lower": 0.0,
+            "upper": 0.066667,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.066667,
+            "upper": 0.133333,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.133333,
+            "upper": 0.2,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.2,
+            "upper": 0.266667,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.266667,
+            "upper": 0.333333,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.333333,
+            "upper": 0.4,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.4,
+            "upper": 0.466667,
+            "count": 8,
+            "mean_confidence": 0.44025571271777153,
+            "mean_accuracy": 0.5
+          },
+          {
+            "lower": 0.466667,
+            "upper": 0.533333,
+            "count": 63,
+            "mean_confidence": 0.5123989818588136,
+            "mean_accuracy": 0.5079365079365079
+          },
+          {
+            "lower": 0.533333,
+            "upper": 0.6,
+            "count": 101,
+            "mean_confidence": 0.5638963037198133,
+            "mean_accuracy": 0.5544554455445545
+          },
+          {
+            "lower": 0.6,
+            "upper": 0.666667,
+            "count": 82,
+            "mean_confidence": 0.6314085031427988,
+            "mean_accuracy": 0.3902439024390244
+          },
+          {
+            "lower": 0.666667,
+            "upper": 0.733333,
+            "count": 104,
+            "mean_confidence": 0.699566727074293,
+            "mean_accuracy": 0.5769230769230769
+          },
+          {
+            "lower": 0.733333,
+            "upper": 0.8,
+            "count": 124,
+            "mean_confidence": 0.7659536229987298,
+            "mean_accuracy": 0.5483870967741935
+          },
+          {
+            "lower": 0.8,
+            "upper": 0.866667,
+            "count": 132,
+            "mean_confidence": 0.8354984268997655,
+            "mean_accuracy": 0.6666666666666666
+          },
+          {
+            "lower": 0.866667,
+            "upper": 0.933333,
+            "count": 219,
+            "mean_confidence": 0.904383672698992,
+            "mean_accuracy": 0.6164383561643836
+          },
+          {
+            "lower": 0.933333,
+            "upper": 1.0,
+            "count": 5167,
+            "mean_confidence": 0.9945562545902983,
+            "mean_accuracy": 0.9436810528353009
+          }
+        ],
+        "accuracy_ci": [
+          0.8834958333333333,
+          0.8995041666666667
+        ],
+        "ece_ci": [
+          0.061733559817199905,
+          0.07719634882199268
+        ]
+      },
+      "noul": {
+        "n": 3000,
+        "accuracy": 0.916,
+        "ece": 0.05902262183030453,
+        "brier": 0.14268745717990916,
+        "nll": 0.31275328502817945,
+        "reliability": [
+          {
+            "lower": 0.0,
+            "upper": 0.066667,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.066667,
+            "upper": 0.133333,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.133333,
+            "upper": 0.2,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.2,
+            "upper": 0.266667,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.266667,
+            "upper": 0.333333,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.333333,
+            "upper": 0.4,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.4,
+            "upper": 0.466667,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.466667,
+            "upper": 0.533333,
+            "count": 11,
+            "mean_confidence": 0.517391714182767,
+            "mean_accuracy": 0.45454545454545453
+          },
+          {
+            "lower": 0.533333,
+            "upper": 0.6,
+            "count": 31,
+            "mean_confidence": 0.5650959495575197,
+            "mean_accuracy": 0.5483870967741935
+          },
+          {
+            "lower": 0.6,
+            "upper": 0.666667,
+            "count": 29,
+            "mean_confidence": 0.6372660213503344,
+            "mean_accuracy": 0.5172413793103449
+          },
+          {
+            "lower": 0.666667,
+            "upper": 0.733333,
+            "count": 31,
+            "mean_confidence": 0.6965803946218183,
+            "mean_accuracy": 0.5806451612903226
+          },
+          {
+            "lower": 0.733333,
+            "upper": 0.8,
+            "count": 41,
+            "mean_confidence": 0.7657674667311878,
+            "mean_accuracy": 0.6829268292682927
+          },
+          {
+            "lower": 0.8,
+            "upper": 0.866667,
+            "count": 44,
+            "mean_confidence": 0.8382702700116418,
+            "mean_accuracy": 0.6363636363636364
+          },
+          {
+            "lower": 0.866667,
+            "upper": 0.933333,
+            "count": 83,
+            "mean_confidence": 0.9028774937951421,
+            "mean_accuracy": 0.6265060240963856
+          },
+          {
+            "lower": 0.933333,
+            "upper": 1.0,
+            "count": 2730,
+            "mean_confidence": 0.9958112400530023,
+            "mean_accuracy": 0.9468864468864469
+          }
+        ],
+        "accuracy_ci": [
+          0.9063333333333333,
+          0.9256666666666666
+        ],
+        "ece_ci": [
+          0.0515019526720047,
+          0.06876781889647246
+        ],
+        "coverage": [
+          {
+            "threshold": 0.0,
+            "coverage": 1.0,
+            "n": 3000,
+            "accuracy": 0.916
+          },
+          {
+            "threshold": 0.05,
+            "coverage": 1.0,
+            "n": 3000,
+            "accuracy": 0.916
+          },
+          {
+            "threshold": 0.1,
+            "coverage": 1.0,
+            "n": 3000,
+            "accuracy": 0.916
+          },
+          {
+            "threshold": 0.15,
+            "coverage": 1.0,
+            "n": 3000,
+            "accuracy": 0.916
+          },
+          {
+            "threshold": 0.2,
+            "coverage": 1.0,
+            "n": 3000,
+            "accuracy": 0.916
+          },
+          {
+            "threshold": 0.25,
+            "coverage": 1.0,
+            "n": 3000,
+            "accuracy": 0.916
+          },
+          {
+            "threshold": 0.3,
+            "coverage": 1.0,
+            "n": 3000,
+            "accuracy": 0.916
+          },
+          {
+            "threshold": 0.35,
+            "coverage": 1.0,
+            "n": 3000,
+            "accuracy": 0.916
+          },
+          {
+            "threshold": 0.4,
+            "coverage": 1.0,
+            "n": 3000,
+            "accuracy": 0.916
+          },
+          {
+            "threshold": 0.45,
+            "coverage": 1.0,
+            "n": 3000,
+            "accuracy": 0.916
+          },
+          {
+            "threshold": 0.5,
+            "coverage": 1.0,
+            "n": 3000,
+            "accuracy": 0.916
+          },
+          {
+            "threshold": 0.55,
+            "coverage": 0.994,
+            "n": 2982,
+            "accuracy": 0.9185110663983903
+          },
+          {
+            "threshold": 0.6,
+            "coverage": 0.986,
+            "n": 2958,
+            "accuracy": 0.9215686274509803
+          },
+          {
+            "threshold": 0.65,
+            "coverage": 0.9796666666666667,
+            "n": 2939,
+            "accuracy": 0.924804355222865
+          },
+          {
+            "threshold": 0.7,
+            "coverage": 0.9706666666666667,
+            "n": 2912,
+            "accuracy": 0.9268543956043956
+          },
+          {
+            "threshold": 0.75,
+            "coverage": 0.9623333333333334,
+            "n": 2887,
+            "accuracy": 0.9300311742293038
+          },
+          {
+            "threshold": 0.8,
+            "coverage": 0.9523333333333334,
+            "n": 2857,
+            "accuracy": 0.9327966398319916
+          },
+          {
+            "threshold": 0.85,
+            "coverage": 0.942,
+            "n": 2826,
+            "accuracy": 0.9363057324840764
+          },
+          {
+            "threshold": 0.9,
+            "coverage": 0.926,
+            "n": 2778,
+            "accuracy": 0.9398848092152627
+          },
+          {
+            "threshold": 0.95,
+            "coverage": 0.896,
+            "n": 2688,
+            "accuracy": 0.9490327380952381
+          },
+          {
+            "threshold": 1.0,
+            "coverage": 0.0,
+            "n": 0,
+            "accuracy": null
+          }
+        ],
+        "yes_rate": 0.49866666666666665,
+        "by_kind": {
+          "about_domain": {
+            "n": 1467,
+            "accuracy": 0.8950238582140423,
+            "ece": 0.07039201377440893,
+            "yes_rate": 0.49693251533742333,
+            "accuracy_ci": [
+              0.8786639400136332,
+              0.9093558282208589
+            ],
+            "ece_ci": [
+              0.05866671505535876,
+              0.08670397453573826
+            ],
+            "by_question_position": {
+              "later": {
+                "n": 1467,
+                "accuracy": 0.8950238582140423,
+                "ece": 0.07039201377440893,
+                "accuracy_ci": [
+                  0.8786639400136332,
+                  0.9093558282208589
+                ],
+                "ece_ci": [
+                  0.05866671505535876,
+                  0.08670397453573826
+                ]
+              }
+            }
+          },
+          "about_intent": {
+            "n": 1533,
+            "accuracy": 0.9360730593607306,
+            "ece": 0.05054779143716018,
+            "yes_rate": 0.5003261578604045,
+            "accuracy_ci": [
+              0.923679060665362,
+              0.9478147423352903
+            ],
+            "ece_ci": [
+              0.04099733900456201,
+              0.06310996742164551
+            ],
+            "by_question_position": {
+              "later": {
+                "n": 1533,
+                "accuracy": 0.9360730593607306,
+                "ece": 0.05054779143716018,
+                "accuracy_ci": [
+                  0.923679060665362,
+                  0.9478147423352903
+                ],
+                "ece_ci": [
+                  0.04099733900456201,
+                  0.06310996742164551
+                ]
+              }
+            }
+          }
+        },
+        "by_question_position": {
+          "later": {
+            "n": 3000,
+            "accuracy": 0.916,
+            "ece": 0.05902262183030453,
+            "accuracy_ci": [
+              0.9063333333333333,
+              0.9256666666666666
+            ],
+            "ece_ci": [
+              0.0515019526720047,
+              0.06876781889647246
+            ]
+          }
+        }
+      },
+      "letter_bias": {
+        "by_position": {
+          "0": {
+            "n": 446,
+            "accuracy": 0.8677130044843049,
+            "mean_gold_probability": 0.8671877477785276,
+            "accuracy_ci": [
+              0.8363228699551569,
+              0.899103139013453
+            ]
+          },
+          "1": {
+            "n": 405,
+            "accuracy": 0.891358024691358,
+            "mean_gold_probability": 0.8807370753656285,
+            "accuracy_ci": [
+              0.8617283950617284,
+              0.9234567901234568
+            ]
+          },
+          "2": {
+            "n": 440,
+            "accuracy": 0.8909090909090909,
+            "mean_gold_probability": 0.8878932223366891,
+            "accuracy_ci": [
+              0.8613636363636363,
+              0.9182386363636363
+            ]
+          },
+          "3": {
+            "n": 340,
+            "accuracy": 0.888235294117647,
+            "mean_gold_probability": 0.8794908125675113,
+            "accuracy_ci": [
+              0.8529411764705882,
+              0.9205882352941176
+            ]
+          },
+          "4": {
+            "n": 318,
+            "accuracy": 0.8710691823899371,
+            "mean_gold_probability": 0.8552705889426606,
+            "accuracy_ci": [
+              0.8301886792452831,
+              0.9056603773584906
+            ]
+          },
+          "5": {
+            "n": 251,
+            "accuracy": 0.8366533864541833,
+            "mean_gold_probability": 0.8259007131766186,
+            "accuracy_ci": [
+              0.7888446215139442,
+              0.8844621513944223
+            ]
+          },
+          "6": {
+            "n": 216,
+            "accuracy": 0.8518518518518519,
+            "mean_gold_probability": 0.8375286749751131,
+            "accuracy_ci": [
+              0.8055555555555556,
+              0.8936342592592591
+            ]
+          },
+          "7": {
+            "n": 173,
+            "accuracy": 0.8265895953757225,
+            "mean_gold_probability": 0.8192123631185333,
+            "accuracy_ci": [
+              0.7745664739884393,
+              0.8786127167630058
+            ]
+          },
+          "8": {
+            "n": 120,
+            "accuracy": 0.8416666666666667,
+            "mean_gold_probability": 0.8352528499826197,
+            "accuracy_ci": [
+              0.7666666666666667,
+              0.9
+            ]
+          },
+          "9": {
+            "n": 98,
+            "accuracy": 0.8979591836734694,
+            "mean_gold_probability": 0.8438032284458893,
+            "accuracy_ci": [
+              0.8367346938775511,
+              0.9591836734693877
+            ]
+          },
+          "10": {
+            "n": 84,
+            "accuracy": 0.8452380952380952,
+            "mean_gold_probability": 0.8189948085468391,
+            "accuracy_ci": [
+              0.7619047619047619,
+              0.9166666666666666
+            ]
+          },
+          "11": {
+            "n": 46,
+            "accuracy": 0.8260869565217391,
+            "mean_gold_probability": 0.8434935795958154,
+            "accuracy_ci": [
+              0.717391304347826,
+              0.9347826086956522
+            ]
+          },
+          "12": {
+            "n": 44,
+            "accuracy": 0.7954545454545454,
+            "mean_gold_probability": 0.7836042237044736,
+            "accuracy_ci": [
+              0.6818181818181818,
+              0.9090909090909091
+            ]
+          },
+          "13": {
+            "n": 19,
+            "accuracy": 0.7368421052631579,
+            "mean_gold_probability": 0.7293491382642012,
+            "accuracy_ci": [
+              0.5263157894736842,
+              0.8947368421052632
+            ]
+          }
+        },
+        "by_k": {
+          "3": {
+            "n": 239,
+            "accuracy": 0.891213389121339,
+            "mean_gold_probability": 0.8906222375140965,
+            "accuracy_ci": [
+              0.8493723849372385,
+              0.9288702928870293
+            ]
+          },
+          "4": {
+            "n": 258,
+            "accuracy": 0.9341085271317829,
+            "mean_gold_probability": 0.9272685740382208,
+            "accuracy_ci": [
+              0.9031007751937985,
+              0.9651162790697675
+            ]
+          },
+          "5": {
+            "n": 231,
+            "accuracy": 0.8658008658008658,
+            "mean_gold_probability": 0.8587995691537893,
+            "accuracy_ci": [
+              0.8181818181818182,
+              0.9090909090909091
+            ]
+          },
+          "6": {
+            "n": 244,
+            "accuracy": 0.8811475409836066,
+            "mean_gold_probability": 0.8691149552655215,
+            "accuracy_ci": [
+              0.8401639344262295,
+              0.9221311475409836
+            ]
+          },
+          "7": {
+            "n": 267,
+            "accuracy": 0.8951310861423221,
+            "mean_gold_probability": 0.8864637519675918,
+            "accuracy_ci": [
+              0.8539325842696629,
+              0.9288389513108615
+            ]
+          },
+          "8": {
+            "n": 250,
+            "accuracy": 0.824,
+            "mean_gold_probability": 0.8192117432085797,
+            "accuracy_ci": [
+              0.7719,
+              0.868
+            ]
+          },
+          "9": {
+            "n": 240,
+            "accuracy": 0.8708333333333333,
+            "mean_gold_probability": 0.8563287051438238,
+            "accuracy_ci": [
+              0.8291666666666667,
+              0.9125
+            ]
+          },
+          "10": {
+            "n": 264,
+            "accuracy": 0.8712121212121212,
+            "mean_gold_probability": 0.8556994743033955,
+            "accuracy_ci": [
+              0.8295454545454546,
+              0.9090909090909091
+            ]
+          },
+          "11": {
+            "n": 267,
+            "accuracy": 0.8426966292134831,
+            "mean_gold_probability": 0.8293926811373253,
+            "accuracy_ci": [
+              0.797752808988764,
+              0.8876404494382022
+            ]
+          },
+          "12": {
+            "n": 244,
+            "accuracy": 0.8442622950819673,
+            "mean_gold_probability": 0.835817894604633,
+            "accuracy_ci": [
+              0.7950819672131147,
+              0.8852459016393442
+            ]
+          },
+          "13": {
+            "n": 208,
+            "accuracy": 0.8557692307692307,
+            "mean_gold_probability": 0.8342479169990349,
+            "accuracy_ci": [
+              0.8076923076923077,
+              0.8990384615384616
+            ]
+          },
+          "14": {
+            "n": 288,
+            "accuracy": 0.8368055555555556,
+            "mean_gold_probability": 0.8318149553314369,
+            "accuracy_ci": [
+              0.7950520833333333,
+              0.875
+            ]
+          }
+        },
+        "by_k_position": {
+          "3": {
+            "0": {
+              "n": 82,
+              "accuracy": 0.926829268292683,
+              "mean_gold_probability": 0.924100947997919,
+              "accuracy_ci": [
+                0.8658536585365854,
+                0.975609756097561
+              ]
+            },
+            "1": {
+              "n": 83,
+              "accuracy": 0.8554216867469879,
+              "mean_gold_probability": 0.8644440809477973,
+              "accuracy_ci": [
+                0.7710843373493976,
+                0.927710843373494
+              ]
+            },
+            "2": {
+              "n": 74,
+              "accuracy": 0.8918918918918919,
+              "mean_gold_probability": 0.8828861933969263,
+              "accuracy_ci": [
+                0.8108108108108109,
+                0.9594594594594594
+              ]
+            }
+          },
+          "4": {
+            "0": {
+              "n": 74,
+              "accuracy": 0.9459459459459459,
+              "mean_gold_probability": 0.9320023294579162,
+              "accuracy_ci": [
+                0.8918918918918919,
+                0.9864864864864865
+              ]
+            },
+            "1": {
+              "n": 62,
+              "accuracy": 0.9354838709677419,
+              "mean_gold_probability": 0.9377436226894779,
+              "accuracy_ci": [
+                0.8709677419354839,
+                0.9838709677419355
+              ]
+            },
+            "2": {
+              "n": 63,
+              "accuracy": 0.9206349206349206,
+              "mean_gold_probability": 0.9307580247284875,
+              "accuracy_ci": [
+                0.8412698412698413,
+                0.9841269841269841
+              ]
+            },
+            "3": {
+              "n": 59,
+              "accuracy": 0.9322033898305084,
+              "mean_gold_probability": 0.9065976196158109,
+              "accuracy_ci": [
+                0.864406779661017,
+                0.9830508474576272
+              ]
+            }
+          },
+          "5": {
+            "0": {
+              "n": 35,
+              "accuracy": 0.7428571428571429,
+              "mean_gold_probability": 0.7711890361670937,
+              "accuracy_ci": [
+                0.6,
+                0.8857142857142857
+              ]
+            },
+            "1": {
+              "n": 45,
+              "accuracy": 0.8888888888888888,
+              "mean_gold_probability": 0.8697391167179578,
+              "accuracy_ci": [
+                0.8,
+                0.9777777777777777
+              ]
+            },
+            "2": {
+              "n": 49,
+              "accuracy": 0.9387755102040817,
+              "mean_gold_probability": 0.931190710780876,
+              "accuracy_ci": [
+                0.8770408163265306,
+                1.0
+              ]
+            },
+            "3": {
+              "n": 60,
+              "accuracy": 0.8666666666666667,
+              "mean_gold_probability": 0.8555249803243593,
+              "accuracy_ci": [
+                0.7829166666666667,
+                0.95
+              ]
+            },
+            "4": {
+              "n": 42,
+              "accuracy": 0.8571428571428571,
+              "mean_gold_probability": 0.8403090549677256,
+              "accuracy_ci": [
+                0.7380952380952381,
+                0.9523809523809523
+              ]
+            }
+          },
+          "6": {
+            "0": {
+              "n": 63,
+              "accuracy": 0.873015873015873,
+              "mean_gold_probability": 0.8651157861893316,
+              "accuracy_ci": [
+                0.7936507936507936,
+                0.9523809523809523
+              ]
+            },
+            "1": {
+              "n": 37,
+              "accuracy": 0.918918918918919,
+              "mean_gold_probability": 0.890171306670291,
+              "accuracy_ci": [
+                0.8108108108108109,
+                1.0
+              ]
+            },
+            "2": {
+              "n": 40,
+              "accuracy": 0.9,
+              "mean_gold_probability": 0.8970331530086696,
+              "accuracy_ci": [
+                0.8,
+                0.975
+              ]
+            },
+            "3": {
+              "n": 41,
+              "accuracy": 0.8536585365853658,
+              "mean_gold_probability": 0.8554440582307373,
+              "accuracy_ci": [
+                0.7317073170731707,
+                0.9512195121951219
+              ]
+            },
+            "4": {
+              "n": 36,
+              "accuracy": 0.9166666666666666,
+              "mean_gold_probability": 0.8775972125844823,
+              "accuracy_ci": [
+                0.8055555555555556,
+                1.0
+              ]
+            },
+            "5": {
+              "n": 27,
+              "accuracy": 0.8148148148148148,
+              "mean_gold_probability": 0.8176808906374154,
+              "accuracy_ci": [
+                0.6666666666666666,
+                0.9259259259259259
+              ]
+            }
+          },
+          "7": {
+            "0": {
+              "n": 28,
+              "accuracy": 0.8571428571428571,
+              "mean_gold_probability": 0.8722069023975304,
+              "accuracy_ci": [
+                0.7142857142857143,
+                0.9642857142857143
+              ]
+            },
+            "1": {
+              "n": 33,
+              "accuracy": 0.9090909090909091,
+              "mean_gold_probability": 0.8943725828871583,
+              "accuracy_ci": [
+                0.7878787878787878,
+                1.0
+              ]
+            },
+            "2": {
+              "n": 48,
+              "accuracy": 0.9166666666666666,
+              "mean_gold_probability": 0.9087226056338599,
+              "accuracy_ci": [
+                0.8333333333333334,
+                0.9791666666666666
+              ]
+            },
+            "3": {
+              "n": 38,
+              "accuracy": 0.8947368421052632,
+              "mean_gold_probability": 0.8865087491117025,
+              "accuracy_ci": [
+                0.7894736842105263,
+                0.9736842105263158
+              ]
+            },
+            "4": {
+              "n": 53,
+              "accuracy": 0.9245283018867925,
+              "mean_gold_probability": 0.9227543931524709,
+              "accuracy_ci": [
+                0.8490566037735849,
+                0.9811320754716981
+              ]
+            },
+            "5": {
+              "n": 31,
+              "accuracy": 0.8387096774193549,
+              "mean_gold_probability": 0.8310326899011289,
+              "accuracy_ci": [
+                0.7096774193548387,
+                0.967741935483871
+              ]
+            },
+            "6": {
+              "n": 36,
+              "accuracy": 0.8888888888888888,
+              "mean_gold_probability": 0.8548810975626111,
+              "accuracy_ci": [
+                0.7777777777777778,
+                0.9722222222222222
+              ]
+            }
+          },
+          "8": {
+            "0": {
+              "n": 34,
+              "accuracy": 0.6764705882352942,
+              "mean_gold_probability": 0.6937589294907144,
+              "accuracy_ci": [
+                0.5,
+                0.8235294117647058
+              ]
+            },
+            "1": {
+              "n": 23,
+              "accuracy": 0.9565217391304348,
+              "mean_gold_probability": 0.8924047992281292,
+              "accuracy_ci": [
+                0.8695652173913043,
+                1.0
+              ]
+            },
+            "2": {
+              "n": 29,
+              "accuracy": 0.896551724137931,
+              "mean_gold_probability": 0.9043725734929843,
+              "accuracy_ci": [
+                0.7586206896551724,
+                1.0
+              ]
+            },
+            "3": {
+              "n": 18,
+              "accuracy": 0.8888888888888888,
+              "mean_gold_probability": 0.8761638895505004,
+              "accuracy_ci": [
+                0.7222222222222222,
+                1.0
+              ]
+            },
+            "4": {
+              "n": 36,
+              "accuracy": 0.7777777777777778,
+              "mean_gold_probability": 0.7776794702383794,
+              "accuracy_ci": [
+                0.6388888888888888,
+                0.8888888888888888
+              ]
+            },
+            "5": {
+              "n": 48,
+              "accuracy": 0.8541666666666666,
+              "mean_gold_probability": 0.8490035797828265,
+              "accuracy_ci": [
+                0.75,
+                0.9583333333333334
+              ]
+            },
+            "6": {
+              "n": 28,
+              "accuracy": 0.8214285714285714,
+              "mean_gold_probability": 0.809816898079589,
+              "accuracy_ci": [
+                0.6785714285714286,
+                0.9642857142857143
+              ]
+            },
+            "7": {
+              "n": 34,
+              "accuracy": 0.7941176470588235,
+              "mean_gold_probability": 0.8020165079300675,
+              "accuracy_ci": [
+                0.6470588235294118,
+                0.9117647058823529
+              ]
+            }
+          },
+          "9": {
+            "0": {
+              "n": 26,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.9774268384163196,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            },
+            "1": {
+              "n": 23,
+              "accuracy": 0.8260869565217391,
+              "mean_gold_probability": 0.8114181424936523,
+              "accuracy_ci": [
+                0.6521739130434783,
+                0.9565217391304348
+              ]
+            },
+            "2": {
+              "n": 23,
+              "accuracy": 0.9130434782608695,
+              "mean_gold_probability": 0.9102800715228786,
+              "accuracy_ci": [
+                0.782608695652174,
+                1.0
+              ]
+            },
+            "3": {
+              "n": 28,
+              "accuracy": 0.8928571428571429,
+              "mean_gold_probability": 0.8905968108457663,
+              "accuracy_ci": [
+                0.75,
+                1.0
+              ]
+            },
+            "4": {
+              "n": 33,
+              "accuracy": 0.8181818181818182,
+              "mean_gold_probability": 0.8234439383888843,
+              "accuracy_ci": [
+                0.6666666666666666,
+                0.9393939393939394
+              ]
+            },
+            "5": {
+              "n": 34,
+              "accuracy": 0.8823529411764706,
+              "mean_gold_probability": 0.8685355190845097,
+              "accuracy_ci": [
+                0.7647058823529411,
+                0.9705882352941176
+              ]
+            },
+            "6": {
+              "n": 21,
+              "accuracy": 0.7619047619047619,
+              "mean_gold_probability": 0.7707616893485898,
+              "accuracy_ci": [
+                0.5714285714285714,
+                0.9047619047619048
+              ]
+            },
+            "7": {
+              "n": 29,
+              "accuracy": 0.896551724137931,
+              "mean_gold_probability": 0.8434735739218264,
+              "accuracy_ci": [
+                0.7931034482758621,
+                1.0
+              ]
+            },
+            "8": {
+              "n": 23,
+              "accuracy": 0.8260869565217391,
+              "mean_gold_probability": 0.7921493510379072,
+              "accuracy_ci": [
+                0.6521739130434783,
+                0.9565217391304348
+              ]
+            }
+          },
+          "10": {
+            "0": {
+              "n": 29,
+              "accuracy": 0.8620689655172413,
+              "mean_gold_probability": 0.8833040602762123,
+              "accuracy_ci": [
+                0.7241379310344828,
+                0.9655172413793104
+              ]
+            },
+            "1": {
+              "n": 27,
+              "accuracy": 0.8518518518518519,
+              "mean_gold_probability": 0.8312487553382568,
+              "accuracy_ci": [
+                0.7037037037037037,
+                0.9629629629629629
+              ]
+            },
+            "2": {
+              "n": 29,
+              "accuracy": 0.9310344827586207,
+              "mean_gold_probability": 0.8942545013068693,
+              "accuracy_ci": [
+                0.8275862068965517,
+                1.0
+              ]
+            },
+            "3": {
+              "n": 22,
+              "accuracy": 0.9090909090909091,
+              "mean_gold_probability": 0.919084061826156,
+              "accuracy_ci": [
+                0.7727272727272727,
+                1.0
+              ]
+            },
+            "4": {
+              "n": 28,
+              "accuracy": 0.8571428571428571,
+              "mean_gold_probability": 0.8451388484211618,
+              "accuracy_ci": [
+                0.75,
+                0.9642857142857143
+              ]
+            },
+            "5": {
+              "n": 30,
+              "accuracy": 0.8666666666666667,
+              "mean_gold_probability": 0.8431674572561557,
+              "accuracy_ci": [
+                0.7333333333333333,
+                0.9666666666666667
+              ]
+            },
+            "6": {
+              "n": 30,
+              "accuracy": 0.8666666666666667,
+              "mean_gold_probability": 0.8490170804783702,
+              "accuracy_ci": [
+                0.7333333333333333,
+                0.9666666666666667
+              ]
+            },
+            "7": {
+              "n": 20,
+              "accuracy": 0.85,
+              "mean_gold_probability": 0.816863046749495,
+              "accuracy_ci": [
+                0.7,
+                1.0
+              ]
+            },
+            "8": {
+              "n": 23,
+              "accuracy": 0.782608695652174,
+              "mean_gold_probability": 0.8043292656429517,
+              "accuracy_ci": [
+                0.6086956521739131,
+                0.9565217391304348
+              ]
+            },
+            "9": {
+              "n": 26,
+              "accuracy": 0.9230769230769231,
+              "mean_gold_probability": 0.8625245862797153,
+              "accuracy_ci": [
+                0.8076923076923077,
+                1.0
+              ]
+            }
+          },
+          "11": {
+            "0": {
+              "n": 22,
+              "accuracy": 0.7272727272727273,
+              "mean_gold_probability": 0.7501774271103469,
+              "accuracy_ci": [
+                0.5454545454545454,
+                0.8636363636363636
+              ]
+            },
+            "1": {
+              "n": 16,
+              "accuracy": 0.75,
+              "mean_gold_probability": 0.7772263778806519,
+              "accuracy_ci": [
+                0.5,
+                0.9375
+              ]
+            },
+            "2": {
+              "n": 24,
+              "accuracy": 0.8333333333333334,
+              "mean_gold_probability": 0.8290610448457301,
+              "accuracy_ci": [
+                0.6666666666666666,
+                0.9583333333333334
+              ]
+            },
+            "3": {
+              "n": 23,
+              "accuracy": 0.8260869565217391,
+              "mean_gold_probability": 0.8199902376079041,
+              "accuracy_ci": [
+                0.6521739130434783,
+                0.9565217391304348
+              ]
+            },
+            "4": {
+              "n": 24,
+              "accuracy": 0.9583333333333334,
+              "mean_gold_probability": 0.9128780932320902,
+              "accuracy_ci": [
+                0.875,
+                1.0
+              ]
+            },
+            "5": {
+              "n": 30,
+              "accuracy": 0.7666666666666667,
+              "mean_gold_probability": 0.7857604127959348,
+              "accuracy_ci": [
+                0.6,
+                0.9
+              ]
+            },
+            "6": {
+              "n": 35,
+              "accuracy": 0.8285714285714286,
+              "mean_gold_probability": 0.8299736567905971,
+              "accuracy_ci": [
+                0.6857142857142857,
+                0.9428571428571428
+              ]
+            },
+            "7": {
+              "n": 24,
+              "accuracy": 0.7916666666666666,
+              "mean_gold_probability": 0.8116980756555373,
+              "accuracy_ci": [
+                0.625,
+                0.9166666666666666
+              ]
+            },
+            "8": {
+              "n": 21,
+              "accuracy": 0.9523809523809523,
+              "mean_gold_probability": 0.9337515310783472,
+              "accuracy_ci": [
+                0.8571428571428571,
+                1.0
+              ]
+            },
+            "9": {
+              "n": 28,
+              "accuracy": 0.8928571428571429,
+              "mean_gold_probability": 0.8058184167088517,
+              "accuracy_ci": [
+                0.75,
+                1.0
+              ]
+            },
+            "10": {
+              "n": 20,
+              "accuracy": 0.95,
+              "mean_gold_probability": 0.8783831817261671,
+              "accuracy_ci": [
+                0.85,
+                1.0
+              ]
+            }
+          },
+          "12": {
+            "0": {
+              "n": 23,
+              "accuracy": 0.8695652173913043,
+              "mean_gold_probability": 0.8686793500395573,
+              "accuracy_ci": [
+                0.7391304347826086,
+                1.0
+              ]
+            },
+            "1": {
+              "n": 18,
+              "accuracy": 1.0,
+              "mean_gold_probability": 0.9893710315227509,
+              "accuracy_ci": [
+                1.0,
+                1.0
+              ]
+            },
+            "2": {
+              "n": 26,
+              "accuracy": 0.8076923076923077,
+              "mean_gold_probability": 0.8302139707196218,
+              "accuracy_ci": [
+                0.6538461538461539,
+                0.9615384615384616
+              ]
+            },
+            "3": {
+              "n": 16,
+              "accuracy": 0.875,
+              "mean_gold_probability": 0.9043448567390442,
+              "accuracy_ci": [
+                0.6875,
+                1.0
+              ]
+            },
+            "4": {
+              "n": 22,
+              "accuracy": 0.8181818181818182,
+              "mean_gold_probability": 0.7946066755208779,
+              "accuracy_ci": [
+                0.6363636363636364,
+                0.9545454545454546
+              ]
+            },
+            "5": {
+              "n": 18,
+              "accuracy": 0.8333333333333334,
+              "mean_gold_probability": 0.7452458104429146,
+              "accuracy_ci": [
+                0.6666666666666666,
+                1.0
+              ]
+            },
+            "6": {
+              "n": 25,
+              "accuracy": 0.84,
+              "mean_gold_probability": 0.8209761630720459,
+              "accuracy_ci": [
+                0.68,
+                0.96
+              ]
+            },
+            "7": {
+              "n": 23,
+              "accuracy": 0.7391304347826086,
+              "mean_gold_probability": 0.7482481494244775,
+              "accuracy_ci": [
+                0.5217391304347826,
+                0.9130434782608695
+              ]
+            },
+            "8": {
+              "n": 24,
+              "accuracy": 0.875,
+              "mean_gold_probability": 0.8796406802654625,
+              "accuracy_ci": [
+                0.7083333333333334,
+                1.0
+              ]
+            },
+            "9": {
+              "n": 12,
+              "accuracy": 0.9166666666666666,
+              "mean_gold_probability": 0.9064270233114561,
+              "accuracy_ci": [
+                0.75,
+                1.0
+              ]
+            },
+            "10": {
+              "n": 22,
+              "accuracy": 0.8181818181818182,
+              "mean_gold_probability": 0.7999861292456362,
+              "accuracy_ci": [
+                0.6363636363636364,
+                0.9545454545454546
+              ]
+            },
+            "11": {
+              "n": 15,
+              "accuracy": 0.8,
+              "mean_gold_probability": 0.7918735537445173,
+              "accuracy_ci": [
+                0.6,
+                1.0
+              ]
+            }
+          },
+          "13": {
+            "0": {
+              "n": 16,
+              "accuracy": 0.875,
+              "mean_gold_probability": 0.8157737334840931,
+              "accuracy_ci": [
+                0.6875,
+                1.0
+              ]
+            },
+            "1": {
+              "n": 18,
+              "accuracy": 0.8888888888888888,
+              "mean_gold_probability": 0.8790216700743056,
+              "accuracy_ci": [
+                0.7222222222222222,
+                1.0
+              ]
+            },
+            "2": {
+              "n": 17,
+              "accuracy": 0.8823529411764706,
+              "mean_gold_probability": 0.8642053271041197,
+              "accuracy_ci": [
+                0.7058823529411765,
+                1.0
+              ]
+            },
+            "3": {
+              "n": 21,
+              "accuracy": 0.9047619047619048,
+              "mean_gold_probability": 0.8900520700983525,
+              "accuracy_ci": [
+                0.7619047619047619,
+                1.0
+              ]
+            },
+            "4": {
+              "n": 22,
+              "accuracy": 0.9090909090909091,
+              "mean_gold_probability": 0.8783730142038787,
+              "accuracy_ci": [
+                0.7727272727272727,
+                1.0
+              ]
+            },
+            "5": {
+              "n": 13,
+              "accuracy": 0.7692307692307693,
+              "mean_gold_probability": 0.7997672567860439,
+              "accuracy_ci": [
+                0.5384615384615384,
+                1.0
+              ]
+            },
+            "6": {
+              "n": 16,
+              "accuracy": 0.8125,
+              "mean_gold_probability": 0.7670298033044674,
+              "accuracy_ci": [
+                0.625,
+                1.0
+              ]
+            },
+            "7": {
+              "n": 17,
+              "accuracy": 0.8823529411764706,
+              "mean_gold_probability": 0.8848368824350045,
+              "accuracy_ci": [
+                0.7058823529411765,
+                1.0
+              ]
+            },
+            "8": {
+              "n": 10,
+              "accuracy": 0.8,
+              "mean_gold_probability": 0.7877311219985131,
+              "accuracy_ci": [
+                0.5,
+                1.0
+              ]
+            },
+            "9": {
+              "n": 14,
+              "accuracy": 0.7857142857142857,
+              "mean_gold_probability": 0.7388762512876254,
+              "accuracy_ci": [
+                0.5714285714285714,
+                1.0
+              ]
+            },
+            "10": {
+              "n": 15,
+              "accuracy": 0.8666666666666667,
+              "mean_gold_probability": 0.8095352899904052,
+              "accuracy_ci": [
+                0.6666666666666666,
+                1.0
+              ]
+            },
+            "11": {
+              "n": 10,
+              "accuracy": 0.9,
+              "mean_gold_probability": 0.912476870417595,
+              "accuracy_ci": [
+                0.7,
+                1.0
+              ]
+            },
+            "12": {
+              "n": 19,
+              "accuracy": 0.7894736842105263,
+              "mean_gold_probability": 0.7758395583613923,
+              "accuracy_ci": [
+                0.5789473684210527,
+                0.9473684210526315
+              ]
+            }
+          },
+          "14": {
+            "0": {
+              "n": 14,
+              "accuracy": 0.8571428571428571,
+              "mean_gold_probability": 0.8537824284285307,
+              "accuracy_ci": [
+                0.6428571428571429,
+                1.0
+              ]
+            },
+            "1": {
+              "n": 20,
+              "accuracy": 0.9,
+              "mean_gold_probability": 0.8761161817354151,
+              "accuracy_ci": [
+                0.75,
+                1.0
+              ]
+            },
+            "2": {
+              "n": 18,
+              "accuracy": 0.6666666666666666,
+              "mean_gold_probability": 0.6834545694356267,
+              "accuracy_ci": [
+                0.4444444444444444,
+                0.8888888888888888
+              ]
+            },
+            "3": {
+              "n": 14,
+              "accuracy": 0.9285714285714286,
+              "mean_gold_probability": 0.8926915944154773,
+              "accuracy_ci": [
+                0.7857142857142857,
+                1.0
+              ]
+            },
+            "4": {
+              "n": 22,
+              "accuracy": 0.8636363636363636,
+              "mean_gold_probability": 0.8470435646489601,
+              "accuracy_ci": [
+                0.6818181818181818,
+                1.0
+              ]
+            },
+            "5": {
+              "n": 20,
+              "accuracy": 0.85,
+              "mean_gold_probability": 0.825003353349166,
+              "accuracy_ci": [
+                0.7,
+                1.0
+              ]
+            },
+            "6": {
+              "n": 25,
+              "accuracy": 0.96,
+              "mean_gold_probability": 0.9581253731250763,
+              "accuracy_ci": [
+                0.88,
+                1.0
+              ]
+            },
+            "7": {
+              "n": 26,
+              "accuracy": 0.8461538461538461,
+              "mean_gold_probability": 0.8432497968180821,
+              "accuracy_ci": [
+                0.6923076923076923,
+                0.9615384615384616
+              ]
+            },
+            "8": {
+              "n": 19,
+              "accuracy": 0.7894736842105263,
+              "mean_gold_probability": 0.784940216592268,
+              "accuracy_ci": [
+                0.5789473684210527,
+                0.9473684210526315
+              ]
+            },
+            "9": {
+              "n": 18,
+              "accuracy": 0.9444444444444444,
+              "mean_gold_probability": 0.915709426600693,
+              "accuracy_ci": [
+                0.8333333333333334,
+                1.0
+              ]
+            },
+            "10": {
+              "n": 27,
+              "accuracy": 0.7777777777777778,
+              "mean_gold_probability": 0.7957472625981878,
+              "accuracy_ci": [
+                0.5925925925925926,
+                0.9259259259259259
+              ]
+            },
+            "11": {
+              "n": 21,
+              "accuracy": 0.8095238095238095,
+              "mean_gold_probability": 0.8475158405268476,
+              "accuracy_ci": [
+                0.6190476190476191,
+                0.9523809523809523
+              ]
+            },
+            "12": {
+              "n": 25,
+              "accuracy": 0.8,
+              "mean_gold_probability": 0.7895053693652153,
+              "accuracy_ci": [
+                0.64,
+                0.96
+              ]
+            },
+            "13": {
+              "n": 19,
+              "accuracy": 0.7368421052631579,
+              "mean_gold_probability": 0.7293491382642012,
+              "accuracy_ci": [
+                0.5263157894736842,
+                0.8947368421052632
+              ]
+            }
+          }
+        }
+      },
+      "choice": {
+        "n": 3000,
+        "accuracy": 0.8676666666666667,
+        "ece": 0.07773058920105294,
+        "brier": 0.20564822710736622,
+        "nll": 0.42838042819986777,
+        "reliability": [
+          {
+            "lower": 0.0,
+            "upper": 0.066667,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.066667,
+            "upper": 0.133333,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.133333,
+            "upper": 0.2,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.2,
+            "upper": 0.266667,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.266667,
+            "upper": 0.333333,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.333333,
+            "upper": 0.4,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.4,
+            "upper": 0.466667,
+            "count": 8,
+            "mean_confidence": 0.44025571271777153,
+            "mean_accuracy": 0.5
+          },
+          {
+            "lower": 0.466667,
+            "upper": 0.533333,
+            "count": 52,
+            "mean_confidence": 0.5113428269441311,
+            "mean_accuracy": 0.5192307692307693
+          },
+          {
+            "lower": 0.533333,
+            "upper": 0.6,
+            "count": 70,
+            "mean_confidence": 0.5633650319916862,
+            "mean_accuracy": 0.5571428571428572
+          },
+          {
+            "lower": 0.6,
+            "upper": 0.666667,
+            "count": 53,
+            "mean_confidence": 0.6282034460103737,
+            "mean_accuracy": 0.32075471698113206
+          },
+          {
+            "lower": 0.666667,
+            "upper": 0.733333,
+            "count": 73,
+            "mean_confidence": 0.7008348956500015,
+            "mean_accuracy": 0.5753424657534246
+          },
+          {
+            "lower": 0.733333,
+            "upper": 0.8,
+            "count": 83,
+            "mean_confidence": 0.7660455797092024,
+            "mean_accuracy": 0.4819277108433735
+          },
+          {
+            "lower": 0.8,
+            "upper": 0.866667,
+            "count": 88,
+            "mean_confidence": 0.8341125053438273,
+            "mean_accuracy": 0.6818181818181818
+          },
+          {
+            "lower": 0.866667,
+            "upper": 0.933333,
+            "count": 136,
+            "mean_confidence": 0.9053028848241357,
+            "mean_accuracy": 0.6102941176470589
+          },
+          {
+            "lower": 0.933333,
+            "upper": 1.0,
+            "count": 2437,
+            "mean_confidence": 0.9931503824880488,
+            "mean_accuracy": 0.9400902749281904
+          }
+        ],
+        "accuracy_ci": [
+          0.8553333333333333,
+          0.8793333333333333
+        ],
+        "ece_ci": [
+          0.06891347438593705,
+          0.09056188827753067
+        ],
+        "coverage": [
+          {
+            "threshold": 0.0,
+            "coverage": 1.0,
+            "n": 3000,
+            "accuracy": 0.8676666666666667
+          },
+          {
+            "threshold": 0.05,
+            "coverage": 1.0,
+            "n": 3000,
+            "accuracy": 0.8676666666666667
+          },
+          {
+            "threshold": 0.1,
+            "coverage": 1.0,
+            "n": 3000,
+            "accuracy": 0.8676666666666667
+          },
+          {
+            "threshold": 0.15,
+            "coverage": 1.0,
+            "n": 3000,
+            "accuracy": 0.8676666666666667
+          },
+          {
+            "threshold": 0.2,
+            "coverage": 1.0,
+            "n": 3000,
+            "accuracy": 0.8676666666666667
+          },
+          {
+            "threshold": 0.25,
+            "coverage": 1.0,
+            "n": 3000,
+            "accuracy": 0.8676666666666667
+          },
+          {
+            "threshold": 0.3,
+            "coverage": 0.9996666666666667,
+            "n": 2999,
+            "accuracy": 0.8679559853284429
+          },
+          {
+            "threshold": 0.35,
+            "coverage": 0.9993333333333333,
+            "n": 2998,
+            "accuracy": 0.8679119412941961
+          },
+          {
+            "threshold": 0.4,
+            "coverage": 0.997,
+            "n": 2991,
+            "accuracy": 0.8696088264794383
+          },
+          {
+            "threshold": 0.45,
+            "coverage": 0.9923333333333333,
+            "n": 2977,
+            "accuracy": 0.8710110849848841
+          },
+          {
+            "threshold": 0.5,
+            "coverage": 0.987,
+            "n": 2961,
+            "accuracy": 0.8733535967578521
+          },
+          {
+            "threshold": 0.55,
+            "coverage": 0.9796666666666667,
+            "n": 2939,
+            "accuracy": 0.877169105137802
+          },
+          {
+            "threshold": 0.6,
+            "coverage": 0.969,
+            "n": 2907,
+            "accuracy": 0.8820089439284485
+          },
+          {
+            "threshold": 0.65,
+            "coverage": 0.9506666666666667,
+            "n": 2852,
+            "accuracy": 0.8884992987377279
+          },
+          {
+            "threshold": 0.7,
+            "coverage": 0.9146666666666666,
+            "n": 2744,
+            "accuracy": 0.9005102040816326
+          },
+          {
+            "threshold": 0.75,
+            "coverage": 0.8793333333333333,
+            "n": 2638,
+            "accuracy": 0.9158453373768006
+          },
+          {
+            "threshold": 0.8,
+            "coverage": 0.852,
+            "n": 2556,
+            "accuracy": 0.9248826291079812
+          },
+          {
+            "threshold": 0.85,
+            "coverage": 0.8216666666666667,
+            "n": 2465,
+            "accuracy": 0.9359026369168357
+          },
+          {
+            "threshold": 0.9,
+            "coverage": 0.7826666666666666,
+            "n": 2348,
+            "accuracy": 0.9535775127768313
+          },
+          {
+            "threshold": 0.95,
+            "coverage": 0.7223333333333334,
+            "n": 2167,
+            "accuracy": 0.968158744808491
+          },
+          {
+            "threshold": 1.0,
+            "coverage": 0.0,
+            "n": 0,
+            "accuracy": null
+          }
+        ],
+        "macro_f1": 0.8770962703281485,
+        "by_gold_other": {
+          "n_offering_other": 3000,
+          "accuracy_ci": [
+            0.8553333333333333,
+            0.8793333333333333
+          ],
+          "predicted_other_rate": 0.2876666666666667,
+          "gold_other": {
+            "n": 613,
+            "accuracy": 0.9249592169657422,
+            "predicted_other_rate": 0.9249592169657422,
+            "accuracy_ci": [
+              0.9037520391517129,
+              0.9461663947797716
+            ]
+          },
+          "gold_named": {
+            "n": 2387,
+            "accuracy": 0.8529534981147885,
+            "predicted_other_rate": 0.12400502723083369,
+            "accuracy_ci": [
+              0.8374528697109342,
+              0.8667783829074152
+            ]
+          }
+        },
+        "by_question_position": {
+          "first": {
+            "n": 2343,
+            "accuracy": 0.8715322236448997,
+            "ece": 0.07518296772427305,
+            "accuracy_ci": [
+              0.8583013230900555,
+              0.8843363209560393
+            ],
+            "ece_ci": [
+              0.06583410521609072,
+              0.08754318205562607
+            ]
+          },
+          "later": {
+            "n": 657,
+            "accuracy": 0.8538812785388128,
+            "ece": 0.10170789890819118,
+            "accuracy_ci": [
+              0.8264840182648402,
+              0.8797564687975646
+            ],
+            "ece_ci": [
+              0.08147327799117547,
+              0.12906936525368617
+            ]
+          }
+        }
+      },
+      "form": {
+        "n": 1991,
+        "accuracy": 0.9728779507785033,
+        "ece": 0.017208596649390267,
+        "brier": 0.0426536245294514,
+        "nll": 0.08578334249518342,
+        "reliability": [
+          {
+            "lower": 0.0,
+            "upper": 0.066667,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.066667,
+            "upper": 0.133333,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.133333,
+            "upper": 0.2,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.2,
+            "upper": 0.266667,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.266667,
+            "upper": 0.333333,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.333333,
+            "upper": 0.4,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.4,
+            "upper": 0.466667,
+            "count": 0,
+            "mean_confidence": null,
+            "mean_accuracy": null
+          },
+          {
+            "lower": 0.466667,
+            "upper": 0.533333,
+            "count": 4,
+            "mean_confidence": 0.5212491899728775,
+            "mean_accuracy": 0.5
+          },
+          {
+            "lower": 0.533333,
+            "upper": 0.6,
+            "count": 8,
+            "mean_confidence": 0.5739853233098984,
+            "mean_accuracy": 0.5
+          },
+          {
+            "lower": 0.6,
+            "upper": 0.666667,
+            "count": 10,
+            "mean_confidence": 0.6387962639331818,
+            "mean_accuracy": 0.5
+          },
+          {
+            "lower": 0.666667,
+            "upper": 0.733333,
+            "count": 8,
+            "mean_confidence": 0.7013379484415054,
+            "mean_accuracy": 0.25
+          },
+          {
+            "lower": 0.733333,
+            "upper": 0.8,
+            "count": 5,
+            "mean_confidence": 0.7664499402046203,
+            "mean_accuracy": 0.6
+          },
+          {
+            "lower": 0.8,
+            "upper": 0.866667,
+            "count": 9,
+            "mean_confidence": 0.8377463221549988,
+            "mean_accuracy": 0.8888888888888888
+          },
+          {
+            "lower": 0.866667,
+            "upper": 0.933333,
+            "count": 31,
+            "mean_confidence": 0.9090062033745551,
+            "mean_accuracy": 0.6451612903225806
+          },
+          {
+            "lower": 0.933333,
+            "upper": 1.0,
+            "count": 1916,
+            "mean_confidence": 0.9979723618212224,
+            "mean_accuracy": 0.9879958246346555
+          }
+        ],
+        "accuracy_ci": [
+          0.9658463083877449,
+          0.9799095931692616
+        ],
+        "ece_ci": [
+          0.012421828860137285,
+          0.02472052514208794
+        ],
+        "coverage": [
+          {
+            "threshold": 0.0,
+            "coverage": 1.0,
+            "n": 1991,
+            "accuracy": 0.9728779507785033
+          },
+          {
+            "threshold": 0.05,
+            "coverage": 1.0,
+            "n": 1991,
+            "accuracy": 0.9728779507785033
+          },
+          {
+            "threshold": 0.1,
+            "coverage": 1.0,
+            "n": 1991,
+            "accuracy": 0.9728779507785033
+          },
+          {
+            "threshold": 0.15,
+            "coverage": 1.0,
+            "n": 1991,
+            "accuracy": 0.9728779507785033
+          },
+          {
+            "threshold": 0.2,
+            "coverage": 1.0,
+            "n": 1991,
+            "accuracy": 0.9728779507785033
+          },
+          {
+            "threshold": 0.25,
+            "coverage": 1.0,
+            "n": 1991,
+            "accuracy": 0.9728779507785033
+          },
+          {
+            "threshold": 0.3,
+            "coverage": 1.0,
+            "n": 1991,
+            "accuracy": 0.9728779507785033
+          },
+          {
+            "threshold": 0.35,
+            "coverage": 1.0,
+            "n": 1991,
+            "accuracy": 0.9728779507785033
+          },
+          {
+            "threshold": 0.4,
+            "coverage": 1.0,
+            "n": 1991,
+            "accuracy": 0.9728779507785033
+          },
+          {
+            "threshold": 0.45,
+            "coverage": 1.0,
+            "n": 1991,
+            "accuracy": 0.9728779507785033
+          },
+          {
+            "threshold": 0.5,
+            "coverage": 1.0,
+            "n": 1991,
+            "accuracy": 0.9728779507785033
+          },
+          {
+            "threshold": 0.55,
+            "coverage": 0.9979909593169262,
+            "n": 1987,
+            "accuracy": 0.9738298943130347
+          },
+          {
+            "threshold": 0.6,
+            "coverage": 0.9939728779507785,
+            "n": 1979,
+            "accuracy": 0.9757453259221829
+          },
+          {
+            "threshold": 0.65,
+            "coverage": 0.9914615770969362,
+            "n": 1974,
+            "accuracy": 0.9766970618034447
+          },
+          {
+            "threshold": 0.7,
+            "coverage": 0.9874434957307886,
+            "n": 1966,
+            "accuracy": 0.9796541200406917
+          },
+          {
+            "threshold": 0.75,
+            "coverage": 0.9844299347061778,
+            "n": 1960,
+            "accuracy": 0.9811224489795919
+          },
+          {
+            "threshold": 0.8,
+            "coverage": 0.982420894023104,
+            "n": 1956,
+            "accuracy": 0.9821063394683026
+          },
+          {
+            "threshold": 0.85,
+            "coverage": 0.9799095931692616,
+            "n": 1951,
+            "accuracy": 0.982060481804203
+          },
+          {
+            "threshold": 0.9,
+            "coverage": 0.9728779507785033,
+            "n": 1937,
+            "accuracy": 0.9850283944243676
+          },
+          {
+            "threshold": 0.95,
+            "coverage": 0.958312405826218,
+            "n": 1908,
+            "accuracy": 0.9889937106918238
+          },
+          {
+            "threshold": 1.0,
+            "coverage": 0.0,
+            "n": 0,
+            "accuracy": null
+          }
+        ],
+        "yes_rate": 0.5022601707684581,
+        "by_kind": {
+          "char_count_over": {
+            "n": 1991,
+            "accuracy": 0.9728779507785033,
+            "ece": 0.017208596649390267,
+            "yes_rate": 0.5022601707684581,
+            "accuracy_ci": [
+              0.9658463083877449,
+              0.9799095931692616
+            ],
+            "ece_ci": [
+              0.012421828860137285,
+              0.02472052514208794
+            ],
+            "by_question_position": {
+              "first": {
+                "n": 657,
+                "accuracy": 0.974124809741248,
+                "ece": 0.01692223567033649,
+                "accuracy_ci": [
+                  0.9604261796042618,
+                  0.9863013698630136
+                ],
+                "ece_ci": [
+                  0.008590464743032848,
+                  0.028001041415528796
+                ]
+              },
+              "later": {
+                "n": 1334,
+                "accuracy": 0.972263868065967,
+                "ece": 0.018432497486717866,
+                "accuracy_ci": [
+                  0.9632683658170914,
+                  0.9797788605697151
+                ],
+                "ece_ci": [
+                  0.013657116557079097,
+                  0.028326209220124864
+                ]
+              }
+            }
+          }
+        },
+        "by_question_position": {
+          "first": {
+            "n": 657,
+            "accuracy": 0.974124809741248,
+            "ece": 0.01692223567033649,
+            "accuracy_ci": [
+              0.9604261796042618,
+              0.9863013698630136
+            ],
+            "ece_ci": [
+              0.008590464743032848,
+              0.028001041415528796
+            ]
+          },
+          "later": {
+            "n": 1334,
+            "accuracy": 0.972263868065967,
+            "ece": 0.018432497486717866,
+            "accuracy_ci": [
+              0.9632683658170914,
+              0.9797788605697151
+            ],
+            "ece_ci": [
+              0.013657116557079097,
+              0.028326209220124864
+            ]
+          }
+        },
+        "symmetry": {
+          "n": 1991,
+          "mean_sum": 0.9995621960269884,
+          "std_sum": 0.021305847336863085,
+          "argmax_consistent": 0.9964841788046208,
+          "by_kind": {
+            "char_count_over": {
+              "n": 1991,
+              "mean_sum": 0.9995621960269884,
+              "std_sum": 0.021305847336863085,
+              "argmax_consistent": 0.9964841788046208
+            }
+          }
+        }
+      },
+      "n_records": 3000,
+      "symmetry": {
+        "n": 3000,
+        "mean_sum": 0.9857026409265051,
+        "std_sum": 0.07171344144996479,
+        "argmax_consistent": 0.9796666666666667,
+        "by_kind": {
+          "about_domain": {
+            "n": 1467,
+            "mean_sum": 0.9776555162362643,
+            "std_sum": 0.09112415319812858,
+            "argmax_consistent": 0.9679618268575324
+          },
+          "about_intent": {
+            "n": 1533,
+            "mean_sum": 0.9934033140645241,
+            "std_sum": 0.04468597725638313,
+            "argmax_consistent": 0.9908675799086758
+          }
+        }
+      }
+    }
+  },
+  "batching_precision": {
+    "n_requests": 200,
+    "batch_size": 16,
+    "max_abs_difference": 0.004631161689758301
+  },
+  "latency": {
+    "batch_1": {
+      "n": 200,
+      "median_ms": 47.58017899996503,
+      "mean_ms": 47.98121013499099
+    },
+    "batch_16_requests_per_second": 41.01326419841175,
+    "device": "cuda:0"
+  },
+  "wall_clock_seconds": 682.804725816
+}
