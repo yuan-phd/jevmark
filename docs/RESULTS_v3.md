@@ -1,6 +1,6 @@
 # jevmark v3 results: adaptation from deployment feedback
 
-Every number cites the file it comes from, as `path:key`. Unless another file is named, numbers are from `runs/v3_stage_06b/metrics.json` (written by `scripts/compare_v3.py` at commit 83454a4, not dirty), shortened to `S:key`. The specification is docs/V3_DESIGN.md and decision 56; the verdict and the inversion diagnostic are decision 57. The v1 report (`docs/RESULTS_v1.md`, frozen, decision 49) and the v2 report (`docs/RESULTS_v2.md`) are the background this starts from.
+Every number cites the file it comes from, as `path:key`. Unless another file is named, numbers are from `runs/v3_stage_06b/metrics.json` (written by `scripts/compare_v3.py` at commit 83454a4, not dirty, and regenerated at commit 9353145 with full_sft's seeds 1 and 2 added; every earlier value is unchanged), shortened to `S:key`. The specification is docs/V3_DESIGN.md and decision 56; the verdict and the inversion diagnostic are decision 57. The v1 report (`docs/RESULTS_v1.md`, frozen, decision 49) and the v2 report (`docs/RESULTS_v2.md`) are the background this starts from.
 
 ## 1. Setup
 
@@ -79,16 +79,27 @@ direct_brier at N 5000: training seeds 0, 1 and 2 on the seed 0 log, and seed 0 
 | seed 1 log | .934 [.925, .943] | .026 [.022, .034] | .103 | .256 | +.005 [-.001, +.011] | +.000 [-.006, +.006] |
 | mean of 3 training seeds (range) | .931 (.929, .935) | .025 (.019, .031) | .109 | .274 | | |
 
-The training-seed mean against the other learners, each draw averaging the three seeds' differences under one record resample (decision 53; `S:seeds.training_seed_mean_minus_positive_sft`, `S:seeds.training_seed_mean_minus_full_sft`):
+full_sft at N 5000, training seeds 0, 1 and 2 on the seed 0 log (session D, commit b5913ef; `S:seeds.full_sft`):
+
+| run | accuracy | ECE | Brier | NLL | minus seed 0, accuracy | minus seed 0, ECE |
+|---|---|---|---|---|---|---|
+| seed 0 | .947 [.938, .955] | .030 [.024, .038] | .082 | .212 | | |
+| seed 1 | .943 [.935, .951] | .020 [.016, .028] | .086 | .190 | -.004 [-.009, +.001] | -.010 [-.014, -.004] |
+| seed 2 | .949 [.941, .956] | .016 [.013, .025] | .079 | .175 | +.002 [-.004, +.006] | -.014 [-.017, -.007] |
+| mean of 3 training seeds (range) | .946 (.943, .949) | .022 (.017, .030) | .082 | .192 | | |
+
+The training-seed mean against the other learners, each draw averaging the three seeds' differences under one record resample (decision 53; `S:seeds.training_seed_mean_minus_positive_sft`, `S:seeds.training_seed_mean_minus_full_sft`, `S:seeds.training_seed_mean_minus_full_sft_seed_mean`; positive_sft has seed 0 only):
 
 | seed mean minus | accuracy | ECE | Brier | NLL |
 |---|---|---|---|---|
 | positive_sft | +.026 [+.019, +.033] | -.053 [-.059, -.044] | -.060 [-.071, -.048] | -.389 [-.443, -.333] |
-| full_sft | -.016 [-.022, -.010] | -.005 [-.009, +.001] | +.027 [+.018, +.036] | +.062 [+.040, +.084] |
+| full_sft seed 0 | -.016 [-.022, -.010] | -.005 [-.009, +.001] | +.027 [+.018, +.036] | +.062 [+.040, +.084] |
+| full_sft seed mean (seeds 0, 1, 2) | -.015 [-.020, -.010] | +.003 [-.001, +.008] | +.027 [+.020, +.034] | +.082 [+.061, +.101] |
 
 - **Training seeds and the logging draw move accuracy less than record sampling does.** The seed range is .6 points and the seed 1 log moves accuracy by +.5 points, against a record-level half-width of about .9 points for one run. Only seed 1 against seed 0 is significant when paired, +.006 [+.001, +.011].
-- **ECE varies across seeds about as much as one run's interval is wide** (.019 to .031 against [.020, .034] for seed 0), so no ECE difference between direct_brier and full_sft at N 5000 is called either way.
-- **The conclusions against positive_sft and full_sft hold for the seed mean**, with intervals that exclude 0. Unlike v2, where seed variance exceeded record-level intervals (docs/RESULTS_v2.md section 3), here seed 0 alone was representative.
+- **ECE varies across seeds about as much as one run's interval is wide**, for both learners (.019 to .031 for direct_brier, .017 to .030 for full_sft), so no ECE difference between them at N 5000 is called either way: the seed-mean difference is +.003 [-.001, +.008], and full_sft seed 0 alone had put it at -.005.
+- **full_sft's seed 0 was representative for accuracy.** Its three seeds span .6 points (.943 to .949), like direct_brier's, and the gap of the two seed means, -.015 [-.020, -.010], is the single-seed -.016 to within a tenth of a point. Its NLL varies more across seeds (.175 to .212), which widens the NLL gap to +.082.
+- **The conclusions against positive_sft and full_sft hold for the seed means**, with intervals that exclude 0. Unlike v2, where seed variance exceeded record-level intervals (docs/RESULTS_v2.md section 3), here seed 0 alone was representative.
 
 ## 4. Noisy feedback: the channel, the residual and the collapse
 
@@ -171,13 +182,15 @@ Accuracy and ECE minus zero-shot on test_indomain (zero-shot .956, ECE .013) and
 | direct_brier n5000 seed 1 log | -.030 [-.034, -.026] | +.008 | +.025 | -.034 |
 | full_sft n500 | -.019 [-.022, -.016] | +.009 | +.030 | -.026 |
 | full_sft n2000 | -.025 [-.029, -.021] | +.008 | +.029 | -.029 |
-| full_sft n5000 | -.052 [-.057, -.047] | +.043 [+.038, +.047] | +.022 | -.007 |
+| full_sft n5000 seed 0 | -.052 [-.057, -.047] | +.043 [+.038, +.047] | +.022 | -.007 |
+| full_sft n5000 seed 1 | -.036 [-.040, -.032] | +.015 | +.027 | -.026 |
+| full_sft n5000 seed 2 | -.050 [-.054, -.045] | +.025 | +.020 | -.020 |
 | direct_brier n5000 noisy | -.014 [-.017, -.011] | +.050 | +.018 | -.018 |
 | positive_sft n5000 noisy | -.008 [-.010, -.005] | +.005 | +.004 | -.001 |
 
 - **Every trained learner loses in-domain accuracy and gains on the unseen intents**, which share the CLINC format but not the label set.
-- **The in-domain cost grows with N for direct_brier and full_sft**, up to 2.7 to 4.3 points for direct_brier at N 5000 across seeds and 5.2 points for full_sft. positive_sft costs under 1 point at every N. the clean direct_brier runs keep in-domain ECE within .010 of zero-shot; full_sft at N 5000 adds .043.
-- **Forgetting varies more across seeds than Banking77 accuracy does:** -.027, -.043 and -.029 for the three training seeds, a range of 1.6 points against .6 on Banking77. Beta 0 (V3_DESIGN note 13) is a choice, and this is its cost.
+- **The in-domain cost grows with N for direct_brier and full_sft**, up to 2.7 to 4.3 points for direct_brier at N 5000 across seeds and 3.6 to 5.2 points for full_sft. positive_sft costs under 1 point at every N. The clean direct_brier runs keep in-domain ECE within .010 of zero-shot; full_sft at N 5000 adds .015 to .043.
+- **Forgetting varies more across seeds than Banking77 accuracy does:** -.027, -.043 and -.029 for direct_brier's three training seeds and -.052, -.036 and -.050 for full_sft's, ranges of 1.6 points each against .6 on Banking77. Beta 0 (V3_DESIGN note 13) is a choice, and this is its cost.
 
 ## 6. Predicted `other` and coverage
 
@@ -221,7 +234,8 @@ gpt-4.1-mini (B2) exists only on the 500-record subset of test_banking77 (V3_DES
 | positive_sft n500 / n2000 / n5000 | .884 / .886 / .916 | .093 / .086 / .070 |
 | direct_brier n500 / n2000 / n5000 seed 0 | .888 / .910 / .934 | .038 / .028 / .034 |
 | direct_brier n5000 seed 1 / seed 2 / seed 1 log | .936 / .926 / .934 | .036 / .029 / .031 |
-| full_sft n500 / n2000 / n5000 | .904 / .916 / .948 | .050 / .031 / .032 |
+| full_sft n500 / n2000 / n5000 seed 0 | .904 / .916 / .948 | .050 / .031 / .032 |
+| full_sft n5000 seed 1 / seed 2 | .944 / .950 | .024 / .030 |
 
 From N 5000, every direct_brier run is above gpt-4.1-mini's .918 on this subset, from 5000 logged correctness bits and no labels; positive_sft reaches .916 and full_sft .948. With 500 records, a 1.6-point difference is within sampling error, and these rows have no paired interval against B2.
 
@@ -231,7 +245,7 @@ The predictions as stated in docs/V3_DESIGN.md section 7, each with its verdict.
 
 1. **"RLCD beats positive-only SFT in accuracy at every N, because it uses negative feedback."** Not held at every N: a tie at N 500, +.002 [-.006, +.009]; held from N 2000, +.027 [+.019, +.035] at N 2000 and +.024 [+.016, +.031] at N 5000, +.026 [+.019, +.033] for the three-seed mean (section 2, section 3). V3_DESIGN says that if prediction 1 fails, v2 and v3 together are a complete negative result about RLCD as reconstructed. It fails only at the smallest N and by a tie, and holds clearly from N 2000, so v3 is not that complete negative result: with 1800 or more logged interactions, negative feedback adds 2.4 to 2.7 points over discarding it.
 2. **"RLCD's ECE is lower than positive-only SFT's, which only ever sees confirmed answers and should be overconfident."** Held at every N: -.060 [-.066, -.048], -.060 [-.067, -.050] and -.052 [-.060, -.043], with Brier and NLL agreeing; positive_sft is the worst-calibrated learner at every N, and its coverage at .95 keeps 90 percent of answers at 93 to 94 percent accuracy (sections 2 and 6).
-3. **"RLCD approaches full-label SFT as N grows; the gap at N 5000 is the price of not having labels."** Failed: the accuracy gap is -.017 [-.023, -.011], -.007 [-.014, +.000] and -.018 [-.025, -.011] at N 500, 2000 and 5000; it does not shrink with N. The price of not having labels at N 5000 is 1.6 points of accuracy for the three-seed mean, -.016 [-.022, -.010], with ECE level, -.005 [-.009, +.001], and higher Brier and NLL, +.027 [+.018, +.036] and +.062 [+.040, +.084] (section 3).
+3. **"RLCD approaches full-label SFT as N grows; the gap at N 5000 is the price of not having labels."** Failed: the accuracy gap is -.017 [-.023, -.011], -.007 [-.014, +.000] and -.018 [-.025, -.011] at N 500, 2000 and 5000; it does not shrink with N. With both learners on three training seeds, the price of not having labels at N 5000 is 1.5 points of accuracy, direct_brier's seed mean minus full_sft's, -.015 [-.020, -.010], with ECE level, +.003 [-.001, +.008], and higher Brier and NLL, +.027 [+.020, +.034] and +.082 [+.061, +.101] (section 3); full_sft's seed 0 alone had given -.016, so the verdict does not depend on it.
 4. **"Under noisy feedback, RLCD degrades less than positive-only SFT."** Held for accuracy, failed for calibration. Accuracy: direct_brier loses 2.2 points and positive_sft 3.9, a difference of +.017 [+.007, +.028]. Calibration: direct_brier's ECE rises by .138 while positive_sft's falls by .029, a difference of +.167 [+.151, +.182], with NLL +.277 [+.233, +.320] and Brier +.013 [+.000, +.025]. As stored, the calibration failure is the proper score calibrating to the noisy outcome it was given: the selected run sits on the channel line on average (mean top-1 .743 against .744), and its channel-scale ECE is .058 against a mapped-clean reference of .014. That remainder is single-draw variance in a one-draw log, not a limit of the objective: with the variance removed it falls to .019 to .024 (section 4, decision 59).
 
 ## 9. Limitations
@@ -240,10 +254,10 @@ The predictions as stated in docs/V3_DESIGN.md section 7, each with its verdict.
 - **One logging policy.** sft_06b at epsilon 0.1, already .836 accurate on the log domain; a weaker or more exploratory policy changes how many negatives there are and which ones.
 - **A simulated feedback channel.** Outcomes come from gold labels, revealed perfectly or flipped symmetrically at a known rate; real deployment feedback is delayed, biased towards some errors and of unknown noise rate, which the inversion needs.
 - **One size.** 0.6B only (decision 56).
-- **full_sft and positive_sft have one seed.** Their sides of every comparison carry no seed variance; direct_brier's three seeds suggest it is small on Banking77 accuracy.
+- **positive_sft has one seed.** Its side of every comparison carries no seed variance; direct_brier's and full_sft's three seeds each span .6 points on Banking77 accuracy, which suggests it is small. full_sft was run on three seeds at N 5000 (section 3); at N 500 and 2000 every learner has seed 0 only.
 - **Forgetting varies by seed** (-.027 to -.043 in-domain for direct_brier at N 5000), more than the Banking77 result does, and beta 0 leaves it unconstrained.
 - **Selection on the log's last 0.1 N** chose early steps for every learner; a different selection slice or rule could change the ranking at N 500, where 50 interactions select.
 
 ## 10. What v3 shows and what it does not
 
-v3 shows that when a deployed model sees only the correctness of its own actions on a new domain, training on that signal with a pathwise Brier loss beats discarding the failures, by 2.4 to 2.7 points of accuracy from 2000 logged interactions and by about .05 to .06 ECE at every N, and that it closes 70 to 90 percent of the accuracy gap between zero-shot and full-label SFT. It does not show that RLCD approaches full labels as feedback grows, since the 1.6-point gap at N 5000 is no smaller than at N 500, and it does not show calibration robust to noisy feedback, where a proper score calibrates to the channel and needs a known noise rate to be undone. Together with v2, the claim that survives is narrow: RLCD adds value over positive-only SFT when the only feedback is partial, and nowhere else that was tested.
+v3 shows that when a deployed model sees only the correctness of its own actions on a new domain, training on that signal with a pathwise Brier loss beats discarding the failures, by 2.4 to 2.7 points of accuracy from 2000 logged interactions and by about .05 to .06 ECE at every N, and that it closes 70 to 90 percent of the accuracy gap between zero-shot and full-label SFT. It does not show that RLCD approaches full labels as feedback grows, since the 1.5-point gap at N 5000 (seed means of both) is no smaller than at N 500, and it does not show calibration robust to noisy feedback, where a proper score calibrates to the channel and needs a known noise rate to be undone. Together with v2, the claim that survives is narrow: RLCD adds value over positive-only SFT when the only feedback is partial, and nowhere else that was tested.

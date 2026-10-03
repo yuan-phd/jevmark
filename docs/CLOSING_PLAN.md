@@ -10,7 +10,7 @@
 
 ### 第二步：跑 Kaggle
 - [x] 加噪 RLCD 的 step 1407 adapter 评估，run 名 v3_06b_direct_brier_n5000_s0_noisy_last（commit e0f6391）
-- [ ] 会话 D（full_sft seed 1、2，约 2.6 小时）　→ 不依赖任何未完成项，随时可跑
+- [x] 会话 D（full_sft seed 1、2，约 2.6 小时）。结果（commit b5913ef，a9d0636 提交）：准确率 .943 和 .949，种子 0 为 .947
 
 ### 第三步：CPU 工作
 - [ ] 出图脚本（v1 对比图、v2 级联图和未见 schema reliability diagram、v3 N 曲线和覆盖率曲线），画完打勾 TASKS 2.3 的两条
@@ -21,7 +21,8 @@
 
 ### 第四步：GPU 结果回来后
 - [x] 对 step 1407 的加噪 adapter 跑翻转还原。结果：没有回到清洁水平，反而更差，由此发现下面第二节的问题
-- [ ] 把 full_sft 的 seed 加入比较和图　→ 依赖会话 D
+- [~] 把 full_sft 的 seed 加入比较和图　→ 依赖会话 D
+  - 比较已加入（commit 2db74a7）：direct_brier 种子均值减 full_sft 种子均值 −.015 [−.020, −.010]，预测 3 仍不成立；图待出图脚本
 - [ ] 审计结果写进 RESULTS_v3 的局限和 RESULTS_v1 的附录　→ 依赖审计
 
 ### 可选
