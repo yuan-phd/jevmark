@@ -85,7 +85,9 @@ def test_compare_writes_every_table(runs):
     assert row["temperature"]["accuracy"] == row["zero_shot"]["accuracy"] and row["temperature"]["ece"] != row["zero_shot"]["ece"]
     delta = row["direct_brier_minus_positive_sft"]["accuracy"]
     assert delta["delta"] == pytest.approx(row["direct_brier"]["accuracy"] - row["positive_sft"]["accuracy"])
-    assert set(result["seeds"]) >= {"seed_0", "seed_1", "seed_2", "log_seed_1", "training_seeds", "minus_seed_0"}
+    assert set(result["seeds"]) >= {"seed_0", "seed_1", "seed_2", "log_seed_1", "training_seeds", "minus_seed_0", "training_seed_mean_minus_positive_sft", "training_seed_mean_minus_full_sft"}
+    mean_minus = result["seeds"]["training_seed_mean_minus_positive_sft"]["accuracy"]["delta"]
+    assert mean_minus == pytest.approx(result["seeds"]["training_seeds"]["accuracy"]["mean"] - row["positive_sft"]["accuracy"])
     assert result["seeds"]["training_seeds"]["accuracy"]["n_seeds"] == 3
     assert result["noisy"]["direct_brier"]["noisy_minus_clean"]["accuracy"]["delta"] < 0 and result["noisy"]["direct_brier_change_minus_positive_sft_change"] is not None
     for split in ("test_indomain", "test_unseen_intents"):
@@ -101,6 +103,19 @@ def test_paired_difference_of_a_run_with_itself_is_zero(runs):
     split = compare_v3.Split(V3_TEST_FULL, {"zero_shot": rs, "copy": list(rs)}, 50)
     for metric, d in split.delta("copy", "zero_shot").items():
         assert d["delta"] == 0 and d["ci"] == [0.0, 0.0], metric
+
+
+def test_mean_delta_by_hand(runs):
+    runs_dir, subset = runs
+    read = lambda name: compare_v3.by_split(compare_v3.read_results(runs_dir / name / "results.jsonl.gz"))[V3_TEST_FULL]
+    names = ["v3_06b_direct_brier_n5000_s1", "v3_06b_direct_brier_n5000_s2"]
+    split = compare_v3.Split(V3_TEST_FULL, {"zero_shot": read("v3_06b_zeroshot"), **{n: read(n) for n in names}}, 50)
+    got = split.mean_delta(names, "zero_shot")
+    for metric in compare_v3.METRICS:
+        draws = (split.draws[names[0]][metric] + split.draws[names[1]][metric]) / 2 - split.draws["zero_shot"][metric]
+        assert got[metric]["ci"] == pytest.approx(compare_v3.interval(draws))
+        assert got[metric]["delta"] == pytest.approx((split.delta(names[0], "zero_shot")[metric]["delta"] + split.delta(names[1], "zero_shot")[metric]["delta"]) / 2)
+    assert split.mean_delta(["zero_shot"], "zero_shot")["accuracy"] == {"delta": 0.0, "ci": [0.0, 0.0]}
 
 
 def test_runs_with_other_questions_or_data_are_refused(runs, tmp_path):
