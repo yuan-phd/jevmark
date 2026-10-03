@@ -36,7 +36,7 @@ On `train`, which the models were fitted to, the global T makes ECE worse (.009 
 
 **What a global temperature fixes, and what it does not.** Fitted on in-domain `valid` alone, one number brings in-domain ECE to .003 to .005 and SST-5 to .012 to .020, equal or close to the per-split oracle there, and it removes 11 to 45 percent of the ECE on unseen intents and unseen schemas (about a fifth on most; AG News .164 to .146, emotion .207 to .166, Yelp .218 to .169 at 1.7B), because the SFT models are overconfident everywhere and a temperature above 1 points the right way. It does not fix the unseen schemas: the temperatures they need range from 1.36 to 2.88, up to 2.2 times the 1.27 and 1.32 fitted on `valid`, and differ per schema, so no single number serves them all; even the oracle leaves Yelp at .10 to .12, a miscalibration in the shape of the distribution over an ordinal scale that no temperature can remove; and on emotion and Yelp at both sizes, and on AG News at 0.6B, the SFT model with the global T (.137 to .175) is still less calibrated than the frozen base it started from (.037 to .090, `runs/base_*/metrics.json`), with AG News at 1.7B level (.097 against .094). The gap RLCD has to close is therefore specific: calibration on schemas the model was not trained on, without knowing the schema's temperature, at in-domain accuracy. Concretely, an RLCD arm has to bring unseen-schema ECE below what SFT plus the global T reaches (.146, .166, .037 and .137 at 0.6B; .097, .175, .058 and .169 at 1.7B), towards the oracle, while keeping in-domain ECE near .005 and accuracy at the SFT level.
 
-## 2. RLCD (in progress)
+## 2. RLCD: the first run
 
 **Negative result: a proper score as a REINFORCE reward.** The first RLCD run used the Brier score of the sampled action, 1 - (r_a - p_a)^2 with p detached, as a policy-gradient reward with a group-mean baseline (0.6B, seed 0, 500 steps from `runs/sft_06b`). It degraded the model instead of calibrating it (`runs/sft_06b/metrics.json` against `runs/rlcd_06b_brier_s0/metrics.json`, key `splits.<split>.overall.accuracy` and `.ece`, `.score.accuracy` for score; the evaluated adapter is the best by validation NLL, step 100):
 
@@ -59,7 +59,7 @@ Score questions collapsed (score accuracy .636 to .111 on test_sst5, .505 to .04
 
 ## 3. RLCD stages 1 and 2a: five arms on 0.6B, seeds 0, 1 and 2
 
-**Status: stage 2a complete; stage 2b and stage 3 pending.** Stage 1 ran the five arms at seed 0; stage 2a added seeds 1 and 2 (decision 53, docs/KAGGLE.md section 10). This section reports all three seeds at 0.6B. Stage 2b (the five arms at seed 0 on 1.7B) and stage 3 (the stochastic-outcome environment, task 2.5) have not run, so this section does not yet state the v2 conclusion.
+**Status: final.** Stage 1 ran the five arms at seed 0; stage 2a added seeds 1 and 2 (decision 53, docs/KAGGLE.md section 10). This section reports all three seeds at 0.6B and states the v2 conclusion. Stage 2b (the five arms at seed 0 on 1.7B) was not run (decision 58: the 0.6B result is consistent across seeds, and v3 made the 1.7B repeat low priority); stage 3 (the stochastic-outcome environment, task 2.5) was cancelled (decision 56).
 
 **Setup.**
 - Five arms, each 500 steps from `runs/sft_06b` with the same settings: lr 5e-5, beta 0.02, G 4, epsilon 0.1, and the same records and schedule. The seed sets the data order, the sampled actions and the 1000-record validation subset.
@@ -136,11 +136,11 @@ On the validation subset, from step 0 to step 500 (`validation.<arm>.<seed>.step
 
 **Stage 2a answer.** Across three seeds at 0.6B, no RLCD arm matches `sft_06b_temp` on unseen-schema ECE without a temperature of its own, the sign of every arm's difference is the same at every seed, and the size is about .015 smaller than seed 0 alone showed. With its own temperature, no arm is below `sft_06b_temp`, and the control does as well as the best RLCD arm.
 
-**Pending.**
-- **Stage 2b** tests whether these differences hold at 1.7B (seed 0, docs/KAGGLE.md section 10). It is ranked after v3 (decision 56).
+**Not run.**
+- **Stage 2b**, the five arms at seed 0 on 1.7B, was not run (decision 58), so the v2 conclusion is for 0.6B only.
 - **Stage 3** (task 2.5, decision 54) was cancelled by decision 56; section 4 keeps its method and SFT baseline. The setting in which bandit feedback can carry information that cross-entropy on gold cannot is now tested in v3, on real deployment feedback (docs/V3_DESIGN.md).
 
-## 4. RLCD stage 3: a stochastic-outcome environment (method; results pending)
+## 4. RLCD stage 3: a stochastic-outcome environment (method only; cancelled)
 
 **Status: cancelled by decision 56 before any training run.** Phase 3 (docs/V3_DESIGN.md) tests RLCD on real deployment feedback instead. This section stays as the record of the method and the SFT baseline. Sessions 3-1 and 3-2 (docs/KAGGLE.md section 11) will not run. The SFT numbers below are from `runs/sft_06b_env/metrics.json` (commit b49153b, not dirty, written by `scripts/evaluate_env.py runs/sft_06b` from `runs/sft_06b/results.jsonl.gz` on CPU), key `variants.<variant>.splits.<split>`. Decision 54 records the design.
 

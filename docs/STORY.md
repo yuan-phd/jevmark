@@ -23,7 +23,7 @@ Per-segment encoding that pins each answer slot to a token boundary and a fixed 
 - **On deterministic labels a bandit objective is at most extra SFT.** With its own temperature, the best arm is level with SFT plus T (-.002 [-.006, +.004]), and so is the control, more cross-entropy (+.002 [-.001, +.009]) (R2 section 3).
 - **A temperature is the strongest cheap fix.** One scalar fitted in-domain brings the four-schema mean ECE from .152 to .121; no arm gets below .121 without a temperature of its own, and outcome-only reward pushes it to .239 to .262 (R2 sections 1 and 3).
 
-Stage 2b (the arms on 1.7B) is kept but has not run; stage 3 was cancelled in favour of v3 (D56).
+Stage 2b (the arms on 1.7B) was not run, so this conclusion is for 0.6B (D58); stage 3 was cancelled in favour of v3 (D56).
 
 ## v3: partial feedback on a new domain is where RLCD helps
 
@@ -59,4 +59,4 @@ Predictions: 1 is a tie at N 500 and holds from N 2000, 2 holds, 3 fails, 4 hold
 
 ## Pending
 
-Stage 2b (the RLCD arms on 1.7B), ranked after v3, and the optional delta-filing demonstration, which needs the human's go-ahead (D56).
+Only the optional delta-filing demonstration, which needs the human's go-ahead (D56); stage 2b was closed without a run (D58).
