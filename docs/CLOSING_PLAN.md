@@ -49,9 +49,10 @@
 - step 1407 的 top-1 均值 .861 对通道线 .688，明显过度自信
 
 ### 验证计划（单线程，按顺序）
-- [ ] V-a　评估干净 RLCD 的 adapter_last（step 1407），run 名 v3_06b_direct_brier_n5000_s0_last
+- [x] V-a　评估干净 RLCD 的 adapter_last（step 1407），run 名 v3_06b_direct_brier_n5000_s0_last
   - 做法：上传 runs/v3_06b_direct_brier_n5000_s0/adapter_last 为数据集，评估 notebook 用 ADAPTER_EVAL，约 30 分钟
   - 读法：准确率仍在 .92 左右，只是更锐 → 崩溃是噪声特有的；明显低于 .929 → 是普通过拟合，噪声叙述要重写
+  - 结果（commit 77f8a05）：干净 run 在 step 1407 准确率 .933 [.924, .942]，保持住了，只是更锐（ECE .026 → .045）；选择分数超出下限的增长 +.059，加噪 run 为 +.284。崩溃是噪声特有的，不是普通过拟合
 - [ ] V-b　软目标诊断 run：用 .2 + .6 × 干净标签当 Brier 目标，相当于无穷次抽样的极限，带 oracle 输入，只作诊断　→ 依赖 V-a 的结果决定要不要做和怎么问
   - 做法：train_rlcd.py 的 log 模式加一个噪声模式 soft，其他 arm 拒绝，同会话评估 adapter_last，约 1.7 小时
   - 读法：还原后或通道尺度的 ECE 达到清洁 run 的水平 → 残差来自单次抽样的方差，是数据问题；明显高于 → 目标函数的局限（目标被压进 [.2, .8] 且选项概率要归一），是方法问题
