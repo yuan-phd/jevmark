@@ -329,28 +329,29 @@ def test_v3_notebook_parameters_and_session_plans_match_kaggle_md_and_train_rlcd
     for name in ("REPO", "COMMIT", "SESSION", "ADAPTER_DATASET", "LOG_DATASET", "LOG_SHA256", "SMOKE_STEPS", "MAX_HOURS"):
         assert re.search(rf"^{name} = ", params, re.M), name
     plan_for = v3_plan()
-    plans = {session: plan_for(session) for session in "ABCD"}
+    plans = {session: plan_for(session) for session in "ABCDE"}
     names = {session: [run_name_of(*run) for run in plan] for session, (plan, run_name_of) in plans.items()}
     assert names["A"] == [f"v3_06b_{arm}_n{n}_s0" for arm in ("full_sft", "positive_sft") for n in (500, 2000, 5000)]
     assert names["B"] == ["v3_06b_direct_brier_n500_s0", "v3_06b_direct_brier_n2000_s0", "v3_06b_direct_brier_n5000_s0", "v3_06b_direct_brier_n5000_s1"]
     assert names["C"] == ["v3_06b_direct_brier_n5000_s2", "v3_06b_direct_brier_n5000_s0_noisy", "v3_06b_positive_sft_n5000_s0_noisy", "v3_06b_direct_brier_n5000_s0_log1"]
     assert names["D"] == ["v3_06b_full_sft_n5000_s1", "v3_06b_full_sft_n5000_s2"]  # task 3.6
+    assert names["E"] == ["v3_06b_direct_brier_n5000_s0_noisy_soft"]  # task 3.6, decision 59
     all_names = [n for session in "ABC" for n in names[session]]
     assert len(all_names) == len(set(all_names)) == 14  # the 14 trained runs of V3_DESIGN section 8
-    assert not set(names["D"]) & set(all_names)
+    assert not (set(names["D"]) | set(names["E"])) & set(all_names)
     spec = importlib.util.spec_from_file_location("train_rlcd_nb", REPO / "scripts" / "train_rlcd.py")
     rl = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = rl
     spec.loader.exec_module(rl)
     for session, (plan, run_name_of) in plans.items():
         for arm, n, seed, noisy, log in plan:
-            assert arm in rl.LOG_ARMS and not (noisy and arm == "full_sft")
+            assert arm in rl.LOG_ARMS and not (noisy and arm == "full_sft") and (noisy != "soft" or arm == "direct_brier")
             assert run_name_of(arm, n, seed, noisy, log) == rl.log_run_name({"size": "06b", "arm": arm, "seed": seed}, n, noisy, log)
     kaggle_md = (REPO / "docs" / "KAGGLE.md").read_text()
     section = kaggle_md[kaggle_md.index("## 12. v3") :]
-    for session in "ABCD":
+    for session in "ABCDE":
         assert f'SESSION = "{session}"' in section, session
-    assert 'assert SESSION in ("A", "B", "C", "D")' in cells[1]
+    assert 'assert SESSION in ("A", "B", "C", "D", "E")' in cells[1]
     assert "jevmark-v3-logs" in section and "LOG_SHA256" in section
 
 
@@ -449,4 +450,38 @@ def test_adapter_eval_parameters_in_kaggle_md_match_the_notebook_and_the_split_o
     assert '"name": "v3_06b_direct_brier_n5000_s0_noisy_last"' in section and '"adapter_dir": "adapter_last"' in section
     summary = code_cells("kaggle_eval.ipynb")[-1]
     assert str(list(V3_EVAL_SPLITS)).replace("'", '"') in summary
+
+
+def test_v3_notebook_noise_flags_parse_to_the_modes_train_rlcd_uses():
+    spec = importlib.util.spec_from_file_location("train_rlcd_flags", REPO / "scripts" / "train_rlcd.py")
+    rl = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = rl
+    spec.loader.exec_module(rl)
+    clone = code_cells("kaggle_v3.ipynb")[1]
+    namespace = {}
+    exec(clone[clone.index("NOISE_FLAG = ") : clone.index("EVAL_LAST = ")], namespace)
+    expected = {False: None, True: "fixed", "soft": "soft"}
+    for noisy, flag in namespace["NOISE_FLAG"].items():
+        args = rl.parse_args(["--config", "x", "--log", "l", "--n", "5", *flag.split()])
+        assert args.noise == expected[noisy], noisy
+        assert namespace["NOISE_SUFFIX"][noisy] == rl.NOISE_SUFFIX[expected[noisy]]
+    assert namespace["NOISE_FLAG"][True] == "--noisy"  # sessions A to D run at a commit that knows only --noisy
+
+
+def test_v3_notebook_session_e_evaluates_adapter_last_after_the_selected_adapter():
+    cells = code_cells("kaggle_v3.ipynb")
+    assert 'EVAL_LAST = SESSION == "E"' in cells[1] and '*([f"{r}_last" for r in RUNS] if EVAL_LAST else [])' in cells[1]
+    loop = next(c for c in cells if "for (arm, n, seed, noisy, log), run_name in zip(PLAN, RUNS):" in c)
+    steps = [
+        "!python scripts/evaluate.py --ckpt runs/{run_name} --device cuda",
+        "DONE.append(run_summary(run_name, log, summary, run_started))",
+        "if EVAL_LAST:",
+        "!python scripts/prepare_adapter_run.py --adapter runs/{run_name}/adapter_last --source-run runs/{run_name} --adapter-dir adapter_last --name {last_name}",
+        "!python scripts/evaluate.py --ckpt runs/{last_name} --device cuda",
+        "copy_run(last_name)",
+        'last["adapter_sha256"] == file_sha256(OUT / run_name / "adapter_last" / "adapter_model.safetensors")',
+        "LAST DONE",
+    ]
+    positions = [loop.index(step) for step in steps]
+    assert positions == sorted(positions)
 

@@ -80,8 +80,7 @@ Log mode (v3, task 3.3, decision 56, docs/V3_DESIGN.md section 5): --log
 runs/v3_log_s<k>/log.jsonl --n N with configs/v3_06b.yaml replaces sampling by the
 logged interactions of a deployment-feedback log (jevmark/feedback.py). Each logged
 record's question is rebuilt in its stored option order, which is the order the
-logging policy read; the logged action and its outcome (the flipped outcome with
---noisy) are the only feedback, with no behaviour mixture, no importance weights,
+logging policy read; the logged action and its outcome are the only feedback, with no behaviour mixture, no importance weights,
 no KL term and no reference model. Training uses the first 0.9 N interactions,
 every epoch in a seeded order. The arms:
 
@@ -89,9 +88,20 @@ every epoch in a seeded order. The arms:
   outcome is 1; outcome-0 interactions are skipped.
 - full_sft: cross-entropy on gold for every interaction, gold read from the data
   file (training.data_file), never from the log; it never reads an outcome to
-  train, and --noisy is refused for it.
+  train, and --noise fixed is refused for it.
 - direct_brier: (r - p_a)^2 on the logged action's probability for every
   interaction, positives and negatives.
+
+--noise selects the outcome the learner trains on (decisions 56 and 59). Without it,
+the logged outcome. --noise fixed (alias --noisy): the stored flipped outcome, one
+fixed draw per interaction; refused for full_sft, which never reads an outcome to
+train. --noise soft: the expected flipped outcome f + (1 - 2f) r, .8 for a correct
+action and .2 otherwise at the log's flip rate f, read from the clean outcome column;
+it is the infinite-draw limit with an oracle input, a diagnostic only, and runs for
+direct_brier alone. With either noise mode, selection reads the stored flipped
+outcomes, as a real log would hold them. The training log's outcome_rate is the mean
+training target of the micro-batch: the outcome rate for 0/1 targets, the mean soft
+target with --noise soft.
 
 Every arm takes steps = max(v3.min_steps, ceil(v3.epochs x 0.9 N / effective
 batch)), warmup and linear decay as configured, from the --init adapter (default
@@ -100,9 +110,11 @@ log-likelihood of the logged outcomes under the model's probability of the logge
 action on the last 0.1 N interactions, every training.eval_every steps and at the
 last step; step 0 (the starting adapter) is logged as the reference and is not a
 candidate, and gold is never read for it. config.yaml and train_summary.json record
-the log's sha256 and seed, N, the arm, the noisy flag and the selection curve.
-Run names: v3_<size>_<arm>_n<N>_s<seed>, plus _noisy, plus _log<k> for a log drawn
-with seed k > 0. --resume needs the same --log, --n and --noisy, which name the run.
+the log's sha256 and seed, N, the arm, the noise mode (v3.noise; v3.noisy is true for
+either mode; a config without v3.noise reads as fixed when v3.noisy is true) and the
+selection curve. Run names: v3_<size>_<arm>_n<N>_s<seed>, plus _noisy (fixed) or
+_noisy_soft (soft), plus _log<k> for a log drawn with seed k > 0. --resume needs the
+same --log, --n and noise mode, which name the run.
 """
 
 from __future__ import annotations
@@ -134,7 +146,7 @@ from jevmark.environment import NoisyEnvironment
 from jevmark.environment import cross_entropy as theta_cross_entropy
 from jevmark.environment import expected_brier as theta_expected_brier
 from jevmark.environment import theta
-from jevmark.feedback import Interaction, bernoulli_log_likelihood, file_sha256, prefix, read_log
+from jevmark.feedback import FLIP_RATE, Interaction, bernoulli_log_likelihood, file_sha256, prefix, read_log
 from jevmark.metrics import QuestionResult, split_metrics
 from jevmark.model import JevMark, keep_lora_fp32
 from jevmark.schema import ChoiceQuestion, Request
@@ -421,7 +433,7 @@ LOG_ARMS = ("positive_sft", "full_sft", "direct_brier")
 class LogExample:
     encoded: Encoded
     action: int  # the logged action's index in the stored option order
-    outcome: int  # the logged outcome, or the flipped one with --noisy
+    outcome: float  # the training or selection target: the logged outcome, the stored flipped one, or the soft target (--noise)
     gold: int | None  # the gold index, only for full_sft
 
 
@@ -438,14 +450,38 @@ def log_seed_of(log_path: Path) -> int:
     return int(json.loads(metrics.read_text())["sampling"]["seed"])
 
 
-def log_run_name(config: dict[str, Any], n: int, noisy: bool, log_seed: int) -> str:
+NOISE_MODES = ("fixed", "soft")
+NOISE_SUFFIX = {None: "", "fixed": "_noisy", "soft": "_noisy_soft"}
+OUTCOME_COLUMNS = ("clean", "flipped", "soft")
+
+
+def noise_of(v3: dict[str, Any]) -> str | None:
+    """The run's noise mode; a config written before --noise existed reads as fixed when v3.noisy is true."""
+    if v3.get("noise") is not None:
+        return v3["noise"]
+    return "fixed" if v3.get("noisy") else None
+
+
+def soft_target(outcome: int, flip_rate: float) -> float:
+    """The expected flipped outcome of an action with clean outcome r: f + (1 - 2f) r."""
+    return flip_rate + (1 - 2 * flip_rate) * outcome
+
+
+def log_run_name(config: dict[str, Any], n: int, noise: str | bool | None, log_seed: int) -> str:
     if config.get("run_name"):
         return config["run_name"]
-    return f"v3_{config['size']}_{config['arm']}_n{n}_s{config['seed']}" + ("_noisy" if noisy else "") + (f"_log{log_seed}" if log_seed else "")
+    noise = "fixed" if noise is True else (None if noise is False else noise)
+    return f"v3_{config['size']}_{config['arm']}_n{n}_s{config['seed']}" + NOISE_SUFFIX[noise] + (f"_log{log_seed}" if log_seed else "")
 
 
-def log_examples(interactions: Sequence[Interaction], records: dict[str, dict[str, Any]], jev: JevMark, max_tokens: int, noisy: bool, with_gold: bool) -> list[LogExample]:
-    """One example per interaction, the question rebuilt in the record's stored option order, which must be the logged order."""
+def log_examples(interactions: Sequence[Interaction], records: dict[str, dict[str, Any]], jev: JevMark, max_tokens: int, column: str, with_gold: bool, flip_rate: float = FLIP_RATE) -> list[LogExample]:
+    """One example per interaction, the question rebuilt in the record's stored option order, which must be the logged order.
+
+    column picks the target: clean (the logged outcome), flipped (the stored flipped outcome) or soft (soft_target of
+    the logged outcome at flip_rate).
+    """
+    if column not in OUTCOME_COLUMNS:
+        raise ValueError(f"unknown outcome column {column!r}; expected one of {OUTCOME_COLUMNS}")
     examples = []
     for interaction in interactions:
         record = records[interaction.record_id]
@@ -454,7 +490,7 @@ def log_examples(interactions: Sequence[Interaction], records: dict[str, dict[st
             raise SystemExit(f"{interaction.record_id}: the data file's option order differs from the logged one; the log was not drawn from this file")
         request = Request.from_dict({"state": record["state"], "questions": {interaction.question_id: question}})
         gold = list(question["criteria"]).index(record["gold"][interaction.question_id]) if with_gold else None
-        outcome = interaction.flipped_outcome if noisy else interaction.outcome
+        outcome = {"clean": interaction.outcome, "flipped": interaction.flipped_outcome, "soft": soft_target(interaction.outcome, flip_rate)}[column]
         examples.append(LogExample(encode(request, jev.tokenizer, max_tokens), interaction.action, outcome, gold))
     return examples
 
@@ -495,39 +531,42 @@ def select_score(jev: JevMark, examples: Sequence[LogExample], batch_size: int) 
 def main_log(args: argparse.Namespace, started: float) -> int:
     """Train one v3 learner from a deployment-feedback log (the module docstring's log mode)."""
     if args.env != "deterministic":
-        raise SystemExit("--log and --env noisy do not combine; the log's noisy condition is --noisy")
+        raise SystemExit("--log and --env noisy do not combine; the log's noisy conditions are --noise fixed and --noise soft")
     if args.n is None or args.n < 1:
         raise SystemExit("--log needs --n, the number of logged interactions the learner sees")
     log_path = Path(args.log)
     log_sha = file_sha256(log_path)
     log_seed = log_seed_of(log_path)
     config = load_config(args.config, args.overrides)
-    run_dir = Path(args.runs_dir) / log_run_name(config, args.n, args.noisy, log_seed)
+    run_dir = Path(args.runs_dir) / log_run_name(config, args.n, args.noise, log_seed)
     if args.resume:
         if not (run_dir / "last" / "state.pt").is_file():
             raise SystemExit(f"--resume: no saved state at {run_dir / 'last'}")
         config = load_config(run_dir / "config.yaml")
-        if config["v3"]["log_sha256"] != log_sha or config["v3"]["n"] != args.n or config["v3"]["noisy"] != args.noisy:
-            raise SystemExit(f"--resume: {run_dir} was trained on another log, N or noisy setting than given")
+        if config["v3"]["log_sha256"] != log_sha or config["v3"]["n"] != args.n or noise_of(config["v3"]) != args.noise:
+            raise SystemExit(f"--resume: {run_dir} was trained on another log, N or noise mode than given")
     else:
         stale = [name for name in RL_STALE_STATE if (run_dir / name).exists()]
         if stale:
             raise SystemExit(f"{run_dir} already holds a training run ({', '.join(stale)}); use --resume, or delete the directory, or another run_name")
         if config["arm"] not in LOG_ARMS:
             raise SystemExit(f"arm {config['arm']!r} does not run in log mode; expected one of {LOG_ARMS}")
-        if args.noisy and config["arm"] == "full_sft":
-            raise SystemExit("full_sft trains on gold and never reads an outcome, so --noisy would change only its selection; it is refused")
+        if args.noise == "fixed" and config["arm"] == "full_sft":
+            raise SystemExit("full_sft trains on gold and never reads an outcome, so --noise fixed would change only its selection; it is refused")
+        if args.noise == "soft" and config["arm"] != "direct_brier":
+            raise SystemExit(f"--noise soft is a direct_brier diagnostic (decision 59); {config['arm']} is refused")
         if float(config["v3"]["beta"]) != 0.0:
             raise SystemExit("log mode has no KL term and no reference model; v3.beta must be 0 (decision 56)")
         init_dir = Path(args.init or config["v3"]["init"])
         if not (init_dir / "adapter" / "adapter_model.safetensors").is_file():
             raise SystemExit(f"--init {init_dir}: no adapter at {init_dir / 'adapter'}")
         config["run_name"] = run_dir.name
-        config["v3"].update({"init": str(init_dir), "init_adapter_sha256": adapter_sha256(init_dir / "adapter"), "log": str(log_path), "log_sha256": log_sha, "log_seed": log_seed, "n": args.n, "noisy": args.noisy})
+        config["v3"].update({"init": str(init_dir), "init_adapter_sha256": adapter_sha256(init_dir / "adapter"), "log": str(log_path), "log_sha256": log_sha, "log_seed": log_seed, "n": args.n, "noisy": args.noise is not None, "noise": args.noise})
     init_dir = Path(config["v3"]["init"])
     if adapter_sha256(init_dir / "adapter") != config["v3"]["init_adapter_sha256"]:
         raise SystemExit(f"the adapter at {init_dir} is not the one this run started from (sha256 differs)")
-    arm, seed, n, noisy = config["arm"], int(config["seed"]), int(config["v3"]["n"]), bool(config["v3"]["noisy"])
+    arm, seed, n, noise = config["arm"], int(config["seed"]), int(config["v3"]["n"]), noise_of(config["v3"])
+    noisy = noise is not None
     train_cfg = config["training"]
     data_dir = Path(args.data_dir) if args.data_dir else REPO / train_cfg["data_dir"]
     data_path = data_dir / train_cfg["data_file"]
@@ -536,6 +575,9 @@ def main_log(args: argparse.Namespace, started: float) -> int:
     if logged_data_sha and logged_data_sha != data_sha:
         raise SystemExit(f"{data_path} has sha256 {data_sha}, but the log was drawn from {logged_data_sha}")
     config["v3"]["data_sha256"] = data_sha
+    flip_rate = float(json.loads((log_path.parent / "metrics.json").read_text()).get("sampling", {}).get("flip_rate", FLIP_RATE))
+    if noise == "soft":
+        config["v3"]["flip_rate"] = flip_rate
 
     split = prefix(read_log(log_path), n, float(config["v3"]["train_share"]))
     micro = int(train_cfg["micro_batch"])
@@ -553,10 +595,12 @@ def main_log(args: argparse.Namespace, started: float) -> int:
 
     jev = JevMark.load(config, device=args.device)
     records = {r["id"]: r for r in read_jsonl(data_path)}
-    train_all = log_examples(split.train, records, jev, max_tokens, noisy, with_gold=arm == "full_sft")
+    train_column = {None: "clean", "fixed": "flipped", "soft": "soft"}[noise]
+    train_all = log_examples(split.train, records, jev, max_tokens, train_column, with_gold=arm == "full_sft", flip_rate=flip_rate)
     used = [k for k, e in enumerate(train_all) if arm != "positive_sft" or e.outcome == 1]
     pool = [train_all[k] for k in used]
-    select = log_examples(split.select, records, jev, max_tokens, noisy, with_gold=False)
+    # Selection reads what a real log would hold: the stored flipped outcome under either noise mode (decision 59).
+    select = log_examples(split.select, records, jev, max_tokens, "flipped" if noisy else "clean", with_gold=False)
     if not pool:
         raise SystemExit(f"{arm}: no training interactions in the first {len(split.train)} (positive_sft needs outcome-1 interactions)")
     say(f"run {config['run_name']}: arm {arm}, log {log_path} (seed {log_seed}), N {n}: train on {len(split.train)} ({len(pool)} used), select on {len(select)}; {total_steps} steps; {jev.device}, autocast {jev.autocast_dtype}")
@@ -571,7 +615,7 @@ def main_log(args: argparse.Namespace, started: float) -> int:
             say("WARNING: NaN or inf in first-batch slot logits under fp16; reloading the model in fp32 (decision 28)")
             jev.use_fp32()
             fallback_used = True
-        log_line(log_path_out, {"event": "start", "arm": arm, "log": str(log_path), "log_sha256": log_sha, "log_seed": log_seed, "n": n, "n_train": len(split.train), "n_used": len(pool), "n_select": len(select), "noisy": noisy, "init": str(init_dir), "init_adapter_sha256": config["v3"]["init_adapter_sha256"], "fp32_fallback_used": fallback_used, "autocast": str(jev.autocast_dtype), "total_steps": total_steps, "warmup_steps": warmup, "accumulation": accumulation})
+        log_line(log_path_out, {"event": "start", "arm": arm, "log": str(log_path), "log_sha256": log_sha, "log_seed": log_seed, "n": n, "n_train": len(split.train), "n_used": len(pool), "n_select": len(select), "noisy": noisy, "noise": noise, "init": str(init_dir), "init_adapter_sha256": config["v3"]["init_adapter_sha256"], "fp32_fallback_used": fallback_used, "autocast": str(jev.autocast_dtype), "total_steps": total_steps, "warmup_steps": warmup, "accumulation": accumulation})
 
     attach_sft_adapter(jev, init_dir / "adapter", config)
     trainable = [p for p in jev.model.parameters() if p.requires_grad]
@@ -697,6 +741,7 @@ def main_log(args: argparse.Namespace, started: float) -> int:
         "n_used": len(pool),
         "n_select": len(select),
         "noisy": noisy,
+        "noise": noise,
         "init": str(init_dir),
         "init_adapter_sha256": config["v3"]["init_adapter_sha256"],
         "init_select": progress["init_select"],
@@ -727,10 +772,15 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--data-dir", default=None, help="default: training.data_dir from the config, relative to the repository")
     parser.add_argument("--log", default=None, help="v3 log mode: a deployment-feedback log, runs/v3_log_s<k>/log.jsonl, with configs/v3_06b.yaml; replaces sampling by the logged interactions")
     parser.add_argument("--n", type=int, default=None, help="log mode: the learner sees the first N logged interactions, trains on the first 0.9 N and selects on the last 0.1 N")
-    parser.add_argument("--noisy", action="store_true", help="log mode: the outcome is the logged one flipped with probability 0.2 (the noisy condition); refused for full_sft")
+    parser.add_argument("--noise", choices=NOISE_MODES, default=None, help="log mode: train on the stored flipped outcome (fixed, refused for full_sft) or on the expected flipped outcome from the clean one (soft, direct_brier only, a diagnostic, decision 59); selection reads the stored flipped outcome either way")
+    parser.add_argument("--noisy", action="store_true", help="log mode: alias of --noise fixed, kept for notebooks and commands written before --noise")
     args = parser.parse_args(argv)
-    if (args.n is not None or args.noisy) and args.log is None:
-        parser.error("--n and --noisy are log-mode options; they need --log")
+    if args.noisy:
+        if args.noise not in (None, "fixed"):
+            parser.error("--noisy is --noise fixed; it does not combine with --noise soft")
+        args.noise = "fixed"
+    if (args.n is not None or args.noise is not None) and args.log is None:
+        parser.error("--n and --noise are log-mode options; they need --log")
     return args
 
 

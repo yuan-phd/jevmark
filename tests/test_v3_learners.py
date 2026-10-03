@@ -149,8 +149,8 @@ def test_noisy_reads_the_flipped_outcome_and_names_the_run(setup, tmp_path, base
     config = load_config(setup.config_path)
     jev = JevMark.load(config, device="cpu")
     records = {r["id"]: r for r in setup.records}
-    clean = rl.log_examples(setup.log[:10], records, jev, 1024, noisy=False, with_gold=False)
-    noisy = rl.log_examples(setup.log[:10], records, jev, 1024, noisy=True, with_gold=False)
+    clean = rl.log_examples(setup.log[:10], records, jev, 1024, "clean", with_gold=False)
+    noisy = rl.log_examples(setup.log[:10], records, jev, 1024, "flipped", with_gold=False)
     assert [e.outcome for e in clean] == [i.outcome for i in setup.log[:10]]
     assert [e.outcome for e in noisy] == [i.flipped_outcome for i in setup.log[:10]]
     assert all(e.gold is None for e in clean)
@@ -285,3 +285,71 @@ def test_a_stored_adapter_becomes_a_run_that_evaluates(setup, tmp_path):
     metrics = json.loads((tmp_path / "v3_tiny_last_limit4" / "metrics.json").read_text())
     assert metrics["adapter_sha256"] == expected and metrics["lora_merged"] is True and metrics["model_id"] == "jevmark-v3_tiny_last"
     assert metrics["v3"]["log_sha256"] == source_config["v3"]["log_sha256"]
+
+
+# --noise soft (task 3.6, decision 59)
+
+
+def test_noise_mode_of_old_and_new_configs_and_the_run_names():
+    assert rl.noise_of({"noisy": True}) == "fixed" and rl.noise_of({"noisy": False}) is None and rl.noise_of({}) is None
+    assert rl.noise_of({"noisy": True, "noise": "soft"}) == "soft"
+    base = {"size": "06b", "arm": "direct_brier", "seed": 0}
+    assert rl.log_run_name(base, 5000, "soft", 0) == "v3_06b_direct_brier_n5000_s0_noisy_soft"
+    assert rl.log_run_name(base, 5000, "fixed", 0) == rl.log_run_name(base, 5000, True, 0) == "v3_06b_direct_brier_n5000_s0_noisy"
+    assert rl.log_run_name(base, 5000, None, 1) == rl.log_run_name(base, 5000, False, 1) == "v3_06b_direct_brier_n5000_s0_log1"
+    assert rl.parse_args(["--config", "x", "--log", "l", "--n", "5", "--noisy"]).noise == "fixed"
+    assert rl.parse_args(["--config", "x", "--log", "l", "--n", "5", "--noise", "soft"]).noise == "soft"
+    with pytest.raises(SystemExit):
+        rl.parse_args(["--config", "x", "--log", "l", "--n", "5", "--noisy", "--noise", "soft"])
+    with pytest.raises(SystemExit):
+        rl.parse_args(["--config", "x", "--noise", "soft"])
+
+
+def test_soft_targets_are_the_expected_flipped_outcome_and_the_loss_uses_them(setup):
+    config = load_config(setup.config_path)
+    jev = JevMark.load(config, device="cpu")
+    records = {r["id"]: r for r in setup.records}
+    soft = rl.log_examples(setup.log[:10], records, jev, 1024, "soft", with_gold=False)
+    assert [e.outcome for e in soft] == [pytest.approx(0.2 + 0.6 * i.outcome) for i in setup.log[:10]]
+    assert {round(e.outcome, 6) for e in soft} <= {0.2, 0.8}
+    assert [e.outcome for e in rl.log_examples(setup.log[:4], records, jev, 1024, "soft", with_gold=False, flip_rate=0.1)] == [pytest.approx(0.1 + 0.8 * i.outcome) for i in setup.log[:4]]
+    with pytest.raises(ValueError, match="outcome column"):
+        rl.log_examples(setup.log[:1], records, jev, 1024, "noisy", with_gold=False)
+    loss, stats = rl.log_batch_loss(jev, soft[:3], "direct_brier")
+    with torch.no_grad():
+        p = [float(torch.softmax(z.float(), dim=-1)[e.action]) for z, e in zip(jev.slot_logits([e.encoded for e in soft[:3]]), soft[:3])]
+    assert float(loss.detach()) == pytest.approx(sum((e.outcome - q) ** 2 for e, q in zip(soft[:3], p)) / 3, rel=1e-5)
+    assert stats["outcome_rate"] == pytest.approx(sum(e.outcome for e in soft[:3]) / 3)  # the mean training target
+
+
+def test_a_soft_run_trains_on_soft_targets_and_selects_on_the_stored_flipped_outcomes(setup, tmp_path, monkeypatch):
+    targets = []
+    real = rl.log_batch_loss
+
+    def spy(jev, batch, arm):
+        targets.extend(e.outcome for e in batch)
+        return real(jev, batch, arm)
+
+    monkeypatch.setattr(rl, "log_batch_loss", spy)
+    train(setup, tmp_path, "arm=direct_brier", "--noise", "soft", "--limit-steps", "2")
+    run_dir = tmp_path / f"v3_06b_direct_brier_n{N}_s0_noisy_soft"
+    config = yaml.safe_load((run_dir / "config.yaml").read_text())
+    assert config["v3"]["noise"] == "soft" and config["v3"]["noisy"] is True and config["v3"]["flip_rate"] == 0.2
+    assert targets and {round(x, 6) for x in targets} <= {0.2, 0.8}
+    start = next(e for e in events(run_dir) if e.get("event") == "start")
+    assert start["noise"] == "soft" and start["n_used"] == 36
+    select = next(e for e in events(run_dir) if e.get("event") == "select" and e["step"] == 0)
+    flipped = [i.flipped_outcome for i in setup.log[36:40]]
+    assert select["outcome_rate"] == pytest.approx(sum(flipped) / len(flipped))  # selection never sees the soft target or the clean column
+    with pytest.raises(SystemExit, match="noise mode"):
+        train(setup, tmp_path, "arm=direct_brier", "run_name=" + run_dir.name, "--noise", "fixed", "--resume")
+    train(setup, tmp_path, "arm=direct_brier", "--noise", "soft", "--resume")
+    summary = json.loads((run_dir / "train_summary.json").read_text())
+    assert summary["steps"] == 10 and summary["noise"] == "soft" and summary["noisy"] is True
+
+
+def test_soft_noise_is_refused_for_positive_sft_and_full_sft(setup, tmp_path):
+    for arm in ("positive_sft", "full_sft"):
+        with pytest.raises(SystemExit, match="soft"):
+            train(setup, tmp_path, f"arm={arm}", "--noise", "soft")
+

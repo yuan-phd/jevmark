@@ -388,7 +388,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "lora_merged": lora_merged,
         "adapter_sha256": hashlib.sha256((checkpoint / "adapter" / "adapter_model.safetensors").read_bytes()).hexdigest() if checkpoint is not None else None,
         "init_adapter_sha256": next((config[k].get("init_adapter_sha256") for k in ("rlcd", "v3") if isinstance(config.get(k), dict) and config[k].get("init_adapter_sha256")), None),
-        "v3": {k: config["v3"].get(k) for k in ("log", "log_sha256", "log_seed", "n", "noisy", "data_sha256")} | {"arm": config.get("arm")} if isinstance(config.get("v3"), dict) and config["v3"].get("log_sha256") else None,
+        "v3": {k: config["v3"].get(k) for k in ("log", "log_sha256", "log_seed", "n", "noisy", "noise", "data_sha256")} | {"arm": config.get("arm")} if isinstance(config.get("v3"), dict) and config["v3"].get("log_sha256") else None,
         "data_files_sha256": data_files,
         "confidence_note": "ECE and reliability use the top-1 probability; coverage uses the response confidence field (1 - H/ln K for choice and score, max(p, 1 - p) for noul).",
         "splits": split_results,

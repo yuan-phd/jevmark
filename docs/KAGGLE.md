@@ -300,20 +300,20 @@ Commit each run as in section 10.
 
 ## 12. v3: adaptation from deployment feedback (phase 3, decision 56)
 
-Specification: docs/V3_DESIGN.md. Notebook: `notebooks/kaggle_v3.ipynb`. Everything runs on 0.6B and starts from the sft_06b adapter in the `jevmark-sft-adapters` dataset (section 10). Token, secret, import and notebook settings are as in sections 1 to 3. Use one `COMMIT` for all sessions, pushed before session A. Session D (task 3.6, added after C) keeps that commit: its plan lives in the notebook, and the training and evaluation code are unchanged since, so import the current `notebooks/kaggle_v3.ipynb` and leave `COMMIT` at the sessions A to C commit (b5913eff27e1dc6290bd215e7d83b533b105ad83).
+Specification: docs/V3_DESIGN.md. Notebook: `notebooks/kaggle_v3.ipynb`. Everything runs on 0.6B and starts from the sft_06b adapter in the `jevmark-sft-adapters` dataset (section 10). Token, secret, import and notebook settings are as in sections 1 to 3. Use one `COMMIT` for all sessions, pushed before session A. Session D (task 3.6, added after C) keeps that commit: its plan lives in the notebook, and the training and evaluation code are unchanged since, so import the current `notebooks/kaggle_v3.ipynb` and leave `COMMIT` at the sessions A to C commit (b5913eff27e1dc6290bd215e7d83b533b105ad83). Session E (task 3.6, decision 59) needs `--noise soft`, which only the soft-target commit and later have, so it runs at that commit; the log-mode code is otherwise unchanged from b5913ef.
 
 ### Parameters per session
 
-| Parameter | Session A | Session B | Session C | Session D |
-|---|---|---|---|---|
-| `SESSION` | `SESSION = "A"` | `SESSION = "B"` | `SESSION = "C"` | `SESSION = "D"` |
-| `COMMIT` | the pushed commit | the same | the same | the same |
-| `ADAPTER_DATASET` | `/kaggle/input/jevmark-sft-adapters` | the same | the same | the same |
-| `LOG_DATASET` | not read | `/kaggle/input/jevmark-v3-logs` | the same | the same |
-| `LOG_SHA256` | not read (filled by the session) | `{0: "<seed 0 sha256>", 1: "<seed 1 sha256>"}` from session A's LOG DONE lines | the same | the same (only seed 0 is read) |
-| `SMOKE_STEPS` | 10 | 10 | 10 | 10 |
-| `MAX_HOURS` | 2.0 | 2.0 | 2.0 | 2.0 |
-| Inputs to add | the adapter dataset | the adapter dataset and `jevmark-v3-logs` | the same as B | the same as B |
+| Parameter | Session A | Session B | Session C | Session D | Session E |
+|---|---|---|---|---|---|
+| `SESSION` | `SESSION = "A"` | `SESSION = "B"` | `SESSION = "C"` | `SESSION = "D"` | `SESSION = "E"` |
+| `COMMIT` | the pushed commit | the same | the same | the same | the soft-target commit (task 3.6) |
+| `ADAPTER_DATASET` | `/kaggle/input/jevmark-sft-adapters` | the same | the same | the same | the same |
+| `LOG_DATASET` | not read | `/kaggle/input/jevmark-v3-logs` | the same | the same | the same |
+| `LOG_SHA256` | not read (filled by the session) | `{0: "<seed 0 sha256>", 1: "<seed 1 sha256>"}` from session A's LOG DONE lines | the same | the same (only seed 0 is read) | the same (only seed 0 is read) |
+| `SMOKE_STEPS` | 10 | 10 | 10 | 10 | 10 |
+| `MAX_HOURS` | 2.0 | 2.0 | 2.0 | 2.0 | 2.0 |
+| Inputs to add | the adapter dataset | the adapter dataset and `jevmark-v3-logs` | the same as B | the same as B | the same as B |
 
 ### What each session runs
 
@@ -325,8 +325,9 @@ Every session clones, installs, builds the nine v1.3 splits (`make data-build`),
 | B | the logs copied from `LOG_DATASET`; each log's sha256 must equal its metrics.json and `LOG_SHA256`, or the session stops (LOG OK lines) | direct_brier at N 500, 2000, 5000 (seed 0); direct_brier at N 5000, seed 1 | 3577 | 4.6 h |
 | C | as B | direct_brier at N 5000, seed 2; direct_brier and positive_sft at N 5000 with `--noisy`; direct_brier at N 5000 on the seed 1 log | 5628 | 6.5 h |
 | D (task 3.6) | as B, seed 0 log only | full_sft at N 5000, seeds 1 and 2, on the seed 0 log | 2814 | 2.6 h (measured rates: 60.5 min per 1407-step full_sft run and 11.5 min per evaluation, plus about 20 min setup) |
+| E (task 3.6, decision 59) | as B, seed 0 log only | direct_brier at N 5000 with `--noise soft` (trains on .2 + .6 x the clean outcome, selects on the stored flipped outcome), then its `adapter_last` evaluated as `<run>_last` (LAST DONE line) | 1407 | 1.7 h (60 min training, two 11.5-min evaluations, about 20 min setup) |
 
-Run names: `v3_06b_<arm>_n<N>_s<seed>`, plus `_noisy`, plus `_log1` for the seed 1 log. The smoke run is `<first run>_smoke` (gitignored).
+Run names: `v3_06b_<arm>_n<N>_s<seed>`, plus `_noisy` (fixed) or `_noisy_soft` (soft), plus `_log1` for the seed 1 log; session E adds `<run>_last`. The smoke run is `<first run>_smoke` (gitignored).
 
 ### Publishing the logs as `jevmark-v3-logs` after session A
 

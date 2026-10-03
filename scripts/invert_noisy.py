@@ -18,6 +18,13 @@ since renormalising after clipping moves the mass of clipped options onto the re
 the number of questions whose gold probability clipped to 0
 (their NLL is the floor, -log 1e-12), and, with --clean, the clean run's stored
 metrics on the same split for reference. The source run is never modified.
+
+Channel scale (decision 59): the stored run's top-1 probability against the channel
+outcome of its top option, f + (1 - 2f) x correct, with the same 15 bins as ECE, and
+with --clean the mapped-clean reference: the clean run's top-1 passed through
+f + (1 - 2f) p and scored against the same channel outcome, which is what a
+channel-calibrated copy of the clean run would score. Both carry bootstrap intervals
+by record. No clipping or renormalisation is involved, so the two are on one scale.
 """
 
 from __future__ import annotations
@@ -63,6 +70,29 @@ def invert_results(results: Sequence[QuestionResult], flip: float) -> tuple[list
     return out, kept
 
 
+def channel_targets(results: Sequence[QuestionResult], flip: float) -> list[float]:
+    """The expected flipped outcome of each question's top option: f + (1 - 2f) x correct."""
+    return [flip + (1 - 2 * flip) * float(r.correct) for r in results]
+
+
+def channel_ece(confidences: Sequence[float], results: Sequence[QuestionResult], flip: float) -> dict[str, Any]:
+    """ECE of the confidences against the channel outcome, same bins as ECE, with its bootstrap interval by record."""
+    targets = channel_targets(results, flip)
+    ci = bootstrap_intervals([r.record_id for r in results], targets, list(confidences))
+    return {"n": len(results), "ece": ece(confidences, targets), "ece_ci": ci["ece_ci"],
+            "mean_confidence": sum(confidences) / len(confidences), "mean_channel_outcome": sum(targets) / len(targets)}
+
+
+def stored_channel(results: Sequence[QuestionResult], flip: float) -> dict[str, Any]:
+    """The run's own top-1 on the channel scale."""
+    return channel_ece([r.top1 for r in results], results, flip)
+
+
+def mapped_channel(results: Sequence[QuestionResult], flip: float) -> dict[str, Any]:
+    """A clean run's top-1 mapped onto the channel scale, f + (1 - 2f) p: the reference for a channel-calibrated learner."""
+    return channel_ece([flip + (1 - 2 * flip) * r.top1 for r in results], results, flip)
+
+
 def top1_only(results: Sequence[QuestionResult], flip: float) -> dict[str, Any]:
     """ECE of the inverted top-1 probability alone, (top1 - flip) / (1 - 2 flip) clipped to [0, 1], without renormalising."""
     conf = [min(1.0, max(0.0, (r.top1 - flip) / (1 - 2 * flip))) for r in results]
@@ -100,10 +130,12 @@ def run(source: Path, flip: float, split: str, clean: Path | None, out: Path) ->
         "stored": block(stored),
         "inverted": block(inverted),
         "inverted_top1_only": top1_only(stored, flip),
+        "stored_channel": stored_channel(stored, flip),
     }
     if clean is not None:
         clean_results = [r for r in read_results(clean / "results.jsonl.gz") if r.split == split]
-        result["clean_reference"] = {"run": str(clean.relative_to(REPO) if clean.is_relative_to(REPO) else clean), **block(clean_results)}
+        result["clean_reference"] = {"run": str(clean.relative_to(REPO) if clean.is_relative_to(REPO) else clean), **block(clean_results),
+                                     "mapped_channel": mapped_channel(clean_results, flip)}
     out.mkdir(parents=True, exist_ok=True)
     (out / "metrics.json").write_text(json.dumps(result, indent=2) + "\n")
     return result
@@ -131,6 +163,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"  {name:8s} acc {b['accuracy']:.3f} ece {b['ece']:.3f} [{b['ece_ci'][0]:.3f}, {b['ece_ci'][1]:.3f}] brier {b['brier']:.3f} nll {b['nll']:.3f} top1 {b['mean_top1']:.3f}  {cov}")
     top = r["inverted_top1_only"]
     print(f"  top-1 only: ece {top['ece']:.3f} [{top['ece_ci'][0]:.3f}, {top['ece_ci'][1]:.3f}] mean confidence {top['mean_confidence']:.3f}")
+    ch = r["stored_channel"]
+    print(f"  channel scale: stored ece {ch['ece']:.3f} [{ch['ece_ci'][0]:.3f}, {ch['ece_ci'][1]:.3f}], mean top-1 {ch['mean_confidence']:.3f} against channel line {ch['mean_channel_outcome']:.3f}")
+    if "clean_reference" in r:
+        ref = r["clean_reference"]["mapped_channel"]
+        print(f"  channel scale: mapped-clean reference ece {ref['ece']:.3f} [{ref['ece_ci'][0]:.3f}, {ref['ece_ci'][1]:.3f}]")
     print(f"wrote {out / 'metrics.json'}")
     return 0
 

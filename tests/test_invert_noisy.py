@@ -62,3 +62,27 @@ def test_top1_inversion_recovers_calibration_to_correctness(tmp_path):
     m = json.loads((tmp_path / "runs" / "noisy_inverted" / "metrics.json").read_text())
     assert m["flip"] == 0.2 and m["stored"]["accuracy"] == m["inverted"]["accuracy"] == m["clean_reference"]["accuracy"]
     assert set(m["inverted"]["coverage"]) == {"0.80", "0.90", "0.95"} and m["inverted_top1_only"]["ece"] < m["stored"]["ece"]
+
+
+def test_channel_ece_by_hand_and_the_mapped_clean_reference():
+    rs = [QuestionResult(f"r{i}", "label", "choice", probs, gold, LABELS, split=V3_TEST_FULL)
+          for i, (probs, gold) in enumerate([((0.8, 0.1, 0.05, 0.05), 0), ((0.8, 0.1, 0.05, 0.05), 1), ((0.5, 0.3, 0.1, 0.1), 0)])]
+    # top-1 .8, .8, .5 against channel outcomes .8, .2, .8; bins: .8 -> 12, .5 -> 7; ECE = (2/3)|.8 - .5| + (1/3)|.5 - .8| = .3
+    assert invert_noisy.channel_targets(rs, 0.2) == pytest.approx([0.8, 0.2, 0.8])
+    assert invert_noisy.stored_channel(rs, 0.2)["ece"] == pytest.approx(0.3)
+    # mapped: .2 + .6 x (.8, .8, .5) = .68, .68, .5; bins 10 and 7; ECE = (2/3)|.5 - .68| + (1/3)|.8 - .5| = .22
+    assert invert_noisy.mapped_channel(rs, 0.2)["ece"] == pytest.approx(0.22)
+
+
+def test_a_channel_calibrated_run_has_small_channel_ece_and_a_calibrated_clean_run_a_small_reference():
+    noisy = channel_calibrated(20000, 0.2)
+    assert invert_noisy.stored_channel(noisy, 0.2)["ece"] < 0.01
+    rng = np.random.default_rng(1)
+    clean = []
+    for i in range(20000):
+        c = rng.uniform(0.4, 1.0)
+        gold = 0 if rng.random() < c else int(rng.integers(1, 4))
+        clean.append(QuestionResult(f"c{i}", "label", "choice", (c, *([(1 - c) / 3] * 3)), gold, LABELS, split=V3_TEST_FULL))
+    reference = invert_noisy.mapped_channel(clean, 0.2)
+    assert reference["ece"] < 0.01 and len(reference["ece_ci"]) == 2 and reference["ece_ci"][0] <= reference["ece_ci"][1]  # a near-zero ECE can sit below its resampled interval
+
