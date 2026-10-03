@@ -1,6 +1,6 @@
 # jevmark: the story so far
 
-Every number cites its source: `R1` is docs/RESULTS_v1.md, `R2` docs/RESULTS_v2.md, `D<n>` decision n in docs/DECISIONS.md; each report names the `runs/.../metrics.json` key behind its numbers.
+Every number cites its source: `R1` is docs/RESULTS_v1.md, `R2` docs/RESULTS_v2.md, `R3` docs/RESULTS_v3.md, `D<n>` decision n in docs/DECISIONS.md; each report names the `runs/.../metrics.json` key behind its numbers.
 
 ## What it is
 
@@ -26,7 +26,9 @@ Routing, tool choice, reranking and completion checks in an agent need a choice 
 - Every trained noul kind answers its negated question consistently in at least 90 percent of pairs (R1 section 3).
 - Off-distribution, SFT is overconfident: at 0.6B, ECE is .164, .207 and .169 on AG News, emotion and Yelp, against .037, .045 and .070 for the frozen base (R1 section 2).
 
-## v2 results so far: negative, and what they taught
+## v2 results: negative on full labels, and what they taught
+
+Stages 1 and 2a (five arms at 0.6B, three seeds) are complete; stage 2b (1.7B) is kept but has not run, and stage 3 was cancelled in favour of v3 (D56).
 
 - **A proper score used as a REINFORCE reward is broken.** A wrong action a has p_a at most 1 - p_gold, so its Brier or log reward is never below gold's; the group-mean advantage pushes probability away from gold when K > 2 and is zero for nouls. SST-5 score accuracy fell from .636 to .111, and a simulation found the update lowering the gold logit in 24.0 percent of questions (R2 section 2, D52).
 - **On deterministic labels, every bandit objective is at most extra SFT.** Once each arm gets its own temperature, the best arm is level with SFT plus T (-.002 [-.006, +.004]), and so is the control, more cross-entropy on the same records (+.002 [-.001, +.009]) (R2 section 3).
@@ -34,9 +36,19 @@ Routing, tool choice, reranking and completion checks in an agent need a choice 
 - **Temperature is the strongest cheap fix.** One scalar fitted on in-domain valid brings the four-schema mean ECE from .152 to .121 and in-domain ECE from .013 to .005. No RLCD arm gets below .121 without a temperature of its own (R2 sections 1 and 3).
 - **Seed variance exceeds record-level intervals.** The four-schema mean moves by .023 to .041 between seeds, 1.4 to 3.5 times its bootstrap interval's width; seed 0 alone overstated the gap by .012 to .020 (R2 section 3).
 
+## v3 results: partial feedback on a new domain
+
+sft_06b answered 9942 Banking77 train messages once with epsilon 0.1 exploration and only the correctness of its chosen option was logged; five learners used the first N interactions, N 500, 2000 and 5000, at equal steps, 14 trained runs at 0.6B (R3 section 1, D56).
+
+- **Negative feedback helps once there is enough of it.** RLCD (pathwise Brier on the logged action) ties positive-only SFT at N 500, +.002 [-.006, +.009], and beats it by 2.7 and 2.4 points at N 2000 and 5000, +.026 [+.019, +.033] for the three-seed mean at N 5000 (R3 sections 2 and 3).
+- **It is the calibrated way to use the log.** RLCD's ECE is .052 to .060 below positive-only SFT's at every N; positive-only SFT, trained on confirmed answers alone, is the worst-calibrated learner and keeps 90 percent of its answers at the .95 confidence threshold with 93 to 94 percent accuracy (R3 sections 2 and 6).
+- **Labels still win.** Full-label SFT stays ahead by 0.7 to 1.8 points and the gap does not shrink with N: 1.6 points [1.0, 2.2] at N 5000 for the seed mean, at level ECE and higher Brier and NLL (R3 section 3).
+- **Under noisy feedback a proper score calibrates to the channel.** With outcomes flipped at 0.2, RLCD loses less accuracy than positive-only SFT (+.017 [+.007, +.028] relative), but its ECE goes from .026 to .164, because it learns P(revealed outcome) rather than P(correct). Inverting the known flip rate brings ECE to .051 to .066, not back to .026 (R3 section 4, D57).
+- **Adaptation costs the original domain.** At N 5000 RLCD loses 2.7 to 4.3 in-domain points across seeds and full-label SFT 5.2, while positive-only SFT loses under 1; a fitted temperature loses nothing and gives the lowest Banking77 ECE, with no accuracy gain (R3 section 5).
+
 ## Pending
 
-v3 (docs/V3_DESIGN.md, D56): adaptation to Banking77 from a log of sft_06b's own actions with only their correctness revealed, comparing RLCD with positive-only SFT, a fitted temperature and full-label SFT at N 500, 2000 and 5000 (about 8 GPU hours). Then stage 2b (the five arms on 1.7B). Stage 3 (R2 section 4) was cancelled in favour of v3, and the delta-filing integration is an optional demonstration after it.
+Stage 2b (the five RLCD arms on 1.7B) is kept, ranked after v3 (D56). The delta-filing integration is an optional demonstration and needs the human's go-ahead.
 
 ## Five lessons about data and pipelines
 
@@ -54,6 +66,6 @@ v3 (docs/V3_DESIGN.md, D56): adaptation to Banking77 from a log of sft_06b's own
 
 **From prompting an LLM?** At 0.6B it is 16 times faster than gpt-4.1-mini's median and costs about 1/76 as much per request, and it is more accurate in-domain (.944 against .908). It is less accurate on all four unseen schemas at 0.6B and on three at 1.7B. The cascade (send low-confidence answers to the LLM) is the design for that gap (R1 section 4, docs/PLAN.md).
 
-**When should RLCD help, and when can it not?** It cannot help when every question has a deterministic gold label: a bandit outcome carries less information than the label (R2 section 3). It can help only when feedback is partial, as after deployment on a new domain, where only the chosen action's correctness is observed. v3 tests exactly that: if RLCD does not beat positive-only SFT on the same log, it adds nothing there either (D56).
+**When should RLCD help, and when can it not?** It cannot help when every question has a deterministic gold label: a bandit outcome carries less information than the label, and a temperature fixes off-distribution overconfidence better than any arm (R2 sections 1 and 3). It does help when feedback is partial: on Banking77, from a log of the model's own actions with only their correctness revealed, it beats training on the confirmed answers alone by 2.4 to 2.7 points from 2000 interactions and is far better calibrated, though it ties at 500 and stays 1.6 points behind full labels at 5000 (R3 sections 2 and 3). Under noisy feedback it calibrates to the noise, which is invertible only when the noise rate is known (R3 section 4).
 
 **What are the cost and latency figures, and what do they assume?** Batch-1 median on one T4: 47.7 ms (sft_06b), 74.8 ms (sft_17b), 3231 and 2795 ms (B1 0.6B and 1.7B). B2 has a 777 ms median and 1095 ms p95, which include the network from a laptop. Per 1000 requests: 0.0032 and 0.0072 USD for jevmark and 0.030 USD for B1, assuming a T4 at 0.35 USD per hour (an assumption, not a measured price) at full batch-16 use. B2 cost 0.2431 USD per 1000 at 0.40, 0.10 and 1.60 USD per million input, cached and output tokens (R1 section 4 and addendum).
