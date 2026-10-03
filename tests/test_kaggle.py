@@ -57,7 +57,7 @@ def test_notebook_runs_smoke_before_every_size_in_sizes_and_copies_runs():
     joined = "\n".join(CODE)
     assert re.search(r'^SIZES = \["06b", "17b"\]', CODE[0], re.M)
     smoke = joined.index("--config configs/base_{SIZES[0]}.yaml --limit {LIMIT}")
-    assert smoke < joined.index("for size in SIZES:") < joined.index("--ckpt base --config configs/base_{size}.yaml --device cuda")
+    assert smoke < joined.index("for size in (SIZES if ADAPTER_EVAL is None else []):") < joined.index("--ckpt base --config configs/base_{size}.yaml --device cuda")
     assert "configs/base_06b.yaml" not in joined and "configs/base_17b.yaml" not in joined  # sizes come from SIZES only
     assert "requirements-kaggle.txt" in joined and "--no-deps" in joined
     assert "make data-build PY=python" in joined
@@ -219,7 +219,7 @@ def test_eval_notebook_summary_checks_only_the_runs_of_this_session():
     """Session B failed here: the summary globbed every runs/*/metrics.json, and the committed base_06b of another commit failed the commit check."""
     summary = code_cells("kaggle_eval.ipynb")[-1]
     assert 'glob("*/metrics.json")' not in summary
-    assert 'for name in [f"base_{size}" for size in SIZES]:' in summary
+    assert 'for name in ([f"base_{size}" for size in SIZES] if ADAPTER_EVAL is None else [ADAPTER_EVAL["name"]]):' in summary
     assert summary.index("for name in") < summary.index('assert metrics["git"]["commit"] == COMMIT')
     assert summary.index('shutil.copytree(WORK / "runs", "/kaggle/working/runs"') < summary.index("for name in")
 
@@ -329,13 +329,15 @@ def test_v3_notebook_parameters_and_session_plans_match_kaggle_md_and_train_rlcd
     for name in ("REPO", "COMMIT", "SESSION", "ADAPTER_DATASET", "LOG_DATASET", "LOG_SHA256", "SMOKE_STEPS", "MAX_HOURS"):
         assert re.search(rf"^{name} = ", params, re.M), name
     plan_for = v3_plan()
-    plans = {session: plan_for(session) for session in "ABC"}
+    plans = {session: plan_for(session) for session in "ABCD"}
     names = {session: [run_name_of(*run) for run in plan] for session, (plan, run_name_of) in plans.items()}
     assert names["A"] == [f"v3_06b_{arm}_n{n}_s0" for arm in ("full_sft", "positive_sft") for n in (500, 2000, 5000)]
     assert names["B"] == ["v3_06b_direct_brier_n500_s0", "v3_06b_direct_brier_n2000_s0", "v3_06b_direct_brier_n5000_s0", "v3_06b_direct_brier_n5000_s1"]
     assert names["C"] == ["v3_06b_direct_brier_n5000_s2", "v3_06b_direct_brier_n5000_s0_noisy", "v3_06b_positive_sft_n5000_s0_noisy", "v3_06b_direct_brier_n5000_s0_log1"]
+    assert names["D"] == ["v3_06b_full_sft_n5000_s1", "v3_06b_full_sft_n5000_s2"]  # task 3.6
     all_names = [n for session in "ABC" for n in names[session]]
     assert len(all_names) == len(set(all_names)) == 14  # the 14 trained runs of V3_DESIGN section 8
+    assert not set(names["D"]) & set(all_names)
     spec = importlib.util.spec_from_file_location("train_rlcd_nb", REPO / "scripts" / "train_rlcd.py")
     rl = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = rl
@@ -346,8 +348,9 @@ def test_v3_notebook_parameters_and_session_plans_match_kaggle_md_and_train_rlcd
             assert run_name_of(arm, n, seed, noisy, log) == rl.log_run_name({"size": "06b", "arm": arm, "seed": seed}, n, noisy, log)
     kaggle_md = (REPO / "docs" / "KAGGLE.md").read_text()
     section = kaggle_md[kaggle_md.index("## 12. v3") :]
-    for session in "ABC":
+    for session in "ABCD":
         assert f'SESSION = "{session}"' in section, session
+    assert 'assert SESSION in ("A", "B", "C", "D")' in cells[1]
     assert "jevmark-v3-logs" in section and "LOG_SHA256" in section
 
 
@@ -399,3 +402,51 @@ def test_v3_notebook_sessions_b_and_c_check_the_log_sha256_and_every_run_is_copi
 
 def joined_count(cells, text):
     return "\n".join(cells).count(text)
+
+
+# Adapter evaluation (task 3.6)
+
+
+def test_eval_notebook_adapter_eval_defaults_to_none_and_skips_the_base_evaluation_when_set():
+    cells = code_cells("kaggle_eval.ipynb")
+    assert re.search(r"^ADAPTER_EVAL = None$", cells[0], re.M)
+    clone = cells[1]
+    assert '{"dataset", "run", "name", "adapter_dir"} <= set(ADAPTER_EVAL)' in clone
+    assert 'stale += [WORK / "runs" / name for name in (ADAPTER_EVAL["name"], f"{ADAPTER_EVAL[\'name\']}_limit{LIMIT}")]' in clone
+    smoke = next(c for c in cells if "--ckpt base --config configs/base_{SIZES[0]}.yaml --limit {LIMIT}" in c)
+    assert smoke.index("if ADAPTER_EVAL is None:") < smoke.index("!python scripts/evaluate.py")
+    base = next(c for c in cells if "--ckpt base --config configs/base_{size}.yaml --device cuda" in c)
+    assert "for size in (SIZES if ADAPTER_EVAL is None else []):" in base
+    data = next(c for c in cells if "make data-build PY=python" in c)
+    assert data.index("if ADAPTER_EVAL is not None:") < data.index("!python scripts/build_v3_data.py")
+
+
+def test_eval_notebook_adapter_eval_prepares_a_fresh_run_smokes_then_evaluates_and_checks_it():
+    cells = code_cells("kaggle_eval.ipynb")
+    cell = next(c for c in cells if "prepare_adapter_run.py" in c)
+    assert cell.startswith("#") and "if ADAPTER_EVAL is not None:" in cell
+    steps = [
+        'candidates = [root / "runs" / source / adapter_dir, root / source / adapter_dir, root / adapter_dir, root]',
+        "!python scripts/prepare_adapter_run.py --adapter {adapter} --source-run runs/{source} --adapter-dir {adapter_dir} --name {name} {sha_flag}",
+        "!python scripts/evaluate.py --ckpt runs/{name} --limit {LIMIT} --device cuda",
+        "!python scripts/evaluate.py --ckpt runs/{name} --device cuda",
+    ]
+    positions = [cell.index(step) for step in steps]
+    assert positions == sorted(positions) and cell.count("raise RuntimeError") == 4
+    assert "--no-merge" not in cell and "--splits" not in cell  # merged adapter, the v3 run's default splits
+    summary = cells[-1]
+    assert '[ADAPTER_EVAL["name"]]' in summary and 'metrics["adapter_sha256"] == record["adapter_sha256"]' in summary
+    assert '["v3_banking77_test_full", "test_banking77", "test_indomain", "test_unseen_intents"]' in summary and "ADAPTER EVAL DONE" in summary
+    assert cells.index(cell) < len(cells) - 1
+
+
+def test_adapter_eval_parameters_in_kaggle_md_match_the_notebook_and_the_split_order():
+    from jevmark.data.build import V3_EVAL_SPLITS
+
+    section = (REPO / "docs" / "KAGGLE.md").read_text().split("## 13.")[1]
+    for key in ('"dataset"', '"run"', '"name"', '"adapter_dir"', '"sha256"'):
+        assert key in section, key
+    assert '"name": "v3_06b_direct_brier_n5000_s0_noisy_last"' in section and '"adapter_dir": "adapter_last"' in section
+    summary = code_cells("kaggle_eval.ipynb")[-1]
+    assert str(list(V3_EVAL_SPLITS)).replace("'", '"') in summary
+

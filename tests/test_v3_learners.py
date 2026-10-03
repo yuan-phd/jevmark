@@ -256,3 +256,32 @@ def test_calibrate_fit_log_writes_the_temperature_run(setup, tmp_path):
     assert metrics["calibration"]["log_sha256"] == file_sha256(setup.log_path) and set(metrics["splits"]) == {unseen.V3_TEST_FULL}
     with pytest.raises(SystemExit):
         calibrate.main([str(source), "--fit-log", str(setup.log_path)])
+
+
+def test_a_stored_adapter_becomes_a_run_that_evaluates(setup, tmp_path):
+    """scripts/prepare_adapter_run.py (task 3.6): adapter_last of a trained run, evaluated as a new run."""
+    prepare = load_script("prepare_adapter_run")
+    evaluate = load_script("evaluate")
+    train(setup, tmp_path, "arm=direct_brier")
+    source = tmp_path / f"v3_06b_direct_brier_n{N}_s0"
+    last = source / "adapter_last"
+    expected = file_sha256(last / "adapter_model.safetensors")
+    with pytest.raises(SystemExit, match="expected"):
+        prepare.main(["--adapter", str(last), "--source-run", str(source), "--name", "v3_tiny_last", "--runs-dir", str(tmp_path), "--sha256", "0" * 64])
+    assert not (tmp_path / "v3_tiny_last").exists()
+    with pytest.raises(SystemExit, match="adapter_model.safetensors"):
+        prepare.main(["--adapter", str(tmp_path), "--source-run", str(source), "--name", "v3_tiny_last", "--runs-dir", str(tmp_path)])
+    assert prepare.main(["--adapter", str(last), "--source-run", str(source), "--adapter-dir", "adapter_last", "--name", "v3_tiny_last", "--runs-dir", str(tmp_path), "--sha256", expected]) == 0
+    run = tmp_path / "v3_tiny_last"
+    config = yaml.safe_load((run / "config.yaml").read_text())
+    source_config = yaml.safe_load((source / "config.yaml").read_text())
+    assert config["run_name"] == "v3_tiny_last" and config["adapter_eval"] == {"source_run": source.name, "adapter_dir": "adapter_last", "adapter_sha256": expected}
+    assert config["v3"] == source_config["v3"] and (run / "model_id.txt").read_text() == "jevmark-v3_tiny_last\n"
+    assert file_sha256(run / "adapter" / "adapter_model.safetensors") == expected
+    with pytest.raises(SystemExit, match="never overwritten"):
+        prepare.main(["--adapter", str(last), "--source-run", str(source), "--name", "v3_tiny_last", "--runs-dir", str(tmp_path)])
+    argv = ["--ckpt", str(run), "--splits", "v3_banking77_train", "--limit", "4", "--data-dir", str(setup.data_dir), "--runs-dir", str(tmp_path), "--device", "cpu"]
+    assert evaluate.main(argv) == 0
+    metrics = json.loads((tmp_path / "v3_tiny_last_limit4" / "metrics.json").read_text())
+    assert metrics["adapter_sha256"] == expected and metrics["lora_merged"] is True and metrics["model_id"] == "jevmark-v3_tiny_last"
+    assert metrics["v3"]["log_sha256"] == source_config["v3"]["log_sha256"]

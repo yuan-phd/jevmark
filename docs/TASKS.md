@@ -214,5 +214,11 @@ Specification: docs/V3_DESIGN.md, with the review's decisions in its section 11 
 - [x] `docs/RESULTS_v3.md`: the four predictions, each stated as held or failed with its numbers; adapted learners' Banking77 numbers kept out of the v1 and v2 unseen-schema means. Proof: `docs/RESULTS_v3.md` sections 8 to 10, every number citing `runs/v3_stage_06b/metrics.json` or a named run file; decision 57.
 - Acceptance: every number in the report links to a metrics.json; if prediction 1 fails, the report says v2 and v3 together are a negative result about RLCD as reconstructed. Done: prediction 1 is a tie at N 500 and holds from N 2000, and the report says why that is not the complete negative result (RESULTS_v3 section 8).
 
-### 3.6 Optional after v3: delta-filing demonstration
+### 3.6 Follow-up GPU jobs: the noisy run's final adapter and full_sft seeds
+- [x] `notebooks/kaggle_eval.ipynb` takes `ADAPTER_EVAL` (default None): one stored adapter is copied into a fresh run by `scripts/prepare_adapter_run.py` (source config and calibration, adapter sha256 and source under `adapter_eval`, model_id.txt) and evaluated with the merged adapter on the v3 default splits, after a smoke evaluation, with the base evaluation skipped; docs/KAGGLE.md section 13. Proof: `tests/test_v3_learners.py::test_a_stored_adapter_becomes_a_run_that_evaluates`, `tests/test_kaggle.py::test_eval_notebook_adapter_eval_defaults_to_none_and_skips_the_base_evaluation_when_set`, `::test_eval_notebook_adapter_eval_prepares_a_fresh_run_smokes_then_evaluates_and_checks_it`, `::test_adapter_eval_parameters_in_kaggle_md_match_the_notebook_and_the_split_order`.
+- [x] `notebooks/kaggle_v3.ipynb` session D: full_sft at N 5000, training seeds 1 and 2, on the seed 0 log, at the sessions A to C commit; docs/KAGGLE.md section 12. Proof: `tests/test_kaggle.py::test_v3_notebook_parameters_and_session_plans_match_kaggle_md_and_train_rlcd`.
+- [ ] `runs/v3_06b_direct_brier_n5000_s0_noisy_last`: the step-1407 `adapter_last` of the noisy RLCD run, evaluated; then `scripts/invert_noisy.py` on it.
+- [ ] `runs/v3_06b_full_sft_n5000_s1`, `runs/v3_06b_full_sft_n5000_s2`; then `compare_v3.py` with full_sft's seed mean.
+
+### 3.7 Optional after v3: delta-filing demonstration
 - [ ] A `LocalDecider` in the delta-filing repository with the question definitions and thresholds in one file, measured on its track1 evaluation sets (router 160, tool choice 160, review 80), with decision logging added for future feedback. It needs the human's go-ahead after v3.

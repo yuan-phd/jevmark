@@ -300,20 +300,20 @@ Commit each run as in section 10.
 
 ## 12. v3: adaptation from deployment feedback (phase 3, decision 56)
 
-Specification: docs/V3_DESIGN.md. Notebook: `notebooks/kaggle_v3.ipynb`. Everything runs on 0.6B and starts from the sft_06b adapter in the `jevmark-sft-adapters` dataset (section 10). Token, secret, import and notebook settings are as in sections 1 to 3. Use one `COMMIT` for all three sessions, pushed before session A.
+Specification: docs/V3_DESIGN.md. Notebook: `notebooks/kaggle_v3.ipynb`. Everything runs on 0.6B and starts from the sft_06b adapter in the `jevmark-sft-adapters` dataset (section 10). Token, secret, import and notebook settings are as in sections 1 to 3. Use one `COMMIT` for all sessions, pushed before session A. Session D (task 3.6, added after C) keeps that commit: its plan lives in the notebook, and the training and evaluation code are unchanged since, so import the current `notebooks/kaggle_v3.ipynb` and leave `COMMIT` at the sessions A to C commit (b5913eff27e1dc6290bd215e7d83b533b105ad83).
 
 ### Parameters per session
 
-| Parameter | Session A | Session B | Session C |
-|---|---|---|---|
-| `SESSION` | `SESSION = "A"` | `SESSION = "B"` | `SESSION = "C"` |
-| `COMMIT` | the pushed commit | the same | the same |
-| `ADAPTER_DATASET` | `/kaggle/input/jevmark-sft-adapters` | the same | the same |
-| `LOG_DATASET` | not read | `/kaggle/input/jevmark-v3-logs` | the same |
-| `LOG_SHA256` | not read (filled by the session) | `{0: "<seed 0 sha256>", 1: "<seed 1 sha256>"}` from session A's LOG DONE lines | the same |
-| `SMOKE_STEPS` | 10 | 10 | 10 |
-| `MAX_HOURS` | 2.0 | 2.0 | 2.0 |
-| Inputs to add | the adapter dataset | the adapter dataset and `jevmark-v3-logs` | the same as B |
+| Parameter | Session A | Session B | Session C | Session D |
+|---|---|---|---|---|
+| `SESSION` | `SESSION = "A"` | `SESSION = "B"` | `SESSION = "C"` | `SESSION = "D"` |
+| `COMMIT` | the pushed commit | the same | the same | the same |
+| `ADAPTER_DATASET` | `/kaggle/input/jevmark-sft-adapters` | the same | the same | the same |
+| `LOG_DATASET` | not read | `/kaggle/input/jevmark-v3-logs` | the same | the same |
+| `LOG_SHA256` | not read (filled by the session) | `{0: "<seed 0 sha256>", 1: "<seed 1 sha256>"}` from session A's LOG DONE lines | the same | the same (only seed 0 is read) |
+| `SMOKE_STEPS` | 10 | 10 | 10 | 10 |
+| `MAX_HOURS` | 2.0 | 2.0 | 2.0 | 2.0 |
+| Inputs to add | the adapter dataset | the adapter dataset and `jevmark-v3-logs` | the same as B | the same as B |
 
 ### What each session runs
 
@@ -324,6 +324,7 @@ Every session clones, installs, builds the nine v1.3 splits (`make data-build`),
 | A | sft_06b evaluated on the v3 splits into `runs/v3_06b_zeroshot` (ZERO-SHOT DONE line); logs of seeds 0 and 1 into `runs/v3_log_s0` and `runs/v3_log_s1` (one LOG DONE line each, with the sha256) | full_sft at N 500, 2000, 5000; positive_sft at N 500, 2000, 5000 | 4340 | 5.5 h |
 | B | the logs copied from `LOG_DATASET`; each log's sha256 must equal its metrics.json and `LOG_SHA256`, or the session stops (LOG OK lines) | direct_brier at N 500, 2000, 5000 (seed 0); direct_brier at N 5000, seed 1 | 3577 | 4.6 h |
 | C | as B | direct_brier at N 5000, seed 2; direct_brier and positive_sft at N 5000 with `--noisy`; direct_brier at N 5000 on the seed 1 log | 5628 | 6.5 h |
+| D (task 3.6) | as B, seed 0 log only | full_sft at N 5000, seeds 1 and 2, on the seed 0 log | 2814 | 2.6 h (measured rates: 60.5 min per 1407-step full_sft run and 11.5 min per evaluation, plus about 20 min setup) |
 
 Run names: `v3_06b_<arm>_n<N>_s<seed>`, plus `_noisy`, plus `_log1` for the seed 1 log. The smoke run is `<first run>_smoke` (gitignored).
 
@@ -347,3 +348,34 @@ Run names: `v3_06b_<arm>_n<N>_s<seed>`, plus `_noisy`, plus `_log1` for the seed
 - **Other:** each session adds about 20 minutes for clone, install, data build and the smoke run, and session A about 30 minutes for the zero-shot evaluation and the two log passes.
 
 The total is about 16.5 GPU hours with overhead (A: 3.7 h training, 1.1 h evaluation, 0.7 h logs and setup; B: 3.6, 0.7 and 0.3; C: 5.4, 0.7 and 0.3). Each session stays under the 9-hour limit, and the longest single run (1407 steps) takes about 1.4 hours, so `MAX_HOURS = 2.0` per run leaves room without letting a stuck run take the session. A run that stops at `MAX_HOURS` resumes as in section 10, with the same `--log`, `--n` and `--noisy`.
+
+## 13. Evaluating one stored adapter: `notebooks/kaggle_eval.ipynb` with `ADAPTER_EVAL` (task 3.6)
+
+For an adapter that a run saved but never evaluated, such as the final `adapter_last/` of an RLCD or v3 run (its `adapter/` is the selected step). The notebook copies it into a fresh run directory with `scripts/prepare_adapter_run.py`, which takes the source run's committed `config.yaml` and `calibration.json`, sets `run_name` to the new name, records the source run, the adapter directory and the adapter's sha256 under `adapter_eval` in `config.yaml`, and writes `model_id.txt`. It then builds the v3 files, runs a smoke evaluation of `LIMIT` records and evaluates the run with the merged adapter on its default splits, which for a v3 run are v3_banking77_test_full, test_banking77, test_indomain and test_unseen_intents. The `SIZES` base evaluation is skipped. The summary prints one ADAPTER EVAL DONE line and checks the commit, the adapter sha256 and the splits.
+
+### Uploading one adapter directory as a dataset
+
+1. Locally, put the adapter in a folder named after its source run: for example `jevmark-noisy-last/v3_06b_direct_brier_n5000_s0_noisy/adapter_last/` holding `adapter_config.json` and `adapter_model.safetensors` (`README.md` is optional), copied from `runs/v3_06b_direct_brier_n5000_s0_noisy/adapter_last/`.
+2. Note its sha256: `shasum -a 256 jevmark-noisy-last/v3_06b_direct_brier_n5000_s0_noisy/adapter_last/adapter_model.safetensors`.
+3. On Kaggle: Datasets, New Dataset, upload the `jevmark-noisy-last` folder, visibility Private. The notebook looks for the adapter in `<dataset>/runs/<run>/<adapter_dir>`, `<dataset>/<run>/<adapter_dir>`, `<dataset>/<adapter_dir>` and `<dataset>` itself, so any of these layouts works. After adding it as input, `!find /kaggle/input -name adapter_model.safetensors` shows the mount path.
+
+### Parameters
+
+`COMMIT` must contain `scripts/prepare_adapter_run.py`, so it is the commit of task 3.6 or later, not the v3 sessions' commit; the evaluation code is unchanged since then. `SIZES` and `LIMIT` keep their defaults (`SIZES` is not used).
+
+```python
+REPO = "<owner>/jevmark"
+COMMIT = "<the task 3.6 commit>"
+LIMIT = 30
+SIZES = ["06b", "17b"]
+ADAPTER_EVAL = {
+    "dataset": "<mount path of the dataset>",
+    "run": "v3_06b_direct_brier_n5000_s0_noisy",
+    "name": "v3_06b_direct_brier_n5000_s0_noisy_last",
+    "adapter_dir": "adapter_last",
+    "sha256": "<sha256 from step 2>",
+}
+```
+
+Settings: accelerator GPU T4, internet on, secret `GITHUB_TOKEN`, the adapter dataset added as input. About 30 minutes: setup, the smoke evaluation and an 11-minute evaluation. Download `runs/<name>/` from `/kaggle/working/runs`; commit its `metrics.json`, `config.yaml`, `model_id.txt`, `calibration.json` and `plots/` (`adapter/` and `results.jsonl.gz` are gitignored).
+

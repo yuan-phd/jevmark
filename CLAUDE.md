@@ -67,7 +67,7 @@ jevmark/
     build_data.py, leak_probe.py, check_duplicates.py   v1.3 data and its CPU gates
     build_v3_data.py, collect_log.py                     v3 data and the deployment logs
     train_sft.py, train_rlcd.py      SFT; RLCD arms and the v3 log-mode learners
-    evaluate.py, recompute_metrics.py
+    evaluate.py, recompute_metrics.py, prepare_adapter_run.py   evaluation; a stored adapter as a new run
     calibrate.py      temperature scaling of a finished run (valid or --fit-log), CPU only
     compare_calibration.py, compare_rlcd.py, compare_v3.py, compare_baselines.py   the report tables
     paired_deltas.py, simulate_advantages.py, invert_noisy.py   supporting analyses
