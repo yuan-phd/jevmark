@@ -24,7 +24,9 @@ every run, so differences are paired), and writes runs/v3_stage_<size>/metrics.j
 - seeds: direct_brier at N 5000 for training seeds 0, 1 and 2 (mean and range) and
   on the seed 1 log (logging variance), with each run's difference from seed 0, and
   the seed mean minus positive_sft and minus full_sft at N 5000 (each draw averages
-  the seeds' differences under the same record resample, decision 53);
+  the seeds' differences under the same record resample, decision 53); full_sft at
+  N 5000 for training seeds 0, 1 and 2 (mean and range, each seed minus seed 0) and
+  direct_brier's seed mean minus full_sft's seed mean, paired the same way;
 - noisy: direct_brier and positive_sft at N 5000 with flipped outcomes, each one's
   change from its clean run, and the difference of those changes (prediction 4);
 - forgetting: every learner's accuracy and ECE on test_indomain and
@@ -192,6 +194,15 @@ class Split:
             out[metric] = {"delta": point, "ci": interval(draws)}
         return out
 
+    def mean_minus_mean(self, first: Sequence[str], second: Sequence[str]) -> dict[str, Any]:
+        """The mean of first minus the mean of second, paired: each draw averages each group under the same record resample."""
+        out = {}
+        for metric in METRICS:
+            draws = np.mean([self.draws[name][metric] for name in first], axis=0) - np.mean([self.draws[name][metric] for name in second], axis=0)
+            point = sum(self.point(name)[metric] for name in first) / len(first) - sum(self.point(name)[metric] for name in second) / len(second)
+            out[metric] = {"delta": point, "ci": interval(draws)}
+        return out
+
     def delta_of_deltas(self, a: str, a_ref: str, b: str, b_ref: str) -> dict[str, Any]:
         """(a - a_ref) - (b - b_ref), paired."""
         out = {}
@@ -290,6 +301,15 @@ def compare(runs_dir: Path, size: str, resamples: int, subset_path: Path = SUBSE
         seeds[f"training_seed_mean_minus_{other_arm}"] = main.mean_delta(trained_names, other_name) if trained_names and other_name in present else None
     base = seed_runs["seed_0"]
     seeds["minus_seed_0"] = {key: main.delta(name, base) for key, name in seed_runs.items() if key != "seed_0" and name in present and base in present}
+    full_names = {f"seed_{s}": learner_name("full_sft", 5000, s) for s in (0, 1, 2)}
+    full_trained = [name for name in full_names.values() if name in present]
+    full: dict[str, Any] = {key: (main.point(name) if name in present else None) for key, name in full_names.items()}
+    if full_trained:
+        points = [main.point(name) for name in full_trained]
+        full["training_seeds"] = {m: {"mean": sum(p[m] for p in points) / len(points), "range": [min(p[m] for p in points), max(p[m] for p in points)], "n_seeds": len(points)} for m in METRICS}
+    full["minus_seed_0"] = {key: main.delta(name, full_names["seed_0"]) for key, name in full_names.items() if key != "seed_0" and name in present and full_names["seed_0"] in present}
+    seeds["full_sft"] = full
+    seeds["training_seed_mean_minus_full_sft_seed_mean"] = main.mean_minus_mean(trained_names, full_trained) if trained_names and full_trained else None
 
     noisy: dict[str, Any] = {}
     for arm in ("direct_brier", "positive_sft"):

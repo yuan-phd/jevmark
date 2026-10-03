@@ -60,6 +60,7 @@ def runs(tmp_path):
             write_run(runs_dir, f"v3_06b_{arm}_n{n}_s0", results(1.0 + n / 2000 + k, 10 + k, other_bias=-2.0 if arm == "direct_brier" else 0.0))
     for s in (1, 2):
         write_run(runs_dir, f"v3_06b_direct_brier_n5000_s{s}", results(4.5, 20 + s))
+        write_run(runs_dir, f"v3_06b_full_sft_n5000_s{s}", results(5.0, 50 + s))
     write_run(runs_dir, "v3_06b_direct_brier_n5000_s0_log1", results(4.4, 30))
     write_run(runs_dir, "v3_06b_direct_brier_n5000_s0_noisy", results(3.0, 40))
     write_run(runs_dir, "v3_06b_positive_sft_n5000_s0_noisy", results(1.5, 41))
@@ -89,6 +90,10 @@ def test_compare_writes_every_table(runs):
     mean_minus = result["seeds"]["training_seed_mean_minus_positive_sft"]["accuracy"]["delta"]
     assert mean_minus == pytest.approx(result["seeds"]["training_seeds"]["accuracy"]["mean"] - row["positive_sft"]["accuracy"])
     assert result["seeds"]["training_seeds"]["accuracy"]["n_seeds"] == 3
+    full = result["seeds"]["full_sft"]
+    assert full["training_seeds"]["accuracy"]["n_seeds"] == 3 and set(full["minus_seed_0"]) == {"seed_1", "seed_2"}
+    both = result["seeds"]["training_seed_mean_minus_full_sft_seed_mean"]["accuracy"]["delta"]
+    assert both == pytest.approx(result["seeds"]["training_seeds"]["accuracy"]["mean"] - full["training_seeds"]["accuracy"]["mean"])
     assert result["noisy"]["direct_brier"]["noisy_minus_clean"]["accuracy"]["delta"] < 0 and result["noisy"]["direct_brier_change_minus_positive_sft_change"] is not None
     for split in ("test_indomain", "test_unseen_intents"):
         assert "direct_brier_n5000_s0" in result["forgetting"][split]["minus_zero_shot"] and "temperature_n500" in result["forgetting"][split]["minus_zero_shot"]
@@ -116,6 +121,18 @@ def test_mean_delta_by_hand(runs):
         assert got[metric]["ci"] == pytest.approx(compare_v3.interval(draws))
         assert got[metric]["delta"] == pytest.approx((split.delta(names[0], "zero_shot")[metric]["delta"] + split.delta(names[1], "zero_shot")[metric]["delta"]) / 2)
     assert split.mean_delta(["zero_shot"], "zero_shot")["accuracy"] == {"delta": 0.0, "ci": [0.0, 0.0]}
+
+
+def test_mean_minus_mean_by_hand(runs):
+    runs_dir, subset = runs
+    read = lambda name: compare_v3.by_split(compare_v3.read_results(runs_dir / name / "results.jsonl.gz"))[V3_TEST_FULL]
+    a, b = ["v3_06b_direct_brier_n5000_s1", "v3_06b_direct_brier_n5000_s2"], ["v3_06b_full_sft_n5000_s1", "v3_06b_full_sft_n5000_s2", "v3_06b_zeroshot"]
+    split = compare_v3.Split(V3_TEST_FULL, {"v3_06b_zeroshot": read("v3_06b_zeroshot"), **{n: read(n) for n in a + b[:2]}}, 50)
+    got = split.mean_minus_mean(a, b)
+    for metric in compare_v3.METRICS:
+        draws = (split.draws[a[0]][metric] + split.draws[a[1]][metric]) / 2 - sum(split.draws[n][metric] for n in b) / 3
+        assert got[metric]["ci"] == pytest.approx(compare_v3.interval(draws))
+    assert split.mean_minus_mean(a, a)["accuracy"] == {"delta": 0.0, "ci": [0.0, 0.0]}
 
 
 def test_runs_with_other_questions_or_data_are_refused(runs, tmp_path):
