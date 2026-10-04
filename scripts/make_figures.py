@@ -305,7 +305,7 @@ def v3_coverage(runs: Path, out: Path, written: list[Path]) -> None:
     sources = {"zero_shot": "v3_06b_zeroshot", "temperature": "v3_06b_temp_n5000", "positive_sft": "v3_06b_positive_sft_n5000_s0",
                "full_sft": "v3_06b_full_sft_n5000_s0", "direct_brier": "v3_06b_direct_brier_n5000_s0"}
     colors = v3_colors()
-    fig, ax = plt.subplots(figsize=(6.4, 4.4))
+    fig, ax = plt.subplots(figsize=(6.4, 4.7))
     for k, (key, name) in enumerate(V3_LEARNERS):
         block = load(runs / sources[key] / "metrics.json")["splits"][V3]["choice"]
         ax.plot(*coverage_points(block), color=colors[key], marker=MARKERS[k], markersize=3.5, linestyle="--" if key == "zero_shot" else "-", label=name)
@@ -314,9 +314,11 @@ def v3_coverage(runs: Path, out: Path, written: list[Path]) -> None:
     ax.set_ylabel("accuracy of the answers kept")
     ax.set_title("v3 cascade at N 5000: confidence thresholds 0 to 1, step .05", loc="left")
     ax.legend(loc="lower left", fontsize=7)
-    fig.tight_layout(rect=(0, 0.08, 1, 1))
+    fig.tight_layout(rect=(0, 0.13, 1, 1))
     caption(fig, "Source: runs/<run>/metrics.json, splits.v3_banking77_test_full.choice.coverage for v3_06b_zeroshot, v3_06b_temp_n5000, "
-                 "v3_06b_{positive_sft,full_sft,direct_brier}_n5000_s0 (confidence 1 - H/ln K).")
+                 "v3_06b_{positive_sft,full_sft,direct_brier}_n5000_s0 (confidence 1 - H/ln K). The temperature curve covers zero-shot's: "
+                 "a temperature changes no prediction and nearly preserves the confidence ranking (exactly for top-1; the entropy-based "
+                 "confidence can reorder a few questions), so it only extends the curve to lower coverage.")
     save(fig, out, "v3_coverage.png", written)
 
 
