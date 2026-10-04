@@ -19,7 +19,7 @@ import torch
 import yaml
 
 from jevmark.encode import encode
-from jevmark.model import JevMark
+from jevmark.model import JevMark, resolve_checkpoint
 from jevmark.schema import (
     Answer,
     ChoiceAnswer,
@@ -44,14 +44,15 @@ DECIMALS = 4
 def default_model() -> JevMark:
     """The model used when systemone gets model=None: loaded on first use, once per process.
 
-    Config is configs/base.yaml. If JEVMARK_CHECKPOINT names a run directory, its
-    adapter is loaded too, with the run's own config.yaml when it has one, so the
-    adapter meets the backbone it was trained on.
+    Config is configs/base.yaml. If JEVMARK_CHECKPOINT names a run directory, or a Hub
+    reference hf://<owner>/<repo>/<folder> (downloaded once into the Hugging Face
+    cache), its adapter is loaded too, with the run's own config.yaml when it has one,
+    so the adapter meets the backbone it was trained on.
     """
-    checkpoint = os.environ.get(CHECKPOINT_ENV) or None
+    checkpoint = resolve_checkpoint(os.environ.get(CHECKPOINT_ENV) or None)
     config_path = DEFAULT_CONFIG_PATH
-    if checkpoint is not None and (Path(checkpoint) / "config.yaml").is_file():
-        config_path = Path(checkpoint) / "config.yaml"
+    if checkpoint is not None and (checkpoint / "config.yaml").is_file():
+        config_path = checkpoint / "config.yaml"
     config = yaml.safe_load(config_path.read_text())
     return JevMark.load(config, checkpoint=checkpoint)
 

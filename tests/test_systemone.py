@@ -252,8 +252,29 @@ def test_default_model_loads_lazily_once_with_env_checkpoint(monkeypatch, jev, t
         assert first == second
         assert len(calls) == 1
         config, checkpoint = calls[0]
-        assert checkpoint == str(run_dir)
+        assert checkpoint == run_dir
         assert config["run_name"] == "my_run"  # the run's own config.yaml wins over configs/base.yaml
+    finally:
+        SYSTEMONE_MODULE.default_model.cache_clear()
+
+
+def test_default_model_takes_a_hub_reference_and_its_folder_config(monkeypatch, jev, tmp_path):
+    import huggingface_hub
+
+    calls = []
+    folder = tmp_path / "hub" / "sft_06b"
+    folder.mkdir(parents=True)
+    (folder / "config.yaml").write_text("run_name: sft_06b\nmax_tokens: 1024\n")
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", lambda repo_id, allow_patterns=None, **kw: calls.append((repo_id, allow_patterns)) or str(tmp_path / "hub"))
+    monkeypatch.setattr(JevMark, "load", staticmethod(lambda config, checkpoint=None, device=None: calls.append((config, checkpoint)) or jev))
+    monkeypatch.setenv("JEVMARK_CHECKPOINT", "hf://yuanphd/jevmark/sft_06b")
+    SYSTEMONE_MODULE.default_model.cache_clear()
+    try:
+        systemone(STATE, QUESTIONS)
+        systemone(STATE, QUESTIONS)
+        assert calls[0] == ("yuanphd/jevmark", ["sft_06b/*"]) and len(calls) == 2  # one download, one load
+        config, checkpoint = calls[1]
+        assert checkpoint == folder and config["run_name"] == "sft_06b"
     finally:
         SYSTEMONE_MODULE.default_model.cache_clear()
 

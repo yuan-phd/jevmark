@@ -224,6 +224,54 @@ def test_load_without_checkpoint_uses_defaults(saved_run):
     assert loaded.model_id == f"jevmark-{config['run_name']}"
 
 
+def hub_layout(run_dir, repo_root, folder):
+    """A copy of the run as published on the Hub: adapter files at the folder's top level, no adapter/."""
+    target = repo_root / folder
+    target.mkdir(parents=True)
+    for path in (run_dir / "adapter").iterdir():
+        (target / path.name).write_bytes(path.read_bytes())
+    for name in ("calibration.json", "model_id.txt"):
+        (target / name).write_bytes((run_dir / name).read_bytes())
+    return target
+
+
+def test_load_accepts_adapter_files_at_the_top_level(saved_run, tmp_path, encoded_pair):
+    config, run_dir = saved_run
+    flat = hub_layout(run_dir, tmp_path / "hub", "tiny_06b")
+    from_run, from_flat = JevMark.load(config, checkpoint=run_dir, device="cpu"), JevMark.load(config, checkpoint=flat, device="cpu")
+    assert from_flat.temperature == 1.5 and from_flat.model_id == "jevmark-tiny_run"
+    for x, y in zip(from_flat.forward_distributions(list(encoded_pair)), from_run.forward_distributions(list(encoded_pair))):
+        torch.testing.assert_close(x, y, atol=1e-6, rtol=1e-6)
+
+
+def test_load_resolves_a_hub_reference_by_downloading_only_its_folder(saved_run, tmp_path, monkeypatch, encoded_pair):
+    import huggingface_hub
+
+    from jevmark.model import resolve_checkpoint
+
+    config, run_dir = saved_run
+    repo_root = tmp_path / "hub"
+    hub_layout(run_dir, repo_root, "tiny_06b")
+    calls = []
+
+    def fake_snapshot_download(repo_id, allow_patterns=None, **kwargs):
+        calls.append((repo_id, allow_patterns))
+        return str(repo_root)
+
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", fake_snapshot_download)
+    loaded = JevMark.load(config, checkpoint="hf://someone/jevmark/tiny_06b", device="cpu")
+    assert calls == [("someone/jevmark", ["tiny_06b/*"])]
+    assert loaded.temperature == 1.5 and loaded.source.checkpoint == repo_root / "tiny_06b"
+    reference = JevMark.load(config, checkpoint=run_dir, device="cpu")
+    for x, y in zip(loaded.forward_distributions(list(encoded_pair)), reference.forward_distributions(list(encoded_pair))):
+        torch.testing.assert_close(x, y, atol=1e-6, rtol=1e-6)
+    assert resolve_checkpoint(run_dir) == run_dir and resolve_checkpoint(None) is None
+    with pytest.raises(ValueError, match="hf://<owner>/<repo>/<folder>"):
+        resolve_checkpoint("hf://someone/jevmark")
+    with pytest.raises(RuntimeError, match="no folder"):
+        resolve_checkpoint("hf://someone/jevmark/missing")
+
+
 def test_load_missing_checkpoint_raises_runtime_error(saved_run, tmp_path):
     config, _ = saved_run
     with pytest.raises(RuntimeError, match="checkpoint"):

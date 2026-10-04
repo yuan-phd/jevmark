@@ -12,7 +12,7 @@ response = systemone(state, questions, model=None, max_tokens=None)
 
 - `state`: a string, or a JSON-serialisable dict or list. Dicts and lists are rendered as pretty-printed JSON.
 - `questions`: dict mapping a question id (str, `[a-z0-9_]+`) to a question definition (section 2).
-- `model`: a loaded `JevMark` instance. If None, a default model is loaded lazily on first use and reused for the rest of the process. Its config is `configs/base.yaml`. If the environment variable `JEVMARK_CHECKPOINT` names a run directory, that run's adapter, `calibration.json` and `model_id.txt` are loaded too, and the run's own `config.yaml` replaces `configs/base.yaml` when it exists, so the adapter is loaded onto the backbone it was trained with. The variable is read once, at first use.
+- `model`: a loaded `JevMark` instance. If None, a default model is loaded lazily on first use and reused for the rest of the process. Its config is `configs/base.yaml`. If the environment variable `JEVMARK_CHECKPOINT` names a run directory, that run's adapter, `calibration.json` and `model_id.txt` are loaded too, and the run's own `config.yaml` replaces `configs/base.yaml` when it exists, so the adapter is loaded onto the backbone it was trained with. The variable may also be a Hugging Face Hub reference `hf://<owner>/<repo>/<folder>`, for example `hf://yuanphd/jevmark/sft_06b`: that folder of the model repository is downloaded once into the Hugging Face cache and used as the run directory. The adapter is the run directory's `adapter/`, or the adapter files at its top level (the Hub layout). `JevMark.load` takes the same forms. The variable is read once, at first use.
 - `max_tokens`: encoded length limit. If None, the model's `max_tokens` is used, which `JevMark.load` reads from the config (2048 in `configs/base.yaml`); an explicit argument overrides it. Training configs carry their own `max_tokens` (1024 in v1), which only governs which records are kept for training.
 - Returns a response dict (section 3). Raises `ValueError` with the offending field path on invalid input.
 
@@ -62,7 +62,7 @@ Limits (v1): state at most 8000 characters; state plus all questions at most `ma
 
 ```json
 {
-  "model": "jevmark-sft_clinc_v1_17b",
+  "model": "jevmark-sft_17b",
   "answers": {
     "refund_requested": {"type": "noul", "noul": 0.93},
     "department": {

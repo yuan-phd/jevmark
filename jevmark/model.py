@@ -21,6 +21,40 @@ from transformers import AutoModelForCausalLM, PreTrainedModel, PreTrainedTokeni
 
 from jevmark.encode import Encoded, load_tokenizer
 
+HUB_PREFIX = "hf://"
+
+
+def resolve_checkpoint(checkpoint: str | Path | None) -> Path | None:
+    """A run directory as a local path; a Hub reference hf://<owner>/<repo>/<folder> is downloaded once into the Hugging Face cache.
+
+    Only that folder of the model repository is fetched (snapshot_download with an
+    allow pattern); later calls find it in the cache.
+    """
+    if checkpoint is None:
+        return None
+    text = str(checkpoint)
+    if not text.startswith(HUB_PREFIX):
+        return Path(checkpoint)
+    parts = [part for part in text[len(HUB_PREFIX) :].split("/") if part]
+    if len(parts) < 3:
+        raise ValueError(f"checkpoint: a Hub reference is hf://<owner>/<repo>/<folder>, got {text}")
+    from huggingface_hub import snapshot_download
+
+    repo_id, folder = "/".join(parts[:2]), "/".join(parts[2:])
+    local = Path(snapshot_download(repo_id, allow_patterns=[f"{folder}/*"])) / folder
+    if not local.is_dir():
+        raise RuntimeError(f"checkpoint missing: {repo_id} has no folder {folder}")
+    return local
+
+
+def adapter_directory(run_dir: Path) -> Path:
+    """The adapter of a checkpoint: run_dir/adapter (a training run), or run_dir itself when the adapter files sit at its top level (the Hub layout)."""
+    if (run_dir / "adapter").is_dir():
+        return run_dir / "adapter"
+    if (run_dir / "adapter_config.json").is_file():
+        return run_dir
+    raise RuntimeError(f"checkpoint missing: no adapter directory at {run_dir / 'adapter'} and no adapter_config.json in {run_dir}")
+
 
 @dataclass(frozen=True)
 class Batch:
@@ -111,7 +145,9 @@ class JevMark:
     ) -> JevMark:
         """Backbone and max_tokens from config, plus the adapter, calibration.json and model_id.txt of a run directory.
 
-        Raises RuntimeError if checkpoint is given but has no adapter directory.
+        checkpoint is a run directory or a Hub reference hf://<owner>/<repo>/<folder>
+        (resolve_checkpoint); the adapter is its adapter/ or, in the Hub layout, the
+        files at its top level. Raises RuntimeError if checkpoint is given but has no adapter.
         Precision (decision 28): on CUDA with precision.autocast fp16, the frozen backbone
         loads in fp16 and runs under fp16 autocast; LoRA parameters stay fp32 and the
         letter readout is fp32. Elsewhere everything is fp32. half overrides the policy
@@ -126,12 +162,10 @@ class JevMark:
         )
         temperature = 1.0
         model_id = f"jevmark-{config['run_name']}"
+        checkpoint = resolve_checkpoint(checkpoint)
         if checkpoint is not None:
-            run_dir = Path(checkpoint)
-            adapter_dir = run_dir / "adapter"
-            if not adapter_dir.is_dir():
-                raise RuntimeError(f"checkpoint missing: no adapter directory at {adapter_dir}")
-            model = PeftModel.from_pretrained(model, adapter_dir)
+            run_dir = checkpoint
+            model = PeftModel.from_pretrained(model, adapter_directory(run_dir))
             keep_lora_fp32(model)
             calibration = run_dir / "calibration.json"
             if calibration.is_file():
@@ -147,7 +181,7 @@ class JevMark:
             temperature=temperature,
             model_id=model_id,
             autocast_dtype=torch.float16 if use_half else None,
-            source=LoadSource(config, Path(checkpoint) if checkpoint is not None else None, device),
+            source=LoadSource(config, checkpoint, device),
         )
 
     @property
