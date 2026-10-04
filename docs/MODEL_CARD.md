@@ -25,11 +25,27 @@ Code, data builders, every report and the metrics files behind every number: htt
 
 ## The adapters
 
-| folder | source run | commit | adapter sha256 | what it is for |
-|---|---|---|---|---|
-| `sft_06b` | `runs/sft_06b` | a1dc2bf | `5d2681f3ba7a72cd4c0f1413e89c5e21c7bb96cee8645fa2a498516d67568809` | the general decision model on Qwen3-0.6B-Base: LoRA SFT on CLINC150 and SST-5 questions |
-| `sft_17b` | `runs/sft_17b` | 3a7169c | `566ff13ba9e8400e653e878361ef625e875b43957f80322c046e7e7248003374` | the same general decision model on Qwen3-1.7B-Base |
-| `rlcd_banking77_06b` | `runs/v3_06b_direct_brier_n5000_s0` | b5913ef | `3e00b7d467fd2d3955402b2b2fcdb41317a9d6221ae65ae152520de49d8d783a` | `sft_06b` adapted to Banking77 from a deployment log: 5000 logged interactions where only the correctness of the model's own chosen answer was revealed, no labels, trained with a pathwise Brier loss (RLCD) |
+| folder | base model | what it is for |
+|---|---|---|
+| `sft_06b` | Qwen3-0.6B-Base | The general decision model: LoRA SFT on CLINC150 and SST-5 questions. |
+| `sft_17b` | Qwen3-1.7B-Base | The same general decision model at the larger size. |
+| `rlcd_banking77_06b` | Qwen3-0.6B-Base | `sft_06b` adapted to Banking77 from a deployment log: 5000 logged interactions where only the correctness of the model's own chosen answer was revealed, no labels, trained with a pathwise Brier loss (RLCD). |
+
+Provenance: each source run is a directory of the GitHub repository with its config and metrics, at the commit that trained it.
+
+| folder | source run | commit |
+|---|---|---|
+| `sft_06b` | `runs/sft_06b` | a1dc2bf |
+| `sft_17b` | `runs/sft_17b` | 3a7169c |
+| `rlcd_banking77_06b` | `runs/v3_06b_direct_brier_n5000_s0` | b5913ef |
+
+sha256 of each `adapter_model.safetensors`:
+
+```
+sft_06b             5d2681f3ba7a72cd4c0f1413e89c5e21c7bb96cee8645fa2a498516d67568809
+sft_17b             566ff13ba9e8400e653e878361ef625e875b43957f80322c046e7e7248003374
+rlcd_banking77_06b  3e00b7d467fd2d3955402b2b2fcdb41317a9d6221ae65ae152520de49d8d783a
+```
 
 Each folder holds `adapter_config.json` and `adapter_model.safetensors` (LoRA r 16, alpha 32 on q, k, v, o), plus `config.yaml` (the backbone and its pinned revision, the encoding length and the training settings), `calibration.json` (temperature 1.0: the adapters are published as evaluated in the reports, without a fitted temperature) and `model_id.txt`.
 
