@@ -11,10 +11,12 @@ Samples, all seeded from seed 0:
   contrast, with sft_06b's answers.
 
 Writes, under --out:
-- label_audit_sheet.csv: one row per question in a seeded shuffled order: group, record id, question
-  id, message text, gold label and its description, the full option list, and the empty columns
-  verdict (label_wrong, ambiguous or model_wrong) and note. No model answer is in it.
-- label_audit_answers.csv: the model answers, keyed by record id, to open only after judging.
+- label_audit_sheet.csv: the blind sheet, one row per question in a seeded shuffled order: record
+  id, question id, message text, state format, gold label and its description, the full option
+  list, and the empty columns verdict (label_correct, ambiguous, label_wrong or convention, defined
+  in docs/audit/REVIEW_GUIDE.md) and note. Neither the sample group nor any model answer is in it.
+- label_audit_answers.csv: the sample group and the model answers, keyed by record id, to open only
+  after judging.
 The first-pass verdicts (label_audit_cc_pass.csv) are written by hand from the sheet alone.
 """
 
@@ -42,7 +44,7 @@ RLCD = "v3_06b_direct_brier_n5000_s0"
 ZERO = "v3_06b_zeroshot"
 SFT = "sft_06b"
 SIZES = {"a": 100, "b": 50, "c": 50}
-SHEET_FIELDS = ["row", "group", "record_id", "question_id", "message", "state_format", "gold_label", "gold_description", "options", "verdict", "note"]
+SHEET_FIELDS = ["record_id", "question_id", "message", "state_format", "gold_label", "gold_description", "options", "verdict", "note"]
 ANSWER_FIELDS = ["record_id", "question_id", "group", "gold_label", "zero_shot", "full_sft_s0", "direct_brier_s0", "sft_06b"]
 
 
@@ -89,14 +91,14 @@ def build(runs: Path, data: Path, out: Path) -> dict[str, int]:
     random.Random(f"label-audit:{SEED}:order").shuffle(order)
 
     sheet, answers = [], []
-    for row, key in enumerate(order, start=1):
+    for key in order:
         record_id, qid = key
         record = (banking if key in full else indomain)[record_id]
         question = record["questions"][qid]
         gold = record["gold"][qid]
         message, state_format = message_of(record)
         options = " | ".join(f"{label}: {desc}" if desc else label for label, desc in question["criteria"].items())
-        sheet.append({"row": row, "group": groups[key], "record_id": record_id, "question_id": qid, "message": message, "state_format": state_format,
+        sheet.append({"record_id": record_id, "question_id": qid, "message": message, "state_format": state_format,
                       "gold_label": gold, "gold_description": question["criteria"].get(gold) or "", "options": options, "verdict": "", "note": ""})
         answers.append({"record_id": record_id, "question_id": qid, "group": groups[key], "gold_label": gold, "zero_shot": answer(zero.get(key)),
                         "full_sft_s0": answer(full.get(key)), "direct_brier_s0": answer(rlcd.get(key)), "sft_06b": answer(sft.get(key))})
