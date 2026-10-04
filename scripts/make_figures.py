@@ -14,8 +14,8 @@ never results.jsonl.gz or replies.jsonl, so every figure rebuilds from git. Writ
 - v2_reliability.png: reliability on the four unseen schemas for sft_06b and sft_06b_temp.
 - v2_arm_ece.png: unseen-schema mean ECE per RLCD arm before and after its own temperature,
   with the range over seeds 0, 1 and 2.
-- v3_n_curve.png: accuracy and ECE against N on v3_banking77_test_full per learner, with the
-  seed ranges at N 5000.
+- v3_n_curve.png: accuracy and ECE against N on v3_banking77_test_full per learner, direct_brier
+  plus its own outcome-fitted temperature included, with the seed ranges at N 5000.
 - v3_coverage.png: coverage against accuracy at N 5000 on v3_banking77_test_full.
 - v3_noise.png: the noisy diagnostics on the channel scale against the mapped-clean reference,
   and their accuracy.
@@ -265,11 +265,12 @@ def v2_arm_ece(runs: Path, out: Path, written: list[Path]) -> None:
 # v3
 
 
-V3_LEARNERS = [("zero_shot", "zero-shot"), ("temperature", "temperature"), ("positive_sft", "positive_sft"), ("full_sft", "full_sft"), ("direct_brier", "direct_brier (RLCD)")]
+V3_LEARNERS = [("zero_shot", "zero-shot"), ("temperature", "temperature"), ("positive_sft", "positive_sft"), ("full_sft", "full_sft"), ("direct_brier", "direct_brier (RLCD)"),
+               ("direct_brier_temp", "direct_brier + temperature")]
 
 
 def v3_colors() -> dict[str, str]:
-    return {"zero_shot": REFERENCE, "temperature": SERIES[3], "positive_sft": SERIES[2], "full_sft": SERIES[0], "direct_brier": SERIES[1]}
+    return {"zero_shot": REFERENCE, "temperature": SERIES[3], "positive_sft": SERIES[2], "full_sft": SERIES[0], "direct_brier": SERIES[1], "direct_brier_temp": SERIES[4]}
 
 
 def v3_n_curve(runs: Path, out: Path, written: list[Path]) -> None:
@@ -282,7 +283,7 @@ def v3_n_curve(runs: Path, out: Path, written: list[Path]) -> None:
             points = [curve[str(n)][key] for n in NS]
             ys = [p[metric] for p in points]
             err = [[p[metric] - p[f"{metric}_ci"][0] for p in points], [p[f"{metric}_ci"][1] - p[metric] for p in points]]
-            line = "--" if key == "zero_shot" else "-"
+            line = {"zero_shot": "--", "direct_brier_temp": ":"}.get(key, "-")
             ax.errorbar(NS, ys, yerr=err, color=colors[key], marker=MARKERS[k], linestyle=line, capsize=2, elinewidth=0.8, label=name)
         for key, block, shift in (("direct_brier", seeds["training_seeds"], 1.09), ("full_sft", seeds["full_sft"]["training_seeds"], 1.17)):
             lo, hi = block[metric]["range"]
@@ -293,11 +294,11 @@ def v3_n_curve(runs: Path, out: Path, written: list[Path]) -> None:
         ax.set_xlabel("N, logged interactions the learner sees")
         ax.set_ylabel(label)
     handles, names = axes[0].get_legend_handles_labels()
-    fig.legend(handles, names, ncol=5, loc="upper left", bbox_to_anchor=(0.01, 0.93))
+    fig.legend(handles, names, ncol=3, loc="upper left", bbox_to_anchor=(0.01, 0.93))
     fig.suptitle("v3: learning Banking77 from the deployment log, v3_banking77_test_full (3080 records)", x=0.01, ha="left", fontsize=10)
-    fig.tight_layout(rect=(0, 0.07, 1, 0.87))
+    fig.tight_layout(rect=(0, 0.07, 1, 0.82))
     caption(fig, "Source: runs/v3_stage_06b/metrics.json: n_curve.<N>.<learner> (seed 0; whiskers 95% record bootstrap), "
-                 "seeds.training_seeds and seeds.full_sft.training_seeds (thick bars right of N 5000: range over training seeds 0, 1, 2, direct_brier then full_sft). The temperature changes no prediction, so its accuracy line covers zero-shot's.")
+                 "seeds.training_seeds and seeds.full_sft.training_seeds (thick bars right of N 5000: range over training seeds 0, 1, 2, direct_brier then full_sft). A temperature changes no prediction, so the temperature's accuracy line covers zero-shot's and direct_brier + temperature covers direct_brier's.")
     save(fig, out, "v3_n_curve.png", written)
 
 
@@ -307,6 +308,8 @@ def v3_coverage(runs: Path, out: Path, written: list[Path]) -> None:
     colors = v3_colors()
     fig, ax = plt.subplots(figsize=(6.4, 4.7))
     for k, (key, name) in enumerate(V3_LEARNERS):
+        if key not in sources:  # direct_brier + temperature has no metrics.json of its own; it is in the N-curve only
+            continue
         block = load(runs / sources[key] / "metrics.json")["splits"][V3]["choice"]
         ax.plot(*coverage_points(block), color=colors[key], marker=MARKERS[k], markersize=3.5, linestyle="--" if key == "zero_shot" else "-", label=name)
     ax.set_xlim(0, 1.02)

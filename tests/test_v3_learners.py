@@ -6,6 +6,7 @@ import json
 import math
 import random
 import sys
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -20,7 +21,7 @@ from jevmark.config import load_config
 from jevmark.data import unseen
 from jevmark.data.description_loader import load_descriptions
 from jevmark.feedback import Interaction, file_sha256, interactions, write_log
-from jevmark.metrics import QuestionResult, write_results
+from jevmark.metrics import QuestionResult, read_results, write_results
 from jevmark.model import JevMark
 
 REPO = Path(__file__).resolve().parents[1]
@@ -256,6 +257,40 @@ def test_calibrate_fit_log_writes_the_temperature_run(setup, tmp_path):
     assert metrics["calibration"]["log_sha256"] == file_sha256(setup.log_path) and set(metrics["splits"]) == {unseen.V3_TEST_FULL}
     with pytest.raises(SystemExit):
         calibrate.main([str(source), "--fit-log", str(setup.log_path)])
+
+
+def test_a_temperature_on_a_trained_learner_uses_its_own_probabilities_on_the_log_prefix(setup, tmp_path):
+    """evaluate.py --log-prefix, then calibrate.py --fit-log --fit-probs (task 3.5, temperature on RLCD)."""
+    evaluate = load_script("evaluate")
+    train(setup, tmp_path, "arm=direct_brier")
+    run = tmp_path / f"v3_06b_direct_brier_n{N}_s0"
+    argv = ["--ckpt", str(run), "--log-prefix", str(setup.log_path), "--n", str(N), "--no-probes", "--data-dir", str(setup.data_dir), "--runs-dir", str(tmp_path), "--device", "cpu"]
+    assert evaluate.main(argv) == 0
+    prefix_run = tmp_path / f"{run.name}_prefix"
+    metrics = json.loads((prefix_run / "metrics.json").read_text())
+    assert metrics["log_prefix"] == {"log": str(setup.log_path), "log_sha256": file_sha256(setup.log_path), "n": N, "n_interactions": 36}
+    assert metrics["latency"] is None and metrics["batching_precision"] is None and list(metrics["splits"]) == [unseen.V3_TRAIN]
+    prefix_results = {r.record_id: r for r in read_results(prefix_run / "results.jsonl.gz")}
+    assert set(prefix_results) == {i.record_id for i in setup.log[:36]}
+
+    # The learner's own evaluation, standing in for its test-split results.
+    write_results(run / "results.jsonl.gz", [replace(r, split=unseen.V3_TEST_FULL) for r in prefix_results.values()])
+    run_metrics = json.loads((run / "metrics.json").read_text()) if (run / "metrics.json").is_file() else {"run_name": run.name, "splits": {}}
+    run_metrics["adapter_sha256"] = metrics["adapter_sha256"]
+    (run / "metrics.json").write_text(json.dumps(run_metrics))
+    assert calibrate.main([str(run), "--fit-log", str(setup.log_path), "--n", str(N), "--fit-probs", str(prefix_run)]) == 0
+    fit = setup.log[:36]
+    expected = fit_outcome_temperature([prefix_results[i.record_id].probs for i in fit], [i.action for i in fit], [i.outcome for i in fit])
+    cal = json.loads((tmp_path / f"{run.name}_temp" / "metrics.json").read_text())["calibration"]
+    assert cal["temperature"] == pytest.approx(expected) and cal["probs_from"] == str(prefix_run) and cal["n_fit"] == 36
+    assert cal["temperature"] != pytest.approx(fit_outcome_temperature([i.probs for i in fit], [i.action for i in fit], [i.outcome for i in fit]))
+
+    with pytest.raises(SystemExit, match="first 0.9 N"):
+        calibrate.main([str(run), "--fit-log", str(setup.log_path), "--n", "20", "--fit-probs", str(prefix_run), "--out", str(tmp_path / "x")])
+    run_metrics["adapter_sha256"] = "0" * 64
+    (run / "metrics.json").write_text(json.dumps(run_metrics))
+    with pytest.raises(SystemExit, match="another adapter"):
+        calibrate.main([str(run), "--fit-log", str(setup.log_path), "--n", str(N), "--fit-probs", str(prefix_run), "--out", str(tmp_path / "y")])
 
 
 def test_a_stored_adapter_becomes_a_run_that_evaluates(setup, tmp_path):

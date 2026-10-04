@@ -36,6 +36,16 @@ from the probabilities the log stores. It is applied to every split in the sourc
 run's results.jsonl.gz, which must be the logging policy's own evaluation (the
 adapter sha256 in its metrics.json must equal the log's), and written to
 runs/v3_<size>_temp_n<N>/ unless --out is given.
+
+With --fit-probs PREFIX_RUN the temperature goes on top of a trained learner:
+
+    uv run python scripts/calibrate.py runs/v3_06b_direct_brier_n5000_s0 --fit-log runs/v3_log_s0/log.jsonl --n 5000 \
+        --fit-probs runs/v3_06b_direct_brier_n5000_s0_prefix
+
+The probabilities of the logged actions are the learner's own on the records it
+trained on (evaluate.py --log-prefix, same adapter, same log, same N), not the
+logging policy's stored in the log; the actions and outcomes are the log's. The
+result is applied to the learner's results.jsonl.gz and written to runs/<run>_temp/.
 """
 
 from __future__ import annotations
@@ -51,7 +61,7 @@ from pathlib import Path
 from typing import Any
 
 from jevmark.calibration import fit_outcome_temperature, fit_temperature, mean_nll, outcome_log_likelihood, scale_results
-from jevmark.feedback import TRAIN_SHARE, file_sha256, prefix, read_log
+from jevmark.feedback import TRAIN_SHARE, Interaction, file_sha256, prefix, read_log
 from jevmark.metrics import QUESTION_TYPES, gold_dependent, read_results, reports_by_split, split_report
 from jevmark.provenance import git_state
 
@@ -134,29 +144,60 @@ def write_scaled_run(run_dir: Path, results: list, source_metrics: dict[str, Any
     return out_dir
 
 
-def calibrate_from_log(run_dir: Path, log_path: Path, n: int, out_dir: Path | None = None, train_share: float = TRAIN_SHARE) -> Path:
-    """The v3 temperature learner: T fitted on the logged outcomes of the first train_share x N interactions, applied to run_dir's results."""
+def learner_probs(fit: Sequence[Interaction], probs_dir: Path, source_metrics: dict[str, Any], log_sha256: str, n: int) -> list[tuple[float, ...]]:
+    """The learner's probabilities over each interaction's options, from its evaluation on the log prefix (evaluate.py --log-prefix)."""
+    probs_metrics = json.loads((probs_dir / "metrics.json").read_text())
+    if probs_metrics.get("adapter_sha256") != source_metrics.get("adapter_sha256"):
+        raise SystemExit(f"{probs_dir} evaluates another adapter than the source run")
+    on = probs_metrics.get("log_prefix") or {}
+    if on.get("log_sha256") != log_sha256 or on.get("n") != n:
+        raise SystemExit(f"{probs_dir} was not evaluated on the first 0.9 N interactions of this log at N {n}")
+    by_record = {(r.record_id, r.question_id): r for r in read_results(probs_dir / "results.jsonl.gz")}
+    out = []
+    for i in fit:
+        r = by_record.get((i.record_id, i.question_id))
+        if r is None or tuple(r.labels) != tuple(i.labels):
+            raise SystemExit(f"{probs_dir}: no result with the logged option order for {i.record_id}")
+        out.append(tuple(r.probs))
+    return out
+
+
+def calibrate_from_log(run_dir: Path, log_path: Path, n: int, out_dir: Path | None = None, train_share: float = TRAIN_SHARE, probs_dir: Path | None = None) -> Path:
+    """The v3 temperature learner: T fitted on the logged outcomes of the first train_share x N interactions, applied to run_dir's results.
+
+    Without probs_dir the probabilities are the logging policy's, stored in the log, and run_dir must
+    evaluate that policy. With probs_dir they are run_dir's own learner's on the same interactions.
+    """
     git = git_state()
-    log_metrics_path = log_path.parent / "metrics.json"
-    log_metrics = json.loads(log_metrics_path.read_text()) if log_metrics_path.is_file() else {}
     source_metrics = json.loads((run_dir / "metrics.json").read_text())
-    logged_adapter = log_metrics.get("logging_policy", {}).get("adapter_sha256")
-    if logged_adapter and source_metrics.get("adapter_sha256") and logged_adapter != source_metrics["adapter_sha256"]:
-        raise SystemExit(f"{run_dir} evaluates another adapter than the policy that drew {log_path}; the temperature belongs to the logging policy")
+    log_sha256 = file_sha256(log_path)
     fit = prefix(read_log(log_path), n, train_share).train
-    probs, actions, outcomes = [i.probs for i in fit], [i.action for i in fit], [i.outcome for i in fit]
+    if probs_dir is None:
+        log_metrics_path = log_path.parent / "metrics.json"
+        log_metrics = json.loads(log_metrics_path.read_text()) if log_metrics_path.is_file() else {}
+        logged_adapter = log_metrics.get("logging_policy", {}).get("adapter_sha256")
+        if logged_adapter and source_metrics.get("adapter_sha256") and logged_adapter != source_metrics["adapter_sha256"]:
+            raise SystemExit(f"{run_dir} evaluates another adapter than the policy that drew {log_path}; the temperature belongs to the logging policy (pass --fit-probs for a trained learner)")
+        probs = [i.probs for i in fit]
+    else:
+        probs = learner_probs(fit, probs_dir, source_metrics, log_sha256, n)
+    actions, outcomes = [i.action for i in fit], [i.outcome for i in fit]
     t = fit_outcome_temperature(probs, actions, outcomes)
     calibration = {
         "temperature": t,
         "fitted": True,
-        "fit_on": f"the first {len(fit)} interactions of {log_path} (N {n}), Bernoulli log-likelihood of the logged outcomes of the chosen actions",
+        "fit_on": f"the first {len(fit)} interactions of {log_path} (N {n}), Bernoulli log-likelihood of the logged outcomes of the chosen actions"
+        + ("" if probs_dir is None else f", under the learner's probabilities from {probs_dir}"),
         "log": str(log_path),
-        "log_sha256": file_sha256(log_path),
+        "log_sha256": log_sha256,
+        "probs_from": "the log (the logging policy)" if probs_dir is None else str(probs_dir),
         "n": n,
         "n_fit": len(fit),
         "outcome_log_likelihood_at_t1": outcome_log_likelihood(probs, actions, outcomes, 1.0),
         "outcome_log_likelihood_at_t": outcome_log_likelihood(probs, actions, outcomes, t),
     }
+    if out_dir is None and probs_dir is not None:
+        out_dir = run_dir.parent / f"{run_dir.name}_temp"
     if out_dir is None:
         size = re.search(r"(06b|17b)", run_dir.name)
         if size is None:
@@ -172,16 +213,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--out", default=None, help="output directory; default runs/<run>_temp next to the source (runs/v3_<size>_temp_n<N> with --fit-log)")
     parser.add_argument("--fit-log", default=None, help="v3: fit T on the logged outcomes of this deployment-feedback log instead of on valid")
     parser.add_argument("--n", type=int, default=None, help="with --fit-log: the learner's N; T is fitted on the first 0.9 N interactions")
+    parser.add_argument("--fit-probs", default=None, help="with --fit-log: a trained learner's evaluation on the log prefix (evaluate.py --log-prefix); its probabilities replace the logging policy's")
     args = parser.parse_args(argv)
     if args.fit_log is not None:
         if args.n is None or args.temperature is not None:
             parser.error("--fit-log needs --n and does not take --temperature")
-        out = calibrate_from_log(Path(args.run_dir), Path(args.fit_log), args.n, Path(args.out) if args.out else None)
+        out = calibrate_from_log(Path(args.run_dir), Path(args.fit_log), args.n, Path(args.out) if args.out else None, probs_dir=Path(args.fit_probs) if args.fit_probs else None)
         cal = json.loads((out / "metrics.json").read_text())["calibration"]
         print(f"{out}: T {cal['temperature']:.4f} fitted on {cal['n_fit']} logged outcomes; log-likelihood {cal['outcome_log_likelihood_at_t1']:.4f} -> {cal['outcome_log_likelihood_at_t']:.4f}")
         return 0
-    elif args.n is not None:
-        parser.error("--n is a --fit-log option")
+    elif args.n is not None or args.fit_probs is not None:
+        parser.error("--n and --fit-probs are --fit-log options")
     out = calibrate(Path(args.run_dir), args.temperature, Path(args.out) if args.out else None)
     metrics = json.loads((out / "metrics.json").read_text())
     cal = metrics["calibration"]

@@ -11,6 +11,10 @@ No model is loaded. It reads, under --runs-dir:
 - every v3_<size>_<arm>_n<N>_s<seed>[_noisy][_log<k>] with a results.jsonl.gz, for
   the arms positive_sft, full_sft and direct_brier (scripts/train_rlcd.py log mode,
   then scripts/evaluate.py);
+- v3_<size>_direct_brier_n<N>_s<seed>_temp: direct_brier plus a temperature fitted on
+  the logged outcomes under its own probabilities on the records it trained on
+  (evaluate.py --log-prefix, then calibrate.py --fit-log --fit-probs); its
+  probabilities are that run's results scaled by its calibration.json;
 - b2_gpt-4.1-mini/metrics.json for the B2 reference on the 500-record baseline
   subset of test_banking77 (data/baseline_subset.json).
 
@@ -19,14 +23,18 @@ bootstrap intervals by record (resamples of the split's records, the same draws 
 every run, so differences are paired), and writes runs/v3_stage_<size>/metrics.json:
 
 - n_curve: rows N 500, 2000, 5000; columns zero_shot, temperature, positive_sft,
-  full_sft and direct_brier (seed 0, the seed 0 log, clean outcomes), and the paired
-  differences direct_brier minus positive_sft and direct_brier minus full_sft;
+  full_sft, direct_brier and direct_brier_temp (seed 0, the seed 0 log, clean
+  outcomes), and the paired differences direct_brier minus positive_sft, direct_brier
+  minus full_sft, direct_brier_temp minus direct_brier and direct_brier_temp minus
+  temperature;
 - seeds: direct_brier at N 5000 for training seeds 0, 1 and 2 (mean and range) and
   on the seed 1 log (logging variance), with each run's difference from seed 0, and
   the seed mean minus positive_sft and minus full_sft at N 5000 (each draw averages
   the seeds' differences under the same record resample, decision 53); full_sft at
   N 5000 for training seeds 0, 1 and 2 (mean and range, each seed minus seed 0) and
   direct_brier's seed mean minus full_sft's seed mean, paired the same way;
+  direct_brier_temp for training seeds 0, 1 and 2 and its seed mean minus
+  direct_brier's seed mean;
 - noisy: direct_brier and positive_sft at N 5000 with flipped outcomes, each one's
   change from its clean run, and the difference of those changes (prediction 4);
 - forgetting: every learner's accuracy and ECE on test_indomain and
@@ -68,7 +76,8 @@ from jevmark.provenance import git_state
 REPO = Path(__file__).resolve().parents[1]
 NS = (500, 2000, 5000)
 ARMS = ("positive_sft", "full_sft", "direct_brier")
-LEARNERS = ("zero_shot", "temperature", *ARMS)
+TEMP_ON_RLCD = "direct_brier_temp"
+LEARNERS = ("zero_shot", "temperature", *ARMS, TEMP_ON_RLCD)
 FORGETTING_SPLITS = ("test_indomain", "test_unseen_intents")
 COVERAGE_THRESHOLDS = (0.8, 0.9, 0.95)
 METRICS = ("accuracy", "ece", "brier", "nll")
@@ -266,6 +275,16 @@ def compare(runs_dir: Path, size: str, resamples: int, subset_path: Path = SUBSE
         per_run[name] = by_split(read_results(path / "results.jsonl.gz"))
         sources[name] = {"dir": str(path), "git": metrics.get("git"), "results_sha256": sha256(path / "results.jsonl.gz"), "v3": metrics.get("v3")}
 
+    rlcd_temperatures = {}
+    for (arm, n, seed, noisy, log), path in runs.items():
+        temp_dir = path.parent / f"{path.name}_temp"
+        if arm == "direct_brier" and not noisy and not log and (temp_dir / "calibration.json").is_file():
+            t = float(json.loads((temp_dir / "calibration.json").read_text())["temperature"])
+            name = learner_name(TEMP_ON_RLCD, n, seed)
+            rlcd_temperatures[name] = t
+            per_run[name] = by_split(scale_results(read_results(path / "results.jsonl.gz"), t))
+            sources[name] = {"dir": str(temp_dir), "temperature": t, "source_run": str(path)}
+
     splits = {}
     for split in (V3_TEST_FULL, *FORGETTING_SPLITS):
         reference = zero[split]
@@ -287,6 +306,9 @@ def compare(runs_dir: Path, size: str, resamples: int, subset_path: Path = SUBSE
         brier, pos, full = column(n, "direct_brier"), column(n, "positive_sft"), column(n, "full_sft")
         row["direct_brier_minus_positive_sft"] = main.delta(brier, pos) if brier and pos else None
         row["direct_brier_minus_full_sft"] = main.delta(brier, full) if brier and full else None
+        brier_temp, temp = column(n, TEMP_ON_RLCD), column(n, "temperature")
+        row["direct_brier_temp_minus_direct_brier"] = main.delta(brier_temp, brier) if brier_temp and brier else None
+        row["direct_brier_temp_minus_temperature"] = main.delta(brier_temp, temp) if brier_temp and temp else None
         n_curve[str(n)] = row
 
     seed_runs = {f"seed_{s}": learner_name("direct_brier", 5000, s) for s in (0, 1, 2)}
@@ -310,6 +332,14 @@ def compare(runs_dir: Path, size: str, resamples: int, subset_path: Path = SUBSE
     full["minus_seed_0"] = {key: main.delta(name, full_names["seed_0"]) for key, name in full_names.items() if key != "seed_0" and name in present and full_names["seed_0"] in present}
     seeds["full_sft"] = full
     seeds["training_seed_mean_minus_full_sft_seed_mean"] = main.mean_minus_mean(trained_names, full_trained) if trained_names and full_trained else None
+    temp_names = {f"seed_{s}": learner_name(TEMP_ON_RLCD, 5000, s) for s in (0, 1, 2)}
+    temp_trained = [name for name in temp_names.values() if name in present]
+    with_temp: dict[str, Any] = {key: (main.point(name) if name in present else None) for key, name in temp_names.items()}
+    if temp_trained:
+        points = [main.point(name) for name in temp_trained]
+        with_temp["training_seeds"] = {m: {"mean": sum(p[m] for p in points) / len(points), "range": [min(p[m] for p in points), max(p[m] for p in points)], "n_seeds": len(points)} for m in METRICS}
+    seeds[TEMP_ON_RLCD] = with_temp
+    seeds["direct_brier_temp_seed_mean_minus_direct_brier_seed_mean"] = main.mean_minus_mean(temp_trained, trained_names) if temp_trained and trained_names else None
 
     noisy: dict[str, Any] = {}
     for arm in ("direct_brier", "positive_sft"):
@@ -351,6 +381,7 @@ def compare(runs_dir: Path, size: str, resamples: int, subset_path: Path = SUBSE
         "note": "Adapted learners' Banking77 numbers are never mixed into the v1 or v2 unseen-schema means (decision 56).",
         "data_files_sha256": data_hashes,
         "temperatures": {str(n): t for n, t in temperatures.items()},
+        "direct_brier_temperatures": rlcd_temperatures,
         "sources": sources,
         "n_curve": n_curve,
         "seeds": seeds,
@@ -376,6 +407,19 @@ def print_tables(result: Mapping[str, Any]) -> None:
         print("N      " + "  ".join(f"{name:>24}" for name in LEARNERS))
         for n, row in result["n_curve"].items():
             print(f"{n:6} " + "  ".join(f"{fmt(row[name], metric):>24}" for name in LEARNERS))
+    print("\n== direct_brier_temp minus direct_brier / minus temperature (ECE, paired)")
+    for n, row in result["n_curve"].items():
+        cells = []
+        for key in ("direct_brier_temp_minus_direct_brier", "direct_brier_temp_minus_temperature"):
+            d = row[key]
+            cells.append("-" if d is None else f"{d['ece']['delta']:+.3f} [{d['ece']['ci'][0]:+.3f}, {d['ece']['ci'][1]:+.3f}]")
+        print(f"{n:6} " + "   ".join(cells))
+    print("\n== coverage at .80 / .90 / .95 (accuracy of the kept answers)")
+    for n in result["n_curve"]:
+        for name in (f"temperature_n{n}", learner_name("direct_brier", int(n)), learner_name(TEMP_ON_RLCD, int(n))):
+            block = result["coverage"].get(name)
+            if block:
+                print(f"{name:28} " + "  ".join(f"{c['coverage']:.3f} ({c['accuracy']:.3f})" if c["accuracy"] is not None else f"{c['coverage']:.3f} (-)" for c in block.values()))
     print("\n== direct_brier minus positive_sft / minus full_sft (accuracy, paired)")
     for n, row in result["n_curve"].items():
         cells = []

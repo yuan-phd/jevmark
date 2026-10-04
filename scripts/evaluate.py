@@ -15,6 +15,13 @@ With --ckpt base the run name is
 the config's run_name (base_06b or base_17b); a --limit run writes to
 runs/<run_name>_limit<N>/ so smoke runs never overwrite real results.
 
+--log-prefix LOG --n N (v3, the temperature on a trained learner) evaluates only
+the v3_banking77_train records of the first 0.9 N interactions of LOG, the records
+the learner trained on, into runs/<run_name>_prefix/ unless --run-name is given;
+scripts/calibrate.py --fit-log --fit-probs reads those probabilities. --no-probes
+skips the batching-precision and latency probes, which time the device rather than
+the questions.
+
 The first batch's slot logits are checked for NaN or inf; on failure autocast is
 switched off (JevMark.use_fp32, decision 28), the switch is logged and recorded in
 metrics.json, and evaluation continues in fp32.
@@ -43,9 +50,10 @@ import torch  # noqa: E402
 import yaml  # noqa: E402
 
 from jevmark.config import load_config  # noqa: E402
-from jevmark.data.build import SPLITS, V3_EVAL_SPLITS, V3_SPLITS  # noqa: E402
+from jevmark.data.build import SPLITS, V3_EVAL_SPLITS, V3_SPLITS, V3_TRAIN  # noqa: E402
 from jevmark.data.negation import negate  # noqa: E402
 from jevmark.encode import Encoded, encode  # noqa: E402
+from jevmark.feedback import file_sha256, prefix, read_log  # noqa: E402
 from jevmark.metrics import QuestionResult, max_abs_difference, split_report, timing_summary, write_results  # noqa: E402
 from jevmark.model import JevMark  # noqa: E402
 from jevmark.provenance import git_state  # noqa: E402
@@ -295,11 +303,20 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         help="also evaluate each record with its questions reordered, to measure order sensitivity; on the named splits, or on every evaluated split when none is named",
     )
     parser.add_argument("--run-name", default=None, help="write to runs/<run-name>/ instead of the default name (no _limit suffix is added); the fast cycle uses it")
+    parser.add_argument("--log-prefix", default=None, metavar="LOG", help="v3: evaluate only the v3_banking77_train records of the first 0.9 N interactions of this log (needs --n)")
+    parser.add_argument("--n", type=int, default=None, help="with --log-prefix: the learner's N")
+    parser.add_argument("--no-probes", action="store_true", help="skip the batching-precision and latency probes")
     parser.add_argument("--data-dir", default=str(REPO / "data"))
     parser.add_argument("--runs-dir", default=str(REPO / "runs"))
     args = parser.parse_args(argv)
     if args.limit is not None and args.limit < 1:
         parser.error("--limit must be at least 1")
+    if (args.log_prefix is None) != (args.n is None):
+        parser.error("--log-prefix and --n go together")
+    if args.log_prefix is not None:
+        if args.splits not in (None, [V3_TRAIN]) or args.limit is not None:
+            parser.error(f"--log-prefix evaluates {V3_TRAIN} only and takes no --limit")
+        args.splits = [V3_TRAIN]
     if args.shuffle_questions and args.splits is not None:
         unknown = set(args.shuffle_questions) - set(args.splits)
         if unknown:
@@ -324,8 +341,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         config_path = Path(args.config) if args.config else checkpoint / "config.yaml"
         config = load_config(config_path)
         run_name = checkpoint.name
+    log_prefix = None
+    if args.log_prefix is not None:
+        log_path = Path(args.log_prefix)
+        trained_on = prefix(read_log(log_path), args.n).train
+        log_prefix = {"log": str(log_path), "log_sha256": file_sha256(log_path), "n": args.n, "n_interactions": len(trained_on), "record_ids": {i.record_id for i in trained_on}}
     if args.run_name:
         run_name = args.run_name
+    elif log_prefix is not None:
+        run_name = f"{run_name}_prefix"
     elif args.limit:
         run_name = f"{run_name}_limit{args.limit}"
     out_dir = Path(args.runs_dir) / run_name
@@ -348,6 +372,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     probe_requests: list[Request] = []
     for split in splits:
         records, digest = read_split(Path(args.data_dir), split, args.limit)
+        if log_prefix is not None:
+            records = [r for r in records if r["id"] in log_prefix["record_ids"]]
+            if len(records) != log_prefix["n_interactions"]:
+                raise SystemExit(f"{split} holds {len(records)} of the {log_prefix['n_interactions']} records of the log prefix")
         data_files[f"{split}.jsonl"] = digest
         if fallback_used is None:
             fallback_used = first_batch_check(jev, [encode(request_of(r), jev.tokenizer, jev.max_tokens) for r in records[: args.batch_size]])
@@ -368,10 +396,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             log(f"{'':20} questions reordered: acc {moved['accuracy']:.4f} -> {moved['accuracy_shuffled']:.4f}, prediction agreement {moved['prediction_agreement']:.4f}, mean max |dp| {moved['mean_max_abs_difference']:.4f}")
         plot_reliability(split, metrics, out_dir / "plots" / f"{split}.png")
 
-    batching = batching_precision(jev, probe, args.batch_size)
-    log(f"batched vs single on {batching['n_requests']} requests: max abs difference {batching['max_abs_difference']:.3g}")
-    timing = latency(jev, probe_requests, PROBE_REQUESTS)
-    log(f"latency batch 1: median {timing['batch_1']['median_ms']:.2f} ms; batch {THROUGHPUT_BATCH}: {timing[f'batch_{THROUGHPUT_BATCH}_requests_per_second']:.1f} requests/s")
+    batching = timing = None
+    if not args.no_probes:
+        batching = batching_precision(jev, probe, args.batch_size)
+        log(f"batched vs single on {batching['n_requests']} requests: max abs difference {batching['max_abs_difference']:.3g}")
+        timing = latency(jev, probe_requests, PROBE_REQUESTS)
+        log(f"latency batch 1: median {timing['batch_1']['median_ms']:.2f} ms; batch {THROUGHPUT_BATCH}: {timing[f'batch_{THROUGHPUT_BATCH}_requests_per_second']:.1f} requests/s")
 
     metrics_json = {
         "run_name": run_name,
@@ -390,6 +420,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "init_adapter_sha256": next((config[k].get("init_adapter_sha256") for k in ("rlcd", "v3") if isinstance(config.get(k), dict) and config[k].get("init_adapter_sha256")), None),
         "v3": {k: config["v3"].get(k) for k in ("log", "log_sha256", "log_seed", "n", "noisy", "noise", "data_sha256")} | {"arm": config.get("arm")} if isinstance(config.get("v3"), dict) and config["v3"].get("log_sha256") else None,
         "data_files_sha256": data_files,
+        "log_prefix": None if log_prefix is None else {k: v for k, v in log_prefix.items() if k != "record_ids"},
         "confidence_note": "ECE and reliability use the top-1 probability; coverage uses the response confidence field (1 - H/ln K for choice and score, max(p, 1 - p) for noul).",
         "splits": split_results,
         "batching_precision": batching,

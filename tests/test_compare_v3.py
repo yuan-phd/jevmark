@@ -64,6 +64,9 @@ def runs(tmp_path):
     write_run(runs_dir, "v3_06b_direct_brier_n5000_s0_log1", results(4.4, 30))
     write_run(runs_dir, "v3_06b_direct_brier_n5000_s0_noisy", results(3.0, 40))
     write_run(runs_dir, "v3_06b_positive_sft_n5000_s0_noisy", results(1.5, 41))
+    for name in [f"v3_06b_direct_brier_n{n}_s0" for n in (500, 2000, 5000)] + ["v3_06b_direct_brier_n5000_s1", "v3_06b_direct_brier_n5000_s2"]:
+        (runs_dir / f"{name}_temp").mkdir()
+        (runs_dir / f"{name}_temp" / "calibration.json").write_text(json.dumps({"temperature": 1.3}))
     b2 = runs_dir / "b2_gpt-4.1-mini"
     b2.mkdir()
     (b2 / "metrics.json").write_text(json.dumps({"splits": {"test_banking77": {"overall": {"accuracy_all": 0.918, "ece": 0.035, "n": 500}}}}))
@@ -99,6 +102,14 @@ def test_compare_writes_every_table(runs):
         assert "direct_brier_n5000_s0" in result["forgetting"][split]["minus_zero_shot"] and "temperature_n500" in result["forgetting"][split]["minus_zero_shot"]
     assert result["other"]["direct_brier_n5000_s0"]["predicted_other_rate"] <= result["other"]["zero_shot"]["predicted_other_rate"]
     assert set(result["coverage"]["zero_shot"]) == {"0.80", "0.90", "0.95"}
+    assert row["direct_brier_temp"]["accuracy"] == row["direct_brier"]["accuracy"] and row["direct_brier_temp"]["ece"] != row["direct_brier"]["ece"]
+    ece = row["direct_brier_temp_minus_direct_brier"]["ece"]
+    assert ece["delta"] == pytest.approx(row["direct_brier_temp"]["ece"] - row["direct_brier"]["ece"]) and ece["ci"][0] <= ece["ci"][1]
+    assert row["direct_brier_temp_minus_temperature"]["accuracy"]["delta"] == pytest.approx(row["direct_brier"]["accuracy"] - row["temperature"]["accuracy"])
+    assert result["direct_brier_temperatures"] == {f"direct_brier_temp_n{n}_s0": 1.3 for n in (500, 2000, 5000)} | {f"direct_brier_temp_n5000_s{s}": 1.3 for s in (1, 2)}
+    assert result["seeds"]["direct_brier_temp"]["training_seeds"]["accuracy"]["mean"] == pytest.approx(result["seeds"]["training_seeds"]["accuracy"]["mean"])
+    assert result["seeds"]["direct_brier_temp_seed_mean_minus_direct_brier_seed_mean"]["accuracy"]["delta"] == pytest.approx(0.0, abs=1e-12)
+    assert "direct_brier_temp_n5000_s0" in result["coverage"]
     assert result["b2_reference"]["b2"]["accuracy_all"] == 0.918 and result["b2_reference"]["runs"]["zero_shot"]["n"] == 10
 
 
