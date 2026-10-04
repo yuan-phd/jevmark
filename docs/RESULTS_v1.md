@@ -174,3 +174,16 @@ Keys: `<run>:latency.batch_1.{median_ms,p95_ms,mean_ms,n}`, `latency.batch_1_mea
 - **Consistency with the first measurement.** Mean generated tokens are identical to the 972e711 probe (66.775 and 50.465), so greedy decoding produced the same outputs. The medians are 1.4 and 5.8 percent lower (3277 and 2969 ms in section 4), and batch-16 throughput is 1 and 4 percent lower (3.27 and 3.40). The difference is session-to-session timing variation, not a change in the work done.
 - **What sets the tail.** Batch-1 time follows the number of generated tokens (correlation .99 at both sizes, about 51 ms per token), and no request reached the 256-token cap. The p95 is therefore the long replies, not stalls. At 1.7B the replies fall into two length groups (about 37 and about 55 tokens), which puts the median above the mean and the p95 close to the median (1.07 times). At 0.6B the lengths spread more (43 to 101 tokens) and the p95 is 1.34 times the median.
 - **Effect on section 4's comparisons.** Against the jevmark medians of section 4, same-size generation is 68 times slower at 0.6B and 37 times slower at 1.7B at batch 1, against the "about 40 to 70 times" stated there. B1 1.7B's cost rounds to 0.030 USD per 1000 requests instead of 0.029. The jevmark runs still record only the batch-1 median and mean, so there is no p95 to compare against on the jevmark side.
+
+## Addendum (2026-10-04): figures
+
+This report is frozen at commit 8ed8750 (decision 49), and nothing above has been changed. The two figures below are drawn by `scripts/make_figures.py` from the committed metrics files only, with no new numbers: every value in them is in sections 2 and 4 and the addendum above.
+
+![Accuracy and ECE per test split for the frozen bases and SFT at both sizes](figures/v1_full_splits.png)
+
+`figures/v1_full_splits.png`: accuracy and ECE on gold-dependent questions per test split (`runs/{base,sft}_{06b,17b}/metrics.json:splits.<split>.overall`), the numbers of section 2.
+
+![The 500-record subset: accuracy, ECE and batch-1 latency for SFT, B1 and B2](figures/v1_subset.png)
+
+`figures/v1_subset.png`: the subset comparison of section 4, accuracy with parse failures counted as wrong, ECE (top-1 for jevmark, verbalized confidence for the baselines) and median batch-1 latency on a log axis (`runs/sft_{06b,17b}/metrics_subset.json`, `runs/b1_qwen{06b,17b}_json/metrics.json`, `runs/b2_gpt-4.1-mini/metrics.json`).
+

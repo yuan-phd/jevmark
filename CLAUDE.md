@@ -71,6 +71,7 @@ jevmark/
     calibrate.py      temperature scaling of a finished run (valid or --fit-log), CPU only
     compare_calibration.py, compare_rlcd.py, compare_v3.py, compare_baselines.py   the report tables
     paired_deltas.py, simulate_advantages.py, invert_noisy.py   supporting analyses
+    make_figures.py   the report figures into docs/figures/, from committed metrics files only
     baseline_llm_json.py, baseline_api.py, make_baseline_subset.py, recompute_baseline_metrics.py
     evaluate_env.py, compare_env.py   cancelled stage 3 (history)
     export_kaggle_requirements.py
@@ -82,7 +83,8 @@ jevmark/
                       are committed so reports can link to them
   docs/
     PLAN.md, API_SPEC.md, TASKS.md, DECISIONS.md, DATA.md, KAGGLE.md, V3_DESIGN.md
-    RESULTS_v1.md (frozen, decision 49), RESULTS_v2.md, RESULTS_v3.md, STORY.md
+    RESULTS_v1.md (frozen, decision 49), RESULTS_v2.md, RESULTS_v3.md, STORY.md, CLOSING_PLAN.md
+    figures/          PNGs drawn by scripts/make_figures.py, referenced from the reports
 ```
 
 ## How to work

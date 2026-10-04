@@ -157,8 +157,8 @@ Bandit simulation on the labeled training data, starting from the SFT adapter (`
 - [x] Stage 2a (decision 53): seeds 1 and 2 for the five arms on 0.6B, in sessions of at most four runs (`ARMS` and `SEEDS` in `notebooks/kaggle_rlcd.ipynb`; docs/KAGGLE.md section 10); temperature per run; `scripts/compare_rlcd.py --size 06b --seeds 0 1 2 --out runs/rlcd_stage2a_06b`. Proof: `runs/rlcd_06b_<arm>_s{1,2}/` (commit 740371b, not dirty, 500 of 500 steps, SFT adapter sha256 matching), `runs/rlcd_06b_<arm>_s{1,2}_temp/`, `runs/rlcd_stage2a_06b/metrics.json`; docs/RESULTS_v2.md section 3.
 - Stage 2b (decision 53): the five arms at seed 0 on 1.7B with `MAX_HOURS = 3.0`; temperature per run; `scripts/compare_rlcd.py --size 17b --stage 2`. Not run (decision 58); the v2 conclusion is for 0.6B.
 - Stage 3 (decision 53): specified as task 2.5, then cancelled by decision 56.
-- [ ] Evaluate every arm on all splits. Compare against SFT and SFT+temperature.
-- [ ] `docs/RESULTS_v2.md`: table of accuracy and ECE per arm per split; the cascade figure (coverage vs accuracy) for SFT, SFT+temperature and the best RLCD arm; reliability diagrams on unseen schemas; a plain statement of whether the core claim held.
+- [x] Evaluate every arm on all splits. Compare against SFT and SFT+temperature. Proof: `runs/rlcd_06b_<arm>_s{0,1,2}/metrics.json` (all nine splits) and `_temp`, `runs/rlcd_stage2a_06b/metrics.json`; `docs/figures/v2_arm_ece.png`.
+- [x] `docs/RESULTS_v2.md`: table of accuracy and ECE per arm per split; the cascade figure (coverage vs accuracy) for SFT, SFT+temperature and the best RLCD arm; reliability diagrams on unseen schemas; a plain statement of whether the core claim held. Proof: RESULTS_v2 section 3 (the per-split table and the stage 2a answer), `docs/figures/v2_cascade.png`, `docs/figures/v2_reliability.png`, drawn by `scripts/make_figures.py` from committed metrics only (`tests/test_figures.py`).
 - Acceptance: report written; if no arm beats SFT+temperature on unseen-schema ECE, the report says so and lists the hypotheses tested.
 
 ### 2.5 Stage 3: RLCD in a stochastic-outcome environment (decision 54), CANCELLED

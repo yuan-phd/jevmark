@@ -102,6 +102,7 @@ Every run's `metrics.json`, config and training log are committed under `runs/`.
 | v2 | RLCD arms, three seeds | `uv run python scripts/compare_rlcd.py --size 06b --seeds 0 1 2 --out runs/rlcd_stage2a_06b` | `runs/rlcd_stage2a_06b/` |
 | v3 | temperature learners | `uv run python scripts/calibrate.py runs/v3_06b_zeroshot --fit-log runs/v3_log_s0/log.jsonl --n <N>` | `runs/v3_06b_temp_n<N>/` |
 | v3 | every v3 table | `uv run python scripts/compare_v3.py` | `runs/v3_stage_06b/` |
+| all | every report figure | `uv run python scripts/make_figures.py` (committed metrics files only) | `docs/figures/` |
 | v3 | the noise inversion | `uv run python scripts/invert_noisy.py runs/v3_06b_<arm>_n5000_s0_noisy --clean runs/v3_06b_<arm>_n5000_s0` | `runs/v3_06b_<arm>_n5000_s0_noisy_inverted/` |
 
 Training and evaluation themselves (`make train-sft`, `scripts/train_rlcd.py`, `make eval`) run on Kaggle through the thin notebooks in `notebooks/`.

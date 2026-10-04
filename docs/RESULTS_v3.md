@@ -67,6 +67,10 @@ Paired differences, direct_brier minus the other learner (`S:n_curve.<N>.direct_
 - **positive_sft** gains 3.5 to 5.4 points of accuracy and is the worst-calibrated learner at every N, with ECE and NLL above zero-shot's at every N.
 - **direct_brier** ties positive_sft at N 500 and leads it by 2.4 to 2.7 points from N 2000, with ECE lower by .052 to .060 at every N. It stays 0.7 to 1.8 points below full_sft, at similar or lower ECE but higher Brier and NLL. It closes 70, 90 and 81 percent of the accuracy gap between zero-shot and full_sft at N 500, 2000 and 5000.
 
+![Accuracy and ECE against N for every learner, with seed ranges at N 5000](figures/v3_n_curve.png)
+
+`figures/v3_n_curve.png`: accuracy and ECE against N for the five learners with their record-bootstrap intervals, and the range over training seeds 0, 1 and 2 at N 5000 for direct_brier and full_sft (`S:n_curve`, `S:seeds`).
+
 ## 3. Training seeds and logging variance at N 5000
 
 direct_brier at N 5000: training seeds 0, 1 and 2 on the seed 0 log, and seed 0 on the seed 1 log (`S:seeds`).
@@ -133,6 +137,10 @@ direct_brier's change minus positive_sft's change (`S:noisy.direct_brier_change_
 | selection criterion, excess over its floor | .103 | .162 | .065 | .349 | .046 | .049 |
 
 Sources. Runs, in column order: `runs/v3_06b_direct_brier_n5000_s0`, `runs/v3_06b_direct_brier_n5000_s0_last`, `runs/v3_06b_direct_brier_n5000_s0_noisy`, `runs/v3_06b_direct_brier_n5000_s0_noisy_last`, `runs/v3_06b_direct_brier_n5000_s0_noisy_soft`, `runs/v3_06b_direct_brier_n5000_s0_noisy_soft_last`. Accuracy, stored ECE, Brier and NLL: `<run>/metrics.json:splits.v3_banking77_test_full.overall`; predicted `other` and coverage (the response confidence field, 1 - H / ln K): `:splits.v3_banking77_test_full.choice.by_gold_other.predicted_other_rate`, `:choice.coverage`; mean top-1: `<run>_inverted/metrics.json:stored.mean_top1` for the noisy and soft columns, the count-weighted mean confidence of `<run>/metrics.json:splits.v3_banking77_test_full.overall.reliability` for the clean columns; channel-scale ECE: `<run>_inverted/metrics.json:stored_channel` (written by the same `invert_noisy.py`, at commit 82e6c44 for the fixed-noise runs and 3d260cd for the soft runs, not dirty), the reference `:clean_reference.mapped_channel`; forgetting: `<run>/metrics.json:splits.<split>.overall` minus `runs/v3_06b_zeroshot/metrics.json`, point differences without an interval; the selection criterion: `train_summary.json:selection_curve` of the source run at the selected step and at step 1407, as the excess over the best achievable value, 0 for clean outcomes and H(0.2) = .500 for the flipped ones. The `_last` runs were evaluated from `adapter_last` by `scripts/prepare_adapter_run.py`, with the adapter sha256 recorded in `config.yaml:adapter_eval`.
+
+![Channel-scale ECE and accuracy for the clean, fixed-noise and soft-target runs](figures/v3_noise.png)
+
+`figures/v3_noise.png`: the table above in two panels, channel-scale ECE against the mapped-clean reference (band: its 95 percent interval) and accuracy against zero-shot, selected steps plain and step 1407 hatched.
 
 **Decision 59's predictions.**
 1. *The soft run's selected adapter has channel-scale ECE within .01 of the mapped-clean reference.* Fails by .0005 at the selected step: .024 against .014, a gap of .0105, with intervals [.021, .029] and [.011, .019]. It holds at step 1407: .019, a gap of .005. Between steps 200 and 1407 the soft run's selection criterion stays within .004 of its mean (spread .007), so the selected step is close to arbitrary, and the step-350 gap is better read as selection noise than as a limit of the objective. Measured against the fixed-noise selected run's excess over the reference (.058 - .014 = .044), the soft target removes 77 percent at its selected step and 89 percent at step 1407.
@@ -222,6 +230,10 @@ Every trained learner nearly stops answering `other`, and that alone is worth ab
 | full_sft n5000 | .947 (.973) | .918 (.979) | .888 (.982) |
 
 positive_sft keeps over 90 percent of answers at the .95 threshold with 93 to 94 percent accuracy among them, the overconfidence of prediction 2 in a form a cascade would feel: it would pass on about 6 percent errors as confident. direct_brier keeps fewer answers at every threshold than full_sft at the same N, at similar accuracy among those kept. The temperature keeps the fewest.
+
+![Coverage against accuracy at N 5000 for every learner](figures/v3_coverage.png)
+
+`figures/v3_coverage.png`: the full coverage curve at N 5000 behind the table above, thresholds 0 to 1 in steps of .05 (`<run>/metrics.json:splits.v3_banking77_test_full.choice.coverage` for v3_06b_zeroshot, v3_06b_temp_n5000 and the three trained learners at seed 0).
 
 ## 7. The B2 reference
 
