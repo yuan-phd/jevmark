@@ -15,7 +15,8 @@
 ### 第三步：CPU 工作
 - [x] 出图脚本（v1 对比图、v2 级联图和未见 schema reliability diagram、v3 N 曲线和覆盖率曲线），画完打勾 TASKS 2.3 的两条
   - 结果：scripts/make_figures.py 只读已提交的 metrics.json，写出 docs/figures/ 下 8 张图，已引用进三份报告，TASKS 2.3 两条已打勾
-- [ ] 标签噪声审计：共同错例 100 条加随机 50 条，CC 初判，人工复核（复核时先看消息和标签，再看模型答案）
+- [x] 标签噪声审计：共同错例 100 条加随机 50 条，CC 初判，人工复核（复核时先看消息和标签，再看模型答案）
+  - 结果（commit 85ce118）：另加 test_indomain 50 条；第二遍由 GPT 而非人工完成，两遍都是语言模型。Banking77 随机样本中 12 到 14% 的标签有问题，约 4% 明确错误；共同错例约六成是标签问题；CLINC 50 条全对。两遍一致率 .82，kappa .66
 - [ ] 在 RLCD 输出上拟合温度，加一行结果
 - [ ] adapter 传 HF Hub　→ 先确认 SST-5 许可
 - [ ] demo 脚本，README 的示例输出换成真实输出　→ 依赖本地跑一次模型（下载 0.6B 权重）
@@ -24,7 +25,7 @@
 - [x] 对 step 1407 的加噪 adapter 跑翻转还原。结果：没有回到清洁水平，反而更差，由此发现下面第二节的问题
 - [x] 把 full_sft 的 seed 加入比较和图　→ 依赖会话 D
   - 比较已加入（commit 2db74a7）：direct_brier 种子均值减 full_sft 种子均值 −.015 [−.020, −.010]，预测 3 仍不成立；图 docs/figures/v3_n_curve.png 画出 N 5000 的种子范围
-- [ ] 审计结果写进 RESULTS_v3 的局限和 RESULTS_v1 的附录　→ 依赖审计
+- [x] 审计结果写进 RESULTS_v3 的局限和 RESULTS_v1 的附录　→ 依赖审计
 
 ### 可选
 - [ ] delta-filing 最小接入　→ 依赖 jevmark 加 MPS 支持

@@ -187,3 +187,10 @@ This report is frozen at commit 8ed8750 (decision 49), and nothing above has bee
 
 `figures/v1_subset.png`: the subset comparison of section 4, accuracy with parse failures counted as wrong, ECE (top-1 for jevmark, verbalized confidence for the baselines) and median batch-1 latency on a log axis (`runs/sft_{06b,17b}/metrics_subset.json`, `runs/b1_qwen{06b,17b}_json/metrics.json`, `runs/b2_gpt-4.1-mini/metrics.json`).
 
+## Addendum (2026-10-04): label noise in the test sets
+
+This report is frozen at commit 8ed8750 (decision 49), and nothing above has been changed. A label-noise audit (`docs/audit/SUMMARY.md`, numbers in `docs/audit/summary.json`) read 200 questions blind to the model answers, judged by two language models and no human. It adds one limitation to the accuracy figures above.
+
+- **In-domain (CLINC150):** 50 intent questions drawn uniformly from test_indomain have a correct label in 50 of 50 for both judges (`groups.c`, interval for any problem 0 to .07). The in-domain accuracies of section 2 are measured against clean labels.
+- **Banking77 (an unseen schema):** on 50 questions drawn uniformly from the full Banking77 test split, of which test_banking77 is the first 1000 records, the judges find some label problem in 12 and 14 percent and a clearly wrong label in 4 percent (`groups.b`, intervals .06 to .26 and .01 to .13); the rest are ambiguous or follow an annotation convention the option descriptions do not state. Accuracy on test_banking77 (.851 and .852 for SFT on the full split, section 2; .846, .850 and .918 for SFT and gpt-4.1-mini on the subset, section 4) is therefore measured against a ceiling below 1, plausibly near .96, and the gap between jevmark and gpt-4.1-mini there includes questions where the label, not the model, is in doubt. AG News, emotion and Yelp were not audited.
+

@@ -35,7 +35,7 @@ sft_06b answered 9942 Banking77 train messages once with epsilon 0.1 exploration
 - **Under noisy feedback a proper score calibrates to the channel.** With outcomes flipped at 0.2, RLCD loses less accuracy than positive-only SFT (+.017 [+.007, +.028] relative), but its ECE goes from .026 to .164, because it learns P(revealed outcome), not P(correct); a known flip rate inverts it. What is left (channel-scale ECE .058 against .014 for a channel-calibrated clean model) is the variance of one noisy draw per interaction: training on the expected outcome instead brings it to .019 to .024. Trained too long, the learner memorises those draws and falls to .813 by step 1407, so the feedback-only early stopping that picked step 250 is essential (R3 section 4, D59).
 - **Adaptation costs the original domain.** At N 5000 RLCD loses 2.7 to 4.3 in-domain points across seeds and full-label SFT 5.2, positive-only SFT under 1; a fitted temperature loses nothing and has the lowest or joint-lowest Banking77 ECE, with no accuracy gain (R3 sections 2 and 5).
 
-Predictions: 1 is a tie at N 500 and holds from N 2000, 2 holds, 3 fails, 4 holds for accuracy and fails for calibration as stored (R3 section 8, D57, D59).
+Predictions: 1 is a tie at N 500 and holds from N 2000, 2 holds, 3 fails, 4 holds for accuracy and fails for calibration as stored (R3 section 8, D57, D59). A blind audit by two language-model judges, no human, finds a label problem in 12 to 14 percent of Banking77 test labels and none of 50 CLINC150 ones, so Banking77's ceiling sits near .96 and even the "clean" feedback carried label noise (R3 section 9, docs/audit/SUMMARY.md).
 
 ## Five lessons about data and pipelines
 
