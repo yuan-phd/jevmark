@@ -21,6 +21,8 @@ tags:
 
 jevmark is a small decision model that never generates text: a text state and a set of typed questions go in, and one forward pass returns a full probability distribution per question. The answer options are part of each request (a yes or no question, one of the options given, or a level on a scale defined in the request), so the model reads them instead of memorising a fixed label set, and the distribution is read from the letter logits at each question's answer slot. It is an independent re-implementation of the concept behind TypeSafe AI's Jev, built as LoRA adapters on Qwen3 base models to measure accuracy, calibration and when Reinforcement Learning for Calibrated Decisions (RLCD) helps.
 
+jevmark is not affiliated with or endorsed by TypeSafe AI. Their Jev model is the inspiration; the code, the data pipeline and the adapters were built and trained independently on open-source Qwen3 base models.
+
 Code, data builders, every report and the metrics files behind every number: https://github.com/yuan-phd/jevmark
 
 ## The adapters

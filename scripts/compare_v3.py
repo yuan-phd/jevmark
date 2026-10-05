@@ -118,6 +118,12 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def shown(path: Path) -> str:
+    """The path as recorded in metrics.json: relative to the repository when inside it, so no local directory is committed."""
+    resolved = path.resolve()
+    return str(resolved.relative_to(REPO) if resolved.is_relative_to(REPO) else path)
+
+
 # Metrics with paired bootstrap draws
 
 
@@ -252,7 +258,7 @@ def compare(runs_dir: Path, size: str, resamples: int, subset_path: Path = SUBSE
         if needed not in zero:
             raise SystemExit(f"{zero_dir} has no {needed} results")
 
-    sources: dict[str, dict[str, Any]] = {"zero_shot": {"dir": str(zero_dir), "git": zero_metrics.get("git"), "results_sha256": sha256(zero_dir / "results.jsonl.gz"), "adapter_sha256": zero_metrics.get("adapter_sha256")}}
+    sources: dict[str, dict[str, Any]] = {"zero_shot": {"dir": shown(zero_dir), "git": zero_metrics.get("git"), "results_sha256": sha256(zero_dir / "results.jsonl.gz"), "adapter_sha256": zero_metrics.get("adapter_sha256")}}
     per_run: dict[str, dict[str, list[QuestionResult]]] = {"zero_shot": zero}
     data_hashes = {k: v for k, v in zero_metrics.get("data_files_sha256", {}).items()}
 
@@ -263,7 +269,7 @@ def compare(runs_dir: Path, size: str, resamples: int, subset_path: Path = SUBSE
             t = float(json.loads((temp_dir / "calibration.json").read_text())["temperature"])
             temperatures[n] = t
             per_run[f"temperature_n{n}"] = by_split(scale_results(zero_all, t))
-            sources[f"temperature_n{n}"] = {"dir": str(temp_dir), "temperature": t}
+            sources[f"temperature_n{n}"] = {"dir": shown(temp_dir), "temperature": t}
 
     runs = discover(runs_dir, size)
     for (arm, n, seed, noisy, log), path in runs.items():
@@ -273,7 +279,7 @@ def compare(runs_dir: Path, size: str, resamples: int, subset_path: Path = SUBSE
             if file in data_hashes and data_hashes[file] != digest:
                 raise SystemExit(f"{path}: {file} has sha256 {digest}, the zero-shot run read {data_hashes[file]}")
         per_run[name] = by_split(read_results(path / "results.jsonl.gz"))
-        sources[name] = {"dir": str(path), "git": metrics.get("git"), "results_sha256": sha256(path / "results.jsonl.gz"), "v3": metrics.get("v3")}
+        sources[name] = {"dir": shown(path), "git": metrics.get("git"), "results_sha256": sha256(path / "results.jsonl.gz"), "v3": metrics.get("v3")}
 
     rlcd_temperatures = {}
     for (arm, n, seed, noisy, log), path in runs.items():
@@ -283,7 +289,7 @@ def compare(runs_dir: Path, size: str, resamples: int, subset_path: Path = SUBSE
             name = learner_name(TEMP_ON_RLCD, n, seed)
             rlcd_temperatures[name] = t
             per_run[name] = by_split(scale_results(read_results(path / "results.jsonl.gz"), t))
-            sources[name] = {"dir": str(temp_dir), "temperature": t, "source_run": str(path)}
+            sources[name] = {"dir": shown(temp_dir), "temperature": t, "source_run": shown(path)}
 
     splits = {}
     for split in (V3_TEST_FULL, *FORGETTING_SPLITS):

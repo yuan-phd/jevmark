@@ -90,6 +90,12 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def shown(path: Path) -> str:
+    """The path as recorded in metrics.json: relative to the repository when inside it, so no local directory is committed."""
+    resolved = path.resolve()
+    return str(resolved.relative_to(REPO) if resolved.is_relative_to(REPO) else path)
+
+
 def interval(draws: np.ndarray) -> list[float]:
     return [float(x) for x in np.percentile(draws, [2.5, 97.5])]
 
@@ -182,7 +188,7 @@ def compare(runs_dir: Path, size: str, seeds: Sequence[int] | None, resamples: i
         "size": size,
         "seeds": sorted({s for _, s in found}),
         "arms": arms,
-        "runs": {"sft": str(sft_dir), **{f"{a}_s{s}": str(p) for (a, s), p in found.items()}},
+        "runs": {"sft": shown(sft_dir), **{f"{a}_s{s}": shown(p) for (a, s), p in found.items()}},
         "results_sha256": {"sft": sha256(sft_dir / "results.jsonl.gz"), **{f"{a}_s{s}": sha256(p / "results.jsonl.gz") for (a, s), p in found.items()}},
         "global_T": {"temperature": global_t, "fit": {"split": FIT_SPLIT, "group_size": group_size, "epsilon": epsilon, "seed": seed}},
         "bootstrap": {"resamples": resamples, "unit": "record", "interval": "95 percent percentile", "seed": "zlib.crc32 of 'stage3:<split>', the same draws for every column"},

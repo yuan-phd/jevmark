@@ -107,6 +107,12 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def shown(path: Path) -> str:
+    """The path as recorded in metrics.json: relative to the repository when inside it, so no local directory is committed."""
+    resolved = path.resolve()
+    return str(resolved.relative_to(REPO) if resolved.is_relative_to(REPO) else path)
+
+
 def label(run: Run) -> str:
     return f"{run[0]}_s{run[1]}"
 
@@ -336,9 +342,9 @@ def compare(runs_dir: Path, size: str, seeds: Sequence[int] | None, resamples: i
         "size": size,
         "seeds": sorted({s for _, s in found}),
         "runs": {
-            "sft": str(sft_dir),
-            "sft_temp": {"run": str(temp_dir), "temperature": temperature, "note": "the SFT probabilities scaled by this temperature (decision 50)"},
-            **{label(run): str(path) for run, path in found.items()},
+            "sft": shown(sft_dir),
+            "sft_temp": {"run": shown(temp_dir), "temperature": temperature, "note": "the SFT probabilities scaled by this temperature (decision 50)"},
+            **{label(run): shown(path) for run, path in found.items()},
         },
         "arms": {arm: arm_seeds for arm, arm_seeds in arms.items()},
         "known_broken_arms": [arm for arm in arms if arm in KNOWN_BROKEN],

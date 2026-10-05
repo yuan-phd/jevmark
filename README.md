@@ -2,13 +2,15 @@
 
 jevmark is a small decision model that never generates text: a text state and a set of typed questions go in, and a probability distribution per question comes out of one forward pass, read from the letter logits at each question's answer slot. The options are part of the request, so the model answers questions whose labels it never saw in training. It is an independent re-implementation of the concept behind TypeSafe AI's Jev, built on Qwen3-0.6B-Base and Qwen3-1.7B-Base with LoRA, and used to test when Reinforcement Learning for Calibrated Decisions (RLCD) adds anything over supervised training and a temperature.
 
+jevmark is not affiliated with or endorsed by TypeSafe AI. Their Jev model is the inspiration; the code, the data pipeline and the adapters were built and trained independently on open-source Qwen3 base models.
+
 ## Install
 
 Python 3.11 and [uv](https://docs.astral.sh/uv/):
 
 ```bash
 make setup            # uv sync --extra dev
-make test             # pytest on CPU, a tiny random Qwen3 config, under 3 minutes
+make test             # pytest on CPU, a tiny random Qwen3 config, a few minutes
 ```
 
 Optional extras: `uv sync --extra serve` for the FastAPI wrapper (`scripts/serve.py`, `POST /v1/systemone`), `uv sync --extra baselines` for the OpenAI baseline.
@@ -205,3 +207,7 @@ With LoRA SFT, in-domain accuracy is .956 at 0.6B and .952 at 1.7B with ECE .013
 - docs/audit/SUMMARY.md: the Banking77 label-noise audit.
 - docs/CLOSING_PLAN.md: the closing checklist (in Chinese).
 - CLAUDE.md: the rules for working in this repository.
+
+## License
+
+Apache License 2.0, the same as the adapters on the Hugging Face Hub. See LICENSE.

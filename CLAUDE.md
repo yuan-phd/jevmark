@@ -20,7 +20,7 @@ Read docs/STORY.md first for where things stand, then docs/PLAN.md, docs/API_SPE
 ## Environment and constraints
 
 - Training runs on Kaggle: 2x T4 (16 GB each), fp16 only (T4 has no bf16), about 30 GPU hours per week. Every training script must fit one run in a single Kaggle session (under 9 hours) and must resume from a checkpoint.
-- Local development is CPU only. All unit tests run on CPU in under 3 minutes using a tiny randomly initialised Qwen3 config, never real weights.
+- Local development is CPU only. All unit tests run on CPU in a few minutes using a tiny randomly initialised Qwen3 config, never real weights.
 - Main backbone: Qwen/Qwen3-1.7B-Base. Development backbone for pipeline debugging and RLCD sweeps: Qwen/Qwen3-0.6B-Base. Both are config switches, never hard-coded. Qwen3-4B-Base is allowed only as an optional 4-bit QLoRA experiment, never as the default.
 - Precision: fp16 autocast with GradScaler and fp32 LoRA weights. Every training and evaluation script checks the first batch for NaN or inf in the slot logits and, on failure, restarts in fp32 automatically and logs that it did. fp32 fits both 0.6B and 1.7B on a T4; it does not fit 4B, which is one reason 4B is not the default.
 - Where work happens: tests, data building, temperature fitting and every comparison run locally on CPU; training and model evaluation run on Kaggle through the thin notebooks (docs/KAGGLE.md). Run every GPU stage on 0.6B first, then repeat on 1.7B. Exceptions: v2 stage 2b was not run (decision 58) and v3 ran on 0.6B only (decision 56).
@@ -33,6 +33,7 @@ Read docs/STORY.md first for where things stand, then docs/PLAN.md, docs/API_SPE
 jevmark/
   CLAUDE.md
   README.md
+  LICENSE           Apache-2.0, the same licence as the Hub adapters
   pyproject.toml
   uv.lock
   requirements-kaggle.txt   generated from uv.lock (make kaggle-requirements)
