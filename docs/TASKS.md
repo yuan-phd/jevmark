@@ -225,7 +225,7 @@ Specification: docs/V3_DESIGN.md, with the review's decisions in its section 11 
 - [x] Session E: `runs/v3_06b_direct_brier_n5000_s0_noisy_soft` and `_last`, then `invert_noisy.py` on the soft, fixed-noise and step-1407 runs against decision 59's three predictions. Proof: `runs/v3_06b_direct_brier_n5000_s0_noisy_soft{,_last}/metrics.json` and their `_inverted` directories, commit 3d260cd, not dirty (committed in 82e6c44); prediction 1 fails by .0005 at the selected step and holds at step 1407, 2 holds, 3 reported (decision 59, RESULTS_v3 section 4, rewritten in e62f8ae).
 
 ### 3.7 Optional after v3: delta-filing demonstration
-Optional and not started (decisions 56 and 62); it needs the human's go-ahead and, per docs/CLOSING_PLAN.md, MPS support in jevmark first.
+Optional and not started (decisions 56 and 62); it needs the human's go-ahead and MPS support in jevmark first.
 - [ ] A `LocalDecider` in the delta-filing repository with the question definitions and thresholds in one file, measured on its track1 evaluation sets (router 160, tool choice 160, review 80), with decision logging added for future feedback. It needs the human's go-ahead after v3.
 
 ### 3.8 Closing: temperature on RLCD, released adapters, demo

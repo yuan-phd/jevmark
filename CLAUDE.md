@@ -87,7 +87,7 @@ jevmark/
                       can link to them
   docs/
     PLAN.md, API_SPEC.md, TASKS.md, DECISIONS.md, DATA.md, KAGGLE.md, V3_DESIGN.md
-    RESULTS_v1.md (frozen, decision 49), RESULTS_v2.md, RESULTS_v3.md, STORY.md, CLOSING_PLAN.md
+    RESULTS_v1.md (frozen, decision 49), RESULTS_v2.md, RESULTS_v3.md, STORY.md
     MODEL_CARD.md     the Hugging Face model card, uploaded as the Hub repository's README.md
     audit/            the label-noise audit: blind sheet, two model passes, SUMMARY.md
     figures/          PNGs drawn by scripts/make_figures.py, referenced from the reports

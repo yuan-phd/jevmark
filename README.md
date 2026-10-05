@@ -205,7 +205,6 @@ With LoRA SFT, in-domain accuracy is .956 at 0.6B and .952 at 1.7B with ECE .013
 - docs/DATA.md, docs/KAGGLE.md, docs/V3_DESIGN.md: data, how to run on Kaggle, and the v3 specification.
 - docs/MODEL_CARD.md: the card of the adapters on the Hugging Face Hub.
 - docs/audit/SUMMARY.md: the Banking77 label-noise audit.
-- docs/CLOSING_PLAN.md: the closing checklist (in Chinese).
 - CLAUDE.md: the rules for working in this repository.
 
 ## License
