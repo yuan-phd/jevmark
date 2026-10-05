@@ -16,17 +16,27 @@ Optional extras: `uv sync --extra serve` for the FastAPI wrapper (`scripts/serve
 ## Usage
 
 ```python
+import os
+os.environ["JEVMARK_CHECKPOINT"] = "hf://yuanphd/jevmark/sft_06b"  # the Hub adapter, see below
+
 from jevmark import systemone
 
 response = systemone(
-    "Hi, I was charged twice for my March invoice and the export button still crashes.",
+    "Hi, I was charged twice for my March invoice and the export button still crashes "
+    "every time I click it. I need this sorted today, please.",
     {
-        "refund_requested": {"type": "noul", "instructions": "Does the customer ask for money back?"},
         "department": {
             "type": "choice",
             "instructions": "Which team should handle this message?",
-            "criteria": {"billing": "Charges, invoices, refunds", "technical": "Bugs, outages, integration problems", "other": None},
+            "criteria": {
+                "billing": "Charges, invoices, refunds and payment problems",
+                "technical": "Bugs, crashes, outages and integration problems",
+                "account": "Login, profile and account settings",
+                "other": None,
+            },
         },
+        "refund_requested": {"type": "noul", "instructions": "Does the customer ask for money back?"},
+        "needs_human": {"type": "noul", "instructions": "Does this message need a human agent rather than an automated reply?"},
         "severity": {
             "type": "score",
             "instructions": "How severe is the reported issue?",
@@ -36,32 +46,73 @@ response = systemone(
                 "Blocking issue; no workaround exists",
             ],
         },
+        "next_tool": {
+            "type": "choice",
+            "instructions": "Which tool should the support agent call first?",
+            "criteria": {
+                "lookup_invoice": "Fetch the customer's invoices and payment history",
+                "open_bug_ticket": "File a bug report with the engineering team",
+                "search_help_center": "Search help articles for a known answer",
+            },
+        },
     },
 )
 ```
 
-The response has this shape (values illustrative, from docs/API_SPEC.md section 3):
+Real output of this call, from `sft_06b` on a laptop CPU (2026-10-05, `scripts/demo.py`; the field definitions are in docs/API_SPEC.md section 3):
 
 ```json
 {
-  "model": "jevmark-sft_17b",
+  "model": "jevmark-sft_06b",
   "answers": {
-    "refund_requested": {"type": "noul", "noul": 0.93},
     "department": {
       "type": "choice",
-      "choice": "billing",
-      "probabilities": {"billing": 0.84, "technical": 0.15, "other": 0.01},
-      "confidence": 0.61
+      "choice": "technical",
+      "probabilities": {
+        "billing": 0.3526,
+        "technical": 0.6462,
+        "account": 0.0003,
+        "other": 0.0008
+      },
+      "confidence": 0.5252
+    },
+    "refund_requested": {
+      "type": "noul",
+      "noul": 0.0216
+    },
+    "needs_human": {
+      "type": "noul",
+      "noul": 0.9557
     },
     "severity": {
       "type": "score",
-      "score": 1.3,
-      "legend": {"0": "Cosmetic; no impact on functionality", "1": "...", "2": "..."},
-      "probabilities": {"0": 0.0, "1": 0.7, "2": 0.3},
-      "confidence": 0.54
+      "score": 1.8884,
+      "legend": {
+        "0": "Cosmetic; no impact on functionality",
+        "1": "Broken or degraded feature, but a workaround exists",
+        "2": "Blocking issue; no workaround exists"
+      },
+      "probabilities": {
+        "0": 0.0186,
+        "1": 0.0744,
+        "2": 0.907
+      },
+      "confidence": 0.676
+    },
+    "next_tool": {
+      "type": "choice",
+      "choice": "open_bug_ticket",
+      "probabilities": {
+        "lookup_invoice": 0.0081,
+        "open_bug_ticket": 0.9813,
+        "search_help_center": 0.0106
+      },
+      "confidence": 0.9036
     }
   },
-  "usage": {"input_tokens": 212}
+  "usage": {
+    "input_tokens": 265
+  }
 }
 ```
 
@@ -74,6 +125,29 @@ JEVMARK_CHECKPOINT=hf://yuanphd/jevmark/sft_06b python my_script.py
 ```
 
 `JevMark.load(config, checkpoint=...)` takes the same `hf://<owner>/<repo>/<folder>` form. The model card is docs/MODEL_CARD.md. `systemone_batch` takes a list of requests. The full contract, validation rules and encoding are in docs/API_SPEC.md.
+
+## Demo
+
+```bash
+uv run python scripts/demo.py                       # hf://yuanphd/jevmark/sft_06b, threshold 0.9
+uv run python scripts/demo.py --checkpoint hf://yuanphd/jevmark/rlcd_banking77_06b --threshold 0.8
+```
+
+`scripts/demo.py` sends the request above in one call, prints the response, then applies one confidence threshold: an answer at or above it is acted on automatically, one below it is escalated to an LLM or a human. Confidence is the response field for choice and score and max(p, 1 - p) for noul. The questions and the threshold are defined in that one file. Real output, `sft_06b` on a laptop CPU, 2026-10-05:
+
+```
+confidence threshold 0.9:
+  escalate   department        technical (p 0.6462)               confidence 0.5252
+  automatic  refund_requested  no (P(yes) 0.0216)                 confidence 0.9784
+  automatic  needs_human       yes (P(yes) 0.9557)                confidence 0.9557
+  escalate   severity          level 1.89 of 0 to 2               confidence 0.6760
+  automatic  next_tool         open_bug_ticket (p 0.9813)         confidence 0.9036
+
+3 acted on automatically, 2 escalated
+model load 1.5 s; the five-question call 404 ms on cpu
+```
+
+The five answers come from one forward pass of 265 tokens: 404 ms for that one call on the laptop CPU in fp32, after a 1.5 s model load with the weights already cached (the first run also downloads the 0.6B backbone and the 18 MB adapter). On a T4 the batch-1 median is 47.7 ms per request (docs/RESULTS_v1.md section 4). The message names both a double charge and a crash, and the model splits department between billing and technical, so that answer is escalated rather than guessed.
 
 ## Question types
 
