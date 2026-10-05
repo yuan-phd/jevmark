@@ -8,7 +8,7 @@ jevmark is a decision model: a caller sends a text and typed questions (yes or n
 
 ## What was built
 
-Per-segment encoding that pins each answer slot to a token boundary and a fixed contract (D17, docs/API_SPEC.md); CLINC150 and SST-5 for training with leak probes and a duplicate check before any GPU run (D42, D43); every split evaluated in full with bootstrap intervals and per-question results kept for CPU recomputation (D37, D46); three baselines on one committed subset (D47); LoRA SFT, RLCD arms (D51, D52) and, for v3, learners trained from a deployment log (D56).
+Per-segment encoding that pins each answer slot to a token boundary and a fixed contract (D17, docs/API_SPEC.md); CLINC150 and SST-5 for training with leak probes and a duplicate check before any GPU run (D42, D43); every split evaluated in full with bootstrap intervals and per-question results kept for CPU recomputation (D37, D46); three baselines on one committed subset (D47); LoRA SFT, RLCD arms (D51, D52) and, for v3, learners trained from a deployment log (D56). Three adapters are published at https://huggingface.co/yuanphd/jevmark and load by an `hf://` reference; `scripts/demo.py` runs one support message through five questions and a confidence gate (D61, README).
 
 ## v1: the supervised model works in-domain and reads the options
 
@@ -31,6 +31,7 @@ sft_06b answered 9942 Banking77 train messages once with epsilon 0.1 exploration
 
 - **Negative feedback helps once there is enough of it.** RLCD (pathwise Brier on the logged action) ties positive-only SFT at N 500, +.002 [-.006, +.009], and beats it by 2.7 and 2.4 points at N 2000 and 5000, +.026 [+.019, +.033] for the three-seed mean at N 5000 (R3 sections 2 and 3).
 - **It is the calibrated way to use the log.** Its ECE is .052 to .060 below positive-only SFT's at every N; positive-only SFT keeps 90 percent of its answers at the .95 confidence threshold with 93 to 94 percent accuracy (R3 sections 2 and 6).
+- **A temperature on top adds nothing.** Fitted on the logged outcomes under RLCD's own probabilities on its training records, T is .95 to 1.04 and ECE moves by at most .003, every interval containing 0: RLCD already sits at the temperature learner's ECE with its accuracy (R3 section 3, D60).
 - **Labels still win.** Full-label SFT stays ahead by 0.7 to 1.8 points and the gap does not shrink with N: 1.5 points [1.0, 2.0] at N 5000, seed means of both on three seeds (R3 section 3).
 - **Under noisy feedback a proper score calibrates to the channel.** With outcomes flipped at 0.2, RLCD loses less accuracy than positive-only SFT (+.017 [+.007, +.028] relative), but its ECE goes from .026 to .164, because it learns P(revealed outcome), not P(correct); a known flip rate inverts it. What is left (channel-scale ECE .058 against .014 for a channel-calibrated clean model) is the variance of one noisy draw per interaction: training on the expected outcome instead brings it to .019 to .024. Trained too long, the learner memorises those draws and falls to .813 by step 1407, so the feedback-only early stopping that picked step 250 is essential (R3 section 4, D59).
 - **Adaptation costs the original domain.** At N 5000 RLCD loses 2.7 to 4.3 in-domain points across seeds and full-label SFT 5.2, positive-only SFT under 1; a fitted temperature loses nothing and has the lowest or joint-lowest Banking77 ECE, with no accuracy gain (R3 sections 2 and 5).
@@ -57,6 +58,6 @@ Predictions: 1 is a tie at N 500 and holds from N 2000, 2 holds, 3 fails, 4 hold
 
 **What do cost and latency assume?** Batch-1 median on one T4: 47.7 ms (sft_06b) and 74.8 ms (sft_17b), against about 3 s for B1 and 777 ms for B2; 0.0032 and 0.0072 USD per 1000 requests assuming a T4 at 0.35 USD per hour at full batch-16 use, an assumption rather than a measured price, against 0.2431 USD for B2 (R1 section 4).
 
-## Pending
+## Closed, and what remains
 
-Only the optional delta-filing demonstration, which needs the human's go-ahead (D56); stage 2b was closed without a run (D58).
+The project closed at tag v3-final (D62). Stage 2b was not run (D58), V-c was designed and not run (D59), and the optional improvements of task 2.4 were not built (D62). One item remains, optional and not started: the delta-filing demonstration, which needs the human's go-ahead and MPS support in jevmark first (D56, task 3.7).

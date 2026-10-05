@@ -4,7 +4,7 @@
 
 jevmark is a small System One decision model. A text state and a set of typed questions go in; a probability distribution per question comes out, plus a confidence score for choice and score questions, from one forward pass, with no text generation. It is an independent re-implementation of the concept behind TypeSafe AI's Jev model, built for learning and for a portfolio.
 
-All three phases are complete and tagged: v1, the supervised model (docs/RESULTS_v1.md); v2, RLCD on full labels at 0.6B (docs/RESULTS_v2.md); v3, adaptation from deployment feedback on Banking77 (docs/RESULTS_v3.md). docs/STORY.md summarises them. Open work, only on the human's go-ahead: stage 2b (decision 58 closed it without a run) and an optional demonstration inside the delta-filing agent (decision 56).
+All three phases are complete and tagged: v1, the supervised model (docs/RESULTS_v1.md); v2, RLCD on full labels at 0.6B (docs/RESULTS_v2.md); v3, adaptation from deployment feedback on Banking77 (docs/RESULTS_v3.md). docs/STORY.md summarises them. Three adapters (sft_06b, sft_17b, rlcd_banking77_06b) are published at https://huggingface.co/yuanphd/jevmark with docs/MODEL_CARD.md as the card (decision 61), and the project closed at tag v3-final (decision 62). Stage 2b was not run (decision 58). The only open item is optional and needs the human's go-ahead: a demonstration inside the delta-filing agent (task 3.7, decision 56).
 
 Read docs/STORY.md first for where things stand, then docs/PLAN.md, docs/API_SPEC.md and docs/TASKS.md. Work on exactly one task at a time, in order, unless the human says otherwise.
 
@@ -25,7 +25,7 @@ Read docs/STORY.md first for where things stand, then docs/PLAN.md, docs/API_SPE
 - Precision: fp16 autocast with GradScaler and fp32 LoRA weights. Every training and evaluation script checks the first batch for NaN or inf in the slot logits and, on failure, restarts in fp32 automatically and logs that it did. fp32 fits both 0.6B and 1.7B on a T4; it does not fit 4B, which is one reason 4B is not the default.
 - Where work happens: tests, data building, temperature fitting and every comparison run locally on CPU; training and model evaluation run on Kaggle through the thin notebooks (docs/KAGGLE.md). Run every GPU stage on 0.6B first, then repeat on 1.7B. Exceptions: v2 stage 2b was not run (decision 58) and v3 ran on 0.6B only (decision 56).
 - Post-training only, via LoRA (peft). No from-scratch pretraining. No full fine-tune.
-- Python 3.11, managed with uv (pyproject plus uv.lock). Core deps: torch (CPU wheels locally; Kaggle's preinstalled torch on Kaggle), transformers>=4.56 (Qwen3 support since 4.51; the `dtype` keyword of from_pretrained since 4.56), peft, datasets, numpy, pyyaml, matplotlib, pytest. Optional extras: serve (fastapi, uvicorn), baselines (openai).
+- Python 3.11, managed with uv (pyproject plus uv.lock). Core deps: torch (CPU wheels locally; Kaggle's preinstalled torch on Kaggle), transformers>=4.56 (Qwen3 support since 4.51; the `dtype` keyword of from_pretrained since 4.56), peft, datasets, numpy, pyyaml, matplotlib, scikit-learn (the leak probes), huggingface-hub (`hf://` checkpoints). Optional extras: dev (pytest, plus fastapi, uvicorn and httpx to test the endpoint), serve (fastapi, uvicorn), baselines (openai).
 
 ## Repository layout
 
@@ -41,7 +41,7 @@ jevmark/
   jevmark/
     schema.py         request and response dataclasses, validation
     encode.py         state + questions -> text with answer slots, slot positions
-    model.py          backbone + LoRA, readout of letter logits at slots
+    model.py          backbone + LoRA, readout of letter logits at slots; hf:// checkpoint references
     systemone.py      public function systemone(state, questions)
     config.py         YAML config loading with key=value overrides
     metrics.py        accuracy, ECE, Brier, NLL, coverage, bootstrap intervals
@@ -75,15 +75,20 @@ jevmark/
     baseline_llm_json.py, baseline_api.py, make_baseline_subset.py, recompute_baseline_metrics.py
     evaluate_env.py, compare_env.py   cancelled stage 3 (history)
     export_kaggle_requirements.py
+    build_label_audit.py, summarise_label_audit.py   the Banking77 label-noise audit (docs/audit/)
+    demo.py           one support message, five questions, a confidence gate (README)
     serve.py          optional FastAPI wrapper
   notebooks/          thin Kaggle wrappers only: train, eval, baseline B1, rlcd, v3
   tests/
   runs/               adapters, weights, results and logs gitignored; metrics.json, config.yaml,
-                      calibration.json, model_id.txt, train_summary.json and training_log.jsonl
-                      are committed so reports can link to them
+                      calibration.json, model_id.txt, train_summary.json, training_log.jsonl and the
+                      analysis files (metrics_oracle.json, latency.json, ...) are committed so reports
+                      can link to them
   docs/
     PLAN.md, API_SPEC.md, TASKS.md, DECISIONS.md, DATA.md, KAGGLE.md, V3_DESIGN.md
     RESULTS_v1.md (frozen, decision 49), RESULTS_v2.md, RESULTS_v3.md, STORY.md, CLOSING_PLAN.md
+    MODEL_CARD.md     the Hugging Face model card, uploaded as the Hub repository's README.md
+    audit/            the label-noise audit: blind sheet, two model passes, SUMMARY.md
     figures/          PNGs drawn by scripts/make_figures.py, referenced from the reports
 ```
 
@@ -103,8 +108,8 @@ jevmark/
 
 - Type hints and dataclasses; no global mutable state.
 - Configs are YAML under configs/. Training scripts take `--config` plus optional `key=value` overrides. Evaluation scripts take `--ckpt` (a run directory, or `base`) and `--splits`, plus `--config` to choose the backbone when `--ckpt` is `base`; the run name is then `base_06b` or `base_17b`. Baseline scripts take `--splits` and their model as arguments and run on the committed baseline subset (task 1.8). Every run has a seed and a run_name.
-- `.gitignore`: `/data/*` with the one exception `!/data/baseline_subset.json` (the committed baseline subset), `/runs/*/adapter/`, `/runs/*/adapter_last/` (RLCD final adapters), `/runs/*_limit*/` (smoke runs), `/runs/*/results.jsonl.gz` (per-question results), `/runs/*/replies.jsonl` (baseline replies), `/runs/*/log.jsonl` (v3 feedback logs), `/runs/*/last/` (resume state), `/runs/*_smoke/` (smoke training runs), `/runs/fast_*/` (fast cycle runs), weight files (`*.safetensors`, `*.bin`, `*.pt`), `.env`, caches. Never a bare `data/` pattern, which would also match `jevmark/data/`.
-- Git: commit on `main` at least once per task, with the task id at the start of the message (`task 1.2: encode.py`). Tag each phase at its end (`v1`, `v2`, `v3` exist); the human pushes tags. No branches for a solo project unless the human asks.
+- `.gitignore`: `/data/*` with the one exception `!/data/baseline_subset.json` (the committed baseline subset), `/runs/*/adapter/`, `/runs/*/adapter_last/` (RLCD final adapters), `/runs/*_limit*/` (smoke runs), `/runs/*/results.jsonl.gz` (per-question results), `/runs/*/replies.jsonl` (baseline replies), `/runs/*/log.jsonl` (v3 feedback logs), `/runs/*/last/` (resume state), `/runs/*_smoke/` (smoke training runs), `/runs/fast_*/` (fast cycle runs), `/runs/kaggle_upload/` (adapter staging for Kaggle), weight files (`*.safetensors`, `*.bin`, `*.pt`), `.env`, caches. Never a bare `data/` pattern, which would also match `jevmark/data/`.
+- Git: commit on `main` at least once per task, with the task id at the start of the message (`task 1.2: encode.py`). Tag each phase at its end (`v1`, `v2`, `v3` and the closing tag `v3-final` exist); the human pushes tags. No branches for a solo project unless the human asks.
 - The tiny test model uses the real Qwen3 tokenizer, fetched once from the HF Hub at a pinned revision and cached. Do not vendor tokenizer files into the repo.
 - Data files are JSONL, one record per line. Record schema is documented in docs/DATA.md.
 - Prose in docs, comments and commit messages: plain English, no emojis, no em dashes.

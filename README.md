@@ -183,15 +183,17 @@ Every run's `metrics.json`, config and training log are committed under `runs/`.
 | v2 | the REINFORCE simulation | `uv run python scripts/simulate_advantages.py runs/sft_06b` | `runs/advantage_simulation_06b/` |
 | v2 | RLCD arms, three seeds | `uv run python scripts/compare_rlcd.py --size 06b --seeds 0 1 2 --out runs/rlcd_stage2a_06b` | `runs/rlcd_stage2a_06b/` |
 | v3 | temperature learners | `uv run python scripts/calibrate.py runs/v3_06b_zeroshot --fit-log runs/v3_log_s0/log.jsonl --n <N>` | `runs/v3_06b_temp_n<N>/` |
-| v3 | every v3 table | `uv run python scripts/compare_v3.py` | `runs/v3_stage_06b/` |
-| all | every report figure | `uv run python scripts/make_figures.py` (committed metrics files only) | `docs/figures/` |
+| v3 | temperature on direct_brier | `uv run python scripts/evaluate.py --ckpt runs/<run> --log-prefix runs/v3_log_s0/log.jsonl --n <N> --no-probes --device cpu` (with the adapter and base weights; 2 to 18 minutes per run on a laptop CPU), then `uv run python scripts/calibrate.py runs/<run> --fit-log runs/v3_log_s0/log.jsonl --n <N> --fit-probs runs/<run>_prefix` | `runs/<run>_prefix/`, `runs/<run>_temp/` |
 | v3 | the noise inversion | `uv run python scripts/invert_noisy.py runs/v3_06b_<arm>_n5000_s0_noisy --clean runs/v3_06b_<arm>_n5000_s0` | `runs/v3_06b_<arm>_n5000_s0_noisy_inverted/` |
+| v3 | every v3 table | `uv run python scripts/compare_v3.py` | `runs/v3_stage_06b/` |
+| v3 | the label-noise audit summary | `uv run python scripts/summarise_label_audit.py` | `docs/audit/summary.json` |
+| all | every report figure | `uv run python scripts/make_figures.py` (committed metrics files only) | `docs/figures/` |
 
 Training and evaluation themselves (`make train-sft`, `scripts/train_rlcd.py`, `make eval`) run on Kaggle through the thin notebooks in `notebooks/`.
 
 ## Results
 
-With LoRA SFT, in-domain accuracy is .956 at 0.6B and .952 at 1.7B with ECE .013 and .015, against .492 and .549 for the frozen bases, and .868 and .885 on intents never trained on; on a 500-record subset it beats same-size JSON generation by 25 to 33 points and gpt-4.1-mini in-domain, while gpt-4.1-mini leads on the unseen schemas (docs/RESULTS_v1.md sections 2 to 4). On full deterministic labels, no RLCD arm beats SFT plus one in-domain temperature on unseen-schema ECE (four-schema mean .121 for SFT plus T; the arms, each with its own temperature, are at best level with it), because a bandit outcome carries less information than the label (docs/RESULTS_v2.md section 3). Where only the correctness of the model's own action is observed, on Banking77 from a deployment log, RLCD ties positive-only SFT at 500 interactions and beats it by 2.4 to 2.7 points from 2000, with ECE lower by .05 to .06 at every N, stays 1.5 points [1.0, 2.0] behind full-label SFT at 5000 (seed means of both), and under noisy feedback calibrates to the noise rather than to correctness (docs/RESULTS_v3.md section 8).
+With LoRA SFT, in-domain accuracy is .956 at 0.6B and .952 at 1.7B with ECE .013 and .015, against .492 and .549 for the frozen bases, and .868 and .885 on intents never trained on; on a 500-record subset it beats same-size JSON generation by 25 to 33 points and gpt-4.1-mini in-domain, while gpt-4.1-mini leads on Banking77, emotion and Yelp (docs/RESULTS_v1.md sections 2 to 4). On full deterministic labels, no RLCD arm beats SFT plus one in-domain temperature on unseen-schema ECE (four-schema mean .121 for SFT plus T; the arms, each with its own temperature, are at best level with it), because a bandit outcome carries less information than the label (docs/RESULTS_v2.md section 3). Where only the correctness of the model's own action is observed, on Banking77 from a deployment log, RLCD ties positive-only SFT at 500 interactions and beats it by 2.4 to 2.7 points from 2000, with ECE lower by .05 to .06 at every N, stays 1.5 points [1.0, 2.0] behind full-label SFT at 5000 (seed means of both), and under noisy feedback calibrates to the noise rather than to correctness (docs/RESULTS_v3.md section 8). A temperature fitted on top of it changes ECE by at most .003 (section 3), and a blind audit by two language-model judges finds a label problem in 12 to 14 percent of Banking77 test labels (section 9, docs/audit/SUMMARY.md).
 
 ## Documentation
 
@@ -199,4 +201,7 @@ With LoRA SFT, in-domain accuracy is .956 at 0.6B and .952 at 1.7B with ECE .013
 - docs/RESULTS_v1.md, docs/RESULTS_v2.md, docs/RESULTS_v3.md: the reports, every number cited to a `metrics.json`.
 - docs/PLAN.md, docs/API_SPEC.md, docs/TASKS.md, docs/DECISIONS.md: plan, contract, tasks with their proofs, and every design decision with its reason.
 - docs/DATA.md, docs/KAGGLE.md, docs/V3_DESIGN.md: data, how to run on Kaggle, and the v3 specification.
+- docs/MODEL_CARD.md: the card of the adapters on the Hugging Face Hub.
+- docs/audit/SUMMARY.md: the Banking77 label-noise audit.
+- docs/CLOSING_PLAN.md: the closing checklist (in Chinese).
 - CLAUDE.md: the rules for working in this repository.
