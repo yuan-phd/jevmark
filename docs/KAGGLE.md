@@ -67,7 +67,7 @@ The smoke directory `runs/base_06b_limit30/` is for checking only; do not commit
 
 1. Put the two directories at `runs/base_06b/` and `runs/base_17b/` in the local checkout, replacing anything there.
 2. Check that each `metrics.json` has `"git": {"commit": "<COMMIT>", "dirty": false}` with the sha you evaluated.
-3. Commit them together, for example `task 1.6: B0 metrics for base_06b and base_17b`, and only then tick the B0 acceptance in `docs/TASKS.md` with those paths.
+3. Commit them together, for example `task 1.6: B0 metrics for base_06b and base_17b`.
 
 ## 7. Training: `notebooks/kaggle_train.ipynb` (task 1.7)
 
@@ -266,7 +266,7 @@ The pre-flight line in the smoke run shows peak memory for policy plus reference
 
 ## 11. RLCD stage 3: the stochastic-outcome environment (task 2.5)
 
-**Cancelled by decision 56; these sessions will not run.** The section stays as the record of the plan. v3 (docs/V3_DESIGN.md) replaces it.
+**Cancelled by decision 56; these sessions will not run.** The section stays as the record of the plan. v3 (docs/RESULTS_v3.md) replaces it.
 
 Stage 3 trains RLCD against outcomes drawn from a known distribution instead of the gold label (decision 54). The data stay frozen. The environment, `jevmark/environment.py`, is a layer on top that gives each question a noise rate η(K) = min(0.40, 0.05 + 0.03 (K − 2)) and a target θ: 1 − η on gold and η / (K − 1) on each other option. On every visit it draws an accepted answer from θ, and the sampled action's outcome is 1 when it equals that answer.
 
@@ -300,7 +300,7 @@ Commit each run as in section 10.
 
 ## 12. v3: adaptation from deployment feedback (phase 3, decision 56)
 
-Specification: docs/V3_DESIGN.md. Notebook: `notebooks/kaggle_v3.ipynb`. Everything runs on 0.6B and starts from the sft_06b adapter in the `jevmark-sft-adapters` dataset (section 10). Token, secret, import and notebook settings are as in sections 1 to 3. Use one `COMMIT` for all sessions, pushed before session A. Session D (task 3.6, added after C) keeps that commit: its plan lives in the notebook, and the training and evaluation code are unchanged since, so import the current `notebooks/kaggle_v3.ipynb` and leave `COMMIT` at the sessions A to C commit (b5913eff27e1dc6290bd215e7d83b533b105ad83). Session E (task 3.6, decision 59) needs `--noise soft`, which only the soft-target commit and later have, so it runs at that commit; the log-mode code is otherwise unchanged from b5913ef.
+Results: docs/RESULTS_v3.md. Notebook: `notebooks/kaggle_v3.ipynb`. Everything runs on 0.6B and starts from the sft_06b adapter in the `jevmark-sft-adapters` dataset (section 10). Token, secret, import and notebook settings are as in sections 1 to 3. Use one `COMMIT` for all sessions, pushed before session A. Session D (task 3.6, added after C) keeps that commit: its plan lives in the notebook, and the training and evaluation code are unchanged since, so import the current `notebooks/kaggle_v3.ipynb` and leave `COMMIT` at the sessions A to C commit (b5913eff27e1dc6290bd215e7d83b533b105ad83). Session E (task 3.6, decision 59) needs `--noise soft`, which only the soft-target commit and later have, so it runs at that commit; the log-mode code is otherwise unchanged from b5913ef.
 
 ### Parameters per session
 

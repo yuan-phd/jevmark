@@ -201,11 +201,10 @@ With LoRA SFT, in-domain accuracy is .956 at 0.6B and .952 at 1.7B with ECE .013
 
 - docs/STORY.md: the whole project in two pages.
 - docs/RESULTS_v1.md, docs/RESULTS_v2.md, docs/RESULTS_v3.md: the reports, every number cited to a `metrics.json`.
-- docs/PLAN.md, docs/API_SPEC.md, docs/TASKS.md, docs/DECISIONS.md: plan, contract, tasks with their proofs, and every design decision with its reason.
-- docs/DATA.md, docs/KAGGLE.md, docs/V3_DESIGN.md: data, how to run on Kaggle, and the v3 specification.
+- docs/API_SPEC.md: the request and response contract.
+- docs/DATA.md, docs/KAGGLE.md: data, and how to run on Kaggle.
 - docs/MODEL_CARD.md: the card of the adapters on the Hugging Face Hub.
 - docs/audit/SUMMARY.md: the Banking77 label-noise audit.
-- CLAUDE.md: the rules for working in this repository.
 
 ## License
 

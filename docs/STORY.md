@@ -1,6 +1,6 @@
 # jevmark: the story
 
-Every number cites its source: `R1`, `R2` and `R3` are docs/RESULTS_v1.md, RESULTS_v2.md and RESULTS_v3.md, `D<n>` is decision n in docs/DECISIONS.md; each report names the `runs/.../metrics.json` key behind its numbers. Tags `v1`, `v2` and `v3` mark the end of each phase.
+Every number cites its source: `R1`, `R2` and `R3` are docs/RESULTS_v1.md, RESULTS_v2.md and RESULTS_v3.md; each report names the `runs/.../metrics.json` key behind its numbers. Tags `v1`, `v2` and `v3` mark the end of each phase.
 
 ## What it is, and why
 
@@ -8,7 +8,7 @@ jevmark is a decision model: a caller sends a text and typed questions (yes or n
 
 ## What was built
 
-Per-segment encoding that pins each answer slot to a token boundary and a fixed contract (D17, docs/API_SPEC.md); CLINC150 and SST-5 for training with leak probes and a duplicate check before any GPU run (D42, D43); every split evaluated in full with bootstrap intervals and per-question results kept for CPU recomputation (D37, D46); three baselines on one committed subset (D47); LoRA SFT, RLCD arms (D51, D52) and, for v3, learners trained from a deployment log (D56). Three adapters are published at https://huggingface.co/yuanphd/jevmark and load by an `hf://` reference; `scripts/demo.py` runs one support message through five questions and a confidence gate (D61, README).
+Per-segment encoding that pins each answer slot to a token boundary and a fixed contract (docs/API_SPEC.md); CLINC150 and SST-5 for training with leak probes and a duplicate check before any GPU run; every split evaluated in full with bootstrap intervals and per-question results kept for CPU recomputation; three baselines on one committed subset; LoRA SFT, RLCD arms and, for v3, learners trained from a deployment log. Three adapters are published at https://huggingface.co/yuanphd/jevmark and load by an `hf://` reference; `scripts/demo.py` runs one support message through five questions and a confidence gate (README).
 
 ## v1: the supervised model works in-domain and reads the options
 
@@ -19,11 +19,11 @@ Per-segment encoding that pins each answer slot to a token boundary and a fixed 
 
 ## v2: RLCD on full labels is negative
 
-- **A proper score as a REINFORCE reward is broken.** A wrong action's Brier or log reward is never below gold's, so the group-mean advantage pushes probability away from gold when K > 2; SST-5 score accuracy fell from .636 to .111 (R2 section 2, D52).
+- **A proper score as a REINFORCE reward is broken.** A wrong action's Brier or log reward is never below gold's, so the group-mean advantage pushes probability away from gold when K > 2; SST-5 score accuracy fell from .636 to .111 (R2 section 2).
 - **On deterministic labels a bandit objective is at most extra SFT.** With its own temperature, the best arm is level with SFT plus T (-.002 [-.006, +.004]), and so is the control, more cross-entropy (+.002 [-.001, +.009]) (R2 section 3).
 - **A temperature is the strongest cheap fix.** One scalar fitted in-domain brings the four-schema mean ECE from .152 to .121; no arm gets below .121 without a temperature of its own, and outcome-only reward pushes it to .239 to .262 (R2 sections 1 and 3).
 
-Stage 2b (the arms on 1.7B) was not run, so this conclusion is for 0.6B (D58); stage 3 was cancelled in favour of v3 (D56).
+Stage 2b (the arms on 1.7B) was not run, so this conclusion is for 0.6B; stage 3 was cancelled in favour of v3.
 
 ## v3: partial feedback on a new domain is where RLCD helps
 
@@ -31,20 +31,20 @@ sft_06b answered 9942 Banking77 train messages once with epsilon 0.1 exploration
 
 - **Negative feedback helps once there is enough of it.** RLCD (pathwise Brier on the logged action) ties positive-only SFT at N 500, +.002 [-.006, +.009], and beats it by 2.7 and 2.4 points at N 2000 and 5000, +.026 [+.019, +.033] for the three-seed mean at N 5000 (R3 sections 2 and 3).
 - **It is the calibrated way to use the log.** Its ECE is .052 to .060 below positive-only SFT's at every N; positive-only SFT keeps 90 percent of its answers at the .95 confidence threshold with 93 to 94 percent accuracy (R3 sections 2 and 6).
-- **A temperature on top adds nothing.** Fitted on the logged outcomes under RLCD's own probabilities on its training records, T is .95 to 1.04 and ECE moves by at most .003, every interval containing 0: RLCD already sits at the temperature learner's ECE with its accuracy (R3 section 3, D60).
+- **A temperature on top adds nothing.** Fitted on the logged outcomes under RLCD's own probabilities on its training records, T is .95 to 1.04 and ECE moves by at most .003, every interval containing 0: RLCD already sits at the temperature learner's ECE with its accuracy (R3 section 3).
 - **Labels still win.** Full-label SFT stays ahead by 0.7 to 1.8 points and the gap does not shrink with N: 1.5 points [1.0, 2.0] at N 5000, seed means of both on three seeds (R3 section 3).
-- **Under noisy feedback a proper score calibrates to the channel.** With outcomes flipped at 0.2, RLCD loses less accuracy than positive-only SFT (+.017 [+.007, +.028] relative), but its ECE goes from .026 to .164, because it learns P(revealed outcome), not P(correct); a known flip rate inverts it. What is left (channel-scale ECE .058 against .014 for a channel-calibrated clean model) is the variance of one noisy draw per interaction: training on the expected outcome instead brings it to .019 to .024. Trained too long, the learner memorises those draws and falls to .813 by step 1407, so the feedback-only early stopping that picked step 250 is essential (R3 section 4, D59).
+- **Under noisy feedback a proper score calibrates to the channel.** With outcomes flipped at 0.2, RLCD loses less accuracy than positive-only SFT (+.017 [+.007, +.028] relative), but its ECE goes from .026 to .164, because it learns P(revealed outcome), not P(correct); a known flip rate inverts it. What is left (channel-scale ECE .058 against .014 for a channel-calibrated clean model) is the variance of one noisy draw per interaction: training on the expected outcome instead brings it to .019 to .024. Trained too long, the learner memorises those draws and falls to .813 by step 1407, so the feedback-only early stopping that picked step 250 is essential (R3 section 4).
 - **Adaptation costs the original domain.** At N 5000 RLCD loses 2.7 to 4.3 in-domain points across seeds and full-label SFT 5.2, positive-only SFT under 1; a fitted temperature loses nothing and has the lowest or joint-lowest Banking77 ECE, with no accuracy gain (R3 sections 2 and 5).
 
-Predictions: 1 is a tie at N 500 and holds from N 2000, 2 holds, 3 fails, 4 holds for accuracy and fails for calibration as stored (R3 section 8, D57, D59). A blind audit by two language-model judges, no human, finds a label problem in 12 to 14 percent of Banking77 test labels and none of 50 CLINC150 ones, so Banking77's ceiling sits near .96 and even the "clean" feedback carried label noise (R3 section 9, docs/audit/SUMMARY.md).
+Predictions: 1 is a tie at N 500 and holds from N 2000, 2 holds, 3 fails, 4 holds for accuracy and fails for calibration as stored (R3 section 8). A blind audit by two language-model judges, no human, finds a label problem in 12 to 14 percent of Banking77 test labels and none of 50 CLINC150 ones, so Banking77's ceiling sits near .96 and even the "clean" feedback carried label noise (R3 section 9, docs/audit/SUMMARY.md).
 
 ## Five lessons about data and pipelines
 
-1. **A model uses the surface form when that is enough:** sft_06b answered a domain question and its negation the same way in 89 percent of pairs, so phrasing-only accuracy is now a build check (D40, D41).
-2. **Question order can leak a label:** a sentiment noul before the score revealed "not neutral", so a record holds one gold-dependent question, after the choice or score (D42).
-3. **A fast GPU cycle pays only if its sample is right:** the first 300 records of a file covered 3 to 16 intents, so the sampler is stratified (docs/TASKS.md 1.5b).
-4. **Check memory on the worst case first:** a run that ran out of memory at step 392 now fails in its first minute on a pre-flight pass (D45).
-5. **A file in git is history, not state:** a committed summary let a step-200 adapter pass as `sft_06b`, so training refuses to start over old run files (D45).
+1. **A model uses the surface form when that is enough:** sft_06b answered a domain question and its negation the same way in 89 percent of pairs, so phrasing-only accuracy is now a build check.
+2. **Question order can leak a label:** a sentiment noul before the score revealed "not neutral", so a record holds one gold-dependent question, after the choice or score.
+3. **A fast GPU cycle pays only if its sample is right:** the first 300 records of a file covered 3 to 16 intents, so the sampler is stratified.
+4. **Check memory on the worst case first:** a run that ran out of memory at step 392 now fails in its first minute on a pre-flight pass.
+5. **A file in git is history, not state:** a committed summary let a step-200 adapter pass as `sft_06b`, so training refuses to start over old run files.
 
 ## Questions and answers
 
@@ -60,4 +60,4 @@ Predictions: 1 is a tie at N 500 and holds from N 2000, 2 holds, 3 fails, 4 hold
 
 ## Closed, and what remains
 
-The project closed at tag v3-final (D62). Stage 2b was not run (D58), V-c was designed and not run (D59), and the optional improvements of task 2.4 were not built (D62). One item remains, optional and not started: the delta-filing demonstration, which needs the human's go-ahead and MPS support in jevmark first (D56, task 3.7).
+The project closed at tag v3-final. Stage 2b was not run, V-c was designed and not run, and the optional improvements (ranked probability score reward, permutation averaging, marker-token head) were not built.

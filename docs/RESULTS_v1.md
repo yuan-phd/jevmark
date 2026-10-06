@@ -1,6 +1,6 @@
 # jevmark v1 results: supervised decision model
 
-Every number in this report is read from a committed file under `runs/`, cited next to it. `metrics.json` paths are given as `run:key`, where `run` is `runs/<run>/metrics.json` unless another file is named and `key` is the path inside it (for example `sft_06b:splits.test_indomain.choice.accuracy`). Reliability diagrams are in `runs/<run>/plots/<split>.png` for the four jevmark runs. Decision numbers refer to `docs/DECISIONS.md`.
+Every number in this report is read from a committed file under `runs/`, cited next to it. `metrics.json` paths are given as `run:key`, where `run` is `runs/<run>/metrics.json` unless another file is named and `key` is the path inside it (for example `sft_06b:splits.test_indomain.choice.accuracy`). Reliability diagrams are in `runs/<run>/plots/<split>.png` for the four jevmark runs.
 
 ## 1. Setup
 
@@ -50,7 +50,7 @@ Form nouls, reported apart (`<run>:splits.<split>.form`):
 | test_unseen_intents | 1991 | .503 [.482, .525] / .183 | .973 [.966, .980] / .017 | .503 [.481, .526] / .119 | .974 [.967, .981] / .020 |
 | test_sst5 | 2271 | .494 [.472, .514] / .232 | .956 [.948, .965] / .010 | .509 [.489, .528] / .153 | .959 [.950, .967] / .014 |
 
-The v1 success criterion (docs/PLAN.md) holds at both sizes: SFT beats the frozen base in-domain by a wide margin (test_indomain .956 against .492 at 0.6B, .952 against .549 at 1.7B), beats it on unseen intents (.892 against .525, .897 against .614), and does not collapse on any unseen schema (it matches or beats the base's accuracy on all four).
+The v1 success criterion holds at both sizes: SFT beats the frozen base in-domain by a wide margin (test_indomain .956 against .492 at 0.6B, .952 against .549 at 1.7B), beats it on unseen intents (.892 against .525, .897 against .614), and does not collapse on any unseen schema (it matches or beats the base's accuracy on all four).
 
 ## 3. Does the model read the questions and options?
 
@@ -130,7 +130,7 @@ Paired differences, sft_17b minus sft_06b, on identical questions, with 95 perce
 - **Label noise and ordinal ambiguity.** Score accuracy is low for everyone on 5-level scales: SFT .636 to .657 on SST-5 and .505 to .527 on Yelp, gpt-4.1-mini .596 and .600 on the subset. Mean absolute error of the expected level is .435 to .464 on SST-5 and .482 to .526 on Yelp (`<run>:splits.<split>.score.mae`), so most errors fall to a neighbouring level. How much of that is label noise in SST-5 and Yelp is not measured here.
 - **Form nouls are not a decision capability.** They measure counting characters and words against a threshold in the question; the bases are at chance (.488 to .509) and SFT at .956 to .982 (section 2 table). They are in the data to vary question position and are kept out of the headline.
 - **SST-5 neutral shift, rechecked on the full split.** In the 300-step fast cycle a preceding form noul appeared to double the rate of predicting neutral. On the full test_sst5 after SFT the neutral share is the same with and without a preceding form noul: 11.8 against 12.4 percent on the 5-level scale and 15.2 against 15.3 percent on the 3-level scale at 0.6B, 14.3 against 12.4 and 13.6 against 13.4 at 1.7B, all below the gold neutral shares of 15.4 to 18.6 percent (`<run>:splits.test_sst5.score.levels_by_position`). The fast-cycle effect was noise from an undertrained model; the frozen bases do shift with context (base_17b 5-level: 16.7 against 0.0 percent).
-- **B1 batch-1 p95 is missing.** The B1 runs recorded only the median and mean at batch 1; per-request timings, and so p95, are recorded from the next latency probe on (docs/TASKS.md 1.8). The jevmark runs record the median and mean only.
+- **B1 batch-1 p95 is missing.** The B1 runs recorded only the median and mean at batch 1; per-request timings, and so p95, are recorded from the next latency probe on. The jevmark runs record the median and mean only.
 - **1.7B does not batch on a T4.** base_17b takes 68.2 ms per request at batch 1 and 68.1 ms per request at batch 16 (14.7 requests per second), while 0.6B goes from 48.8 to 32.8 ms (`<run>:latency`). The cause is not established. The merged LoRA adapter adds about 10 percent latency at 1.7B (sft_17b 74.8 against base_17b 68.2 ms) and nothing at 0.6B.
 - **B2 latency includes the network.** B2 was called one request at a time from a laptop; its latency includes the round trip and the API's queueing, and one call of the first 1800 took 601.8 s (the client's former 600 s timeout plus a silent retry), which is counted as retried and excluded from the first-attempt figures (`runs/b2_gpt-4.1-mini/metrics.json:latency`).
 - **Batching precision.** Batched and single calls differ by up to .0068 to .0094 in probability under fp16 on a T4 (`<run>:batching_precision.max_abs_difference`, API_SPEC section 1).

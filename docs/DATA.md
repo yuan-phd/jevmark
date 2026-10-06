@@ -263,7 +263,7 @@ Exactly 20 percent of the records of every split (`state_format.p_json`, seeded 
 
 Verified with `scripts/check_datasets.py` (datasets 5.0.1, huggingface_hub 1.33.0). Every loader passes the revision below, so a moved or edited dataset cannot change a build silently.
 
-| Role | Id originally named in TASKS.md | Id used | Config | Revision (commit sha) | Splits and rows | Labels |
+| Role | Id originally named | Id used | Config | Revision (commit sha) | Splits and rows | Labels |
 |---|---|---|---|---|---|---|
 | CLINC150 | `clinc_oos` | `clinc/clinc_oos` | `plus` | `155b9c710419136e17307b80d0a13e68cd46b4ec` | train 15250, validation 3100, test 5500 | `intent`: 151 classes (150 intents plus `oos`) |
 | SST-5 | `SetFit/sst5` | `SetFit/sst5` | none | `e51bdcd8cd3a30da231967c1a249ba59361279a3` | train 8544, validation 1101, test 2210 | `label` integer 0 to 4, `label_text` |
@@ -274,7 +274,7 @@ Verified with `scripts/check_datasets.py` (datasets 5.0.1, huggingface_hub 1.33.
 
 `Yelp/yelp_review_full` is the canonical Yelp review stars dataset (Zhang et al., 2015); the old id `yelp_review_full` redirects to it, and it holds parquet files on `main`, so it is the original repository under its current name, not a mirror.
 
-Notes on the two ids that differ from the originally named ones (both substitutions approved by the human; TASKS.md now uses the new ids):
+Notes on the two ids that differ from the originally named ones:
 
 - `clinc_oos`: datasets 5 accepts only `namespace/name` ids, and the Hub redirects `clinc_oos` to `clinc/clinc_oos`, which holds parquet files for `plus` on `main`. Same repository, current name. It has no domain column, so the intent-to-domain map comes from the original CLINC release: `data/domains.json` in github.com/clinc/oos-eval at commit `976178879e5afa9952f60a1f8d3c834f47a25cee` (the commit that added it; the file is identical on `master` at `828f8093`). It is checked in unmodified as `jevmark/data/clinc_domains.json`, sha256 `b947b579d3b8e74b06f93b01083d8efaff2888b43a3e362533bd88a6e1211b3a`; the builder refuses to run if the hash differs, and asserts that it maps exactly the 150 dataset intents, 15 to each of the 10 domains.
 - `PolyAI/banking77`: the repository holds only a loading script (`banking77.py`) that downloads CSVs from github.com/PolyAI-LDN/task-specific-datasets. datasets 5 no longer runs loading scripts, and the repository has no `refs/convert/parquet`. The parquet mirror `legacy-datasets/banking77` was compared row by row with the original `train.csv` and `test.csv` the script downloads: identical text and category for all 10003 train and 3080 test rows, in the same order, and the same 77 label names in the same order as the script's `dataset_infos.json`. `mteb/banking77` was rejected: it has 9993 train and 3076 test rows, so it is not a faithful copy.
@@ -387,7 +387,7 @@ Gold option position is checked conditional on K, the number of options: for eve
 
 ## 6. Description generation
 
-`scripts/generate_descriptions.py` writes one JSON file per dataset under `jevmark/data/descriptions/`, generated once with the OpenAI API and checked in. The human runs the real generation and reviews 20 sampled lines before the files are used. The model name and temperature are arguments and are recorded in each file. The run stops before spend passes `--max-usd` (default 5 dollars, the TASKS.md guardrail), computed from the token usage the API reports and the prices passed on the command line. `--dry-run` prints the exact prompts for three labels and makes no call.
+`scripts/generate_descriptions.py` writes one JSON file per dataset under `jevmark/data/descriptions/`, generated once with the OpenAI API and checked in. The human runs the real generation and reviews 20 sampled lines before the files are used. The model name and temperature are arguments and are recorded in each file. The run stops before spend passes `--max-usd` (default 5 dollars), computed from the token usage the API reports and the prices passed on the command line. `--dry-run` prints the exact prompts for three labels and makes no call.
 
 Generation run of record: model `gpt-4.1-mini`, temperature 0.3, prompt version 1, 237 calls (one per label, no retries needed), total spend 0.0699 USD across two runs, run on 2026-09-24 by the human. Spend is recorded here only, not in the JSON files. The four files are committed exactly as generated; corrections go through `overrides.json` (section 7), never by editing the generated files.
 

@@ -150,11 +150,11 @@ On the validation subset, from step 0 to step 500 (`validation.<arm>.<seed>.step
 
 **Not run.**
 - **Stage 2b**, the five arms at seed 0 on 1.7B, was not run (decision 58), so the v2 conclusion is for 0.6B only.
-- **Stage 3** (task 2.5, decision 54) was cancelled by decision 56; section 4 keeps its method and SFT baseline. The setting in which bandit feedback can carry information that cross-entropy on gold cannot is now tested in v3, on real deployment feedback (docs/V3_DESIGN.md).
+- **Stage 3** (task 2.5, decision 54) was cancelled by decision 56; section 4 keeps its method and SFT baseline. The setting in which bandit feedback can carry information that cross-entropy on gold cannot is now tested in v3, on real deployment feedback (docs/RESULTS_v3.md).
 
 ## 4. RLCD stage 3: a stochastic-outcome environment (method only; cancelled)
 
-**Status: cancelled by decision 56 before any training run.** Phase 3 (docs/V3_DESIGN.md) tests RLCD on real deployment feedback instead. This section stays as the record of the method and the SFT baseline. Sessions 3-1 and 3-2 (docs/KAGGLE.md section 11) will not run. The SFT numbers below are from `runs/sft_06b_env/metrics.json` (commit b49153b, not dirty, written by `scripts/evaluate_env.py runs/sft_06b` from `runs/sft_06b/results.jsonl.gz` on CPU), key `variants.<variant>.splits.<split>`. Decision 54 records the design.
+**Status: cancelled by decision 56 before any training run.** Phase 3 (docs/RESULTS_v3.md) tests RLCD on real deployment feedback instead. This section stays as the record of the method and the SFT baseline. Sessions 3-1 and 3-2 (docs/KAGGLE.md section 11) will not run. The SFT numbers below are from `runs/sft_06b_env/metrics.json` (commit b49153b, not dirty, written by `scripts/evaluate_env.py runs/sft_06b` from `runs/sft_06b/results.jsonl.gz` on CPU), key `variants.<variant>.splits.<split>`. Decision 54 records the design.
 
 **Why a new setting.** In stages 1 and 2a the outcome of a sampled action is whether it is gold. That is strictly less information than the gold label cross-entropy already uses, and every arm, the control included, only sharpened (section 3). In that setting RLCD cannot do anything that SFT cannot. Stage 3 changes the outcomes so that the best-calibrated policy is not the one-hot gold answer and is known exactly.
 

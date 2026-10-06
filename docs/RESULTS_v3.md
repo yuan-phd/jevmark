@@ -1,6 +1,6 @@
 # jevmark v3 results: adaptation from deployment feedback
 
-Every number cites the file it comes from, as `path:key`. Unless another file is named, numbers are from `runs/v3_stage_06b/metrics.json` (written by `scripts/compare_v3.py` at commit 83454a4, not dirty, regenerated at commit 9353145 with full_sft's seeds 1 and 2 added and at commit cd1217c with direct_brier plus a temperature added; every earlier value is unchanged), shortened to `S:key`. The specification is docs/V3_DESIGN.md and decision 56; the verdict and the inversion diagnostic are decision 57. The v1 report (`docs/RESULTS_v1.md`, frozen, decision 49) and the v2 report (`docs/RESULTS_v2.md`) are the background this starts from.
+Every number cites the file it comes from, as `path:key`. Unless another file is named, numbers are from `runs/v3_stage_06b/metrics.json` (written by `scripts/compare_v3.py` at commit 83454a4, not dirty, regenerated at commit 9353145 with full_sft's seeds 1 and 2 added and at commit cd1217c with direct_brier plus a temperature added; every earlier value is unchanged), shortened to `S:key`. The v1 report (`docs/RESULTS_v1.md`, frozen, decision 49) and the v2 report (`docs/RESULTS_v2.md`) are the background this starts from.
 
 ## 1. Setup
 
@@ -200,11 +200,11 @@ Accuracy and ECE minus zero-shot on test_indomain (zero-shot .956, ECE .013) and
 
 - **Every trained learner loses in-domain accuracy and gains on the unseen intents**, which share the CLINC format but not the label set.
 - **The in-domain cost grows with N for direct_brier and full_sft**, up to 2.7 to 4.3 points for direct_brier at N 5000 across seeds and 3.6 to 5.2 points for full_sft. positive_sft costs under 1 point at every N. The clean direct_brier runs keep in-domain ECE within .010 of zero-shot; full_sft at N 5000 adds .015 to .043.
-- **Forgetting varies more across seeds than Banking77 accuracy does:** -.027, -.043 and -.029 for direct_brier's three training seeds and -.052, -.036 and -.050 for full_sft's, ranges of 1.6 points each against .6 on Banking77. Beta 0 (V3_DESIGN note 13) is a choice, and this is its cost.
+- **Forgetting varies more across seeds than Banking77 accuracy does:** -.027, -.043 and -.029 for direct_brier's three training seeds and -.052, -.036 and -.050 for full_sft's, ranges of 1.6 points each against .6 on Banking77. Beta 0 is a choice, and this is its cost.
 
 ## 6. Predicted `other` and coverage
 
-**`other` is never correct here** (V3_DESIGN note 11), so negative feedback can teach "never answer other" directly. The predicted-`other` rate on v3_banking77_test_full, and accuracy on the 2899 questions where no run predicted `other` (`S:other`):
+**`other` is never correct here**, so negative feedback can teach "never answer other" directly. The predicted-`other` rate on v3_banking77_test_full, and accuracy on the 2899 questions where no run predicted `other` (`S:other`):
 
 | run | predicted `other` | accuracy without `other` |
 |---|---|---|
@@ -239,7 +239,7 @@ positive_sft keeps over 90 percent of answers at the .95 threshold with 93 to 94
 
 ## 7. The B2 reference
 
-gpt-4.1-mini (B2) exists only on the 500-record subset of test_banking77 (V3_DESIGN note 15): accuracy .918, ECE .035 (`S:b2_reference.b2`). The learners on the same 500 records (`S:b2_reference.runs`):
+gpt-4.1-mini (B2) exists only on the 500-record subset of test_banking77: accuracy .918, ECE .035 (`S:b2_reference.b2`). The learners on the same 500 records (`S:b2_reference.runs`):
 
 | run | accuracy | ECE |
 |---|---|---|
@@ -255,9 +255,9 @@ From N 5000, every direct_brier run is above gpt-4.1-mini's .918 on this subset,
 
 ## 8. The four predictions
 
-The predictions as stated in docs/V3_DESIGN.md section 7, each with its verdict.
+The predictions as stated before the runs, each with its verdict.
 
-1. **"RLCD beats positive-only SFT in accuracy at every N, because it uses negative feedback."** Not held at every N: a tie at N 500, +.002 [-.006, +.009]; held from N 2000, +.027 [+.019, +.035] at N 2000 and +.024 [+.016, +.031] at N 5000, +.026 [+.019, +.033] for the three-seed mean (section 2, section 3). V3_DESIGN says that if prediction 1 fails, v2 and v3 together are a complete negative result about RLCD as reconstructed. It fails only at the smallest N and by a tie, and holds clearly from N 2000, so v3 is not that complete negative result: with 1800 or more logged interactions, negative feedback adds 2.4 to 2.7 points over discarding it.
+1. **"RLCD beats positive-only SFT in accuracy at every N, because it uses negative feedback."** Not held at every N: a tie at N 500, +.002 [-.006, +.009]; held from N 2000, +.027 [+.019, +.035] at N 2000 and +.024 [+.016, +.031] at N 5000, +.026 [+.019, +.033] for the three-seed mean (section 2, section 3). The design stated before the runs that if prediction 1 failed, v2 and v3 together are a complete negative result about RLCD as reconstructed. It fails only at the smallest N and by a tie, and holds clearly from N 2000, so v3 is not that complete negative result: with 1800 or more logged interactions, negative feedback adds 2.4 to 2.7 points over discarding it.
 2. **"RLCD's ECE is lower than positive-only SFT's, which only ever sees confirmed answers and should be overconfident."** Held at every N: -.060 [-.066, -.048], -.060 [-.067, -.050] and -.052 [-.060, -.043], with Brier and NLL agreeing; positive_sft is the worst-calibrated learner at every N, and its coverage at .95 keeps 90 percent of answers at 93 to 94 percent accuracy (sections 2 and 6).
 3. **"RLCD approaches full-label SFT as N grows; the gap at N 5000 is the price of not having labels."** Failed: the accuracy gap is -.017 [-.023, -.011], -.007 [-.014, +.000] and -.018 [-.025, -.011] at N 500, 2000 and 5000; it does not shrink with N. With both learners on three training seeds, the price of not having labels at N 5000 is 1.5 points of accuracy, direct_brier's seed mean minus full_sft's, -.015 [-.020, -.010], with ECE level, +.003 [-.001, +.008], and higher Brier and NLL, +.027 [+.020, +.034] and +.082 [+.061, +.101] (section 3); full_sft's seed 0 alone had given -.016, so the verdict does not depend on it.
 4. **"Under noisy feedback, RLCD degrades less than positive-only SFT."** Held for accuracy, failed for calibration. Accuracy: direct_brier loses 2.2 points and positive_sft 3.9, a difference of +.017 [+.007, +.028]. Calibration: direct_brier's ECE rises by .138 while positive_sft's falls by .029, a difference of +.167 [+.151, +.182], with NLL +.277 [+.233, +.320] and Brier +.013 [+.000, +.025]. As stored, the calibration failure is the proper score calibrating to the noisy outcome it was given: the selected run sits on the channel line on average (mean top-1 .743 against .744), and its channel-scale ECE is .058 against a mapped-clean reference of .014. That remainder is single-draw variance in a one-draw log, not a limit of the objective: with the variance removed it falls to .019 to .024 (section 4, decision 59).
