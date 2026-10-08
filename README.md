@@ -4,6 +4,59 @@ jevmark is a small decision model that never generates text: a text state and a 
 
 jevmark is not affiliated with or endorsed by TypeSafe AI. Their Jev model is the inspiration; the code, the data pipeline and the adapters were built and trained independently on open-source Qwen3 base models.
 
+## Results
+
+Three phases, each with its own report; every number there is cited to a committed `metrics.json`. In one line: the supervised model works in-domain and reads options it never saw; RLCD adds nothing on full labels; it helps when the only feedback is whether the model's own answer was right.
+
+![Accuracy and ECE against N on Banking77 for every v3 learner](docs/figures/v3_n_curve.png)
+
+### v1: the supervised model (docs/RESULTS_v1.md)
+
+Accuracy / ECE on gold-dependent questions, full test splits (frozen base: accuracy only):
+
+| split | base_06b | sft_06b | sft_17b |
+|---|---|---|---|
+| in-domain (CLINC150) | .492 | .956 / .013 | .952 / .015 |
+| unseen intents | .525 | .892 / .068 | .897 / .070 |
+| SST-5 | .442 | .773 / .030 | .790 / .025 |
+| AG News (unseen schema) | .786 | .788 / .164 | .847 / .113 |
+| emotion (unseen schema) | .478 | .628 / .207 | .645 / .217 |
+| Banking77 (unseen schema) | .718 | .851 / .067 | .852 / .087 |
+| Yelp (unseen schema) | .382 | .505 / .169 | .527 / .218 |
+
+- **It reads the options.** On 20 intents never seen in training, choice accuracy is .868 and .885, against .975 and .974 in-domain.
+- **Against generation** (500-record subset): 25 to 33 points ahead of same-size JSON generation in-domain and on unseen intents, which also fails to parse on up to 14.7 percent of questions. Ahead of gpt-4.1-mini in-domain (.944 and .945 against .908) and on SST-5; behind it on Banking77, emotion, Yelp and, at 0.6B, AG News.
+- **Speed and cost:** 47.7 ms (0.6B) and 74.8 ms (1.7B) per request at batch 1 on a T4, against 777 ms for gpt-4.1-mini and about 3 s for same-size generation; about 1/76 of gpt-4.1-mini's cost per request at an assumed T4 price.
+- **Overconfident off-distribution:** ECE .11 to .22 on the unseen schemas, where the frozen base is better calibrated.
+- **Scale:** 1.7B helps only far from the training data (unseen intents, AG News, SST-5), not in-domain.
+
+### v2: RLCD on full labels (docs/RESULTS_v2.md)
+
+- **One temperature is the strongest cheap fix.** Fitted in-domain, it brings in-domain ECE to .003 to .005 and the unseen-schema mean from .152 to .121, but each unseen schema needs its own temperature (1.4 to 2.9).
+- **A proper score as a REINFORCE reward is broken.** A wrong action's Brier reward is never below gold's, so training pushes probability away from gold; SST-5 score accuracy fell from .636 to .111.
+- **No RLCD arm beats SFT plus that temperature** on unseen-schema ECE (five arms, three seeds, 0.6B). With its own temperature the best arm is level (-.002 [-.006, +.004]), and so is the control, more cross-entropy. Outcome-only reward pushes ECE to .24 to .26.
+- **Why:** with a known gold label, "was the sampled answer right" carries less information than the label itself.
+
+### v3: RLCD from deployment feedback (docs/RESULTS_v3.md)
+
+sft_06b answered 9942 Banking77 messages with 10 percent exploration, and only whether its chosen answer was right was logged. Learners trained on the first N interactions; accuracy / ECE on the full Banking77 test split:
+
+| N | zero-shot | temperature | positive-only SFT | RLCD | full-label SFT |
+|---|---|---|---|---|---|
+| 500 | .851 / .063 | .851 / .023 | .886 / .091 | .888 / .031 | .904 / .043 |
+| 2000 | | .851 / .018 | .890 / .082 | .917 / .022 | .924 / .017 |
+| 5000 | | .851 / .020 | .905 / .078 | .929 / .026 | .947 / .030 |
+
+- **Using the failures helps once there are enough of them.** RLCD ties positive-only SFT at N 500 and leads by 2.4 to 2.7 points from N 2000, with ECE .05 to .06 lower at every N.
+- **Labels still win.** Full-label SFT stays 1.5 points [1.0, 2.0] ahead at N 5000 (three-seed means), and the gap does not shrink with N.
+- **A temperature on top of RLCD adds nothing** (ECE moves by at most .003).
+- **Against gpt-4.1-mini:** at N 5000 every RLCD run scores .926 to .936 on the Banking77 subset against .918, from logged correctness alone (500 records, no paired interval).
+- **Noisy feedback** (20 percent of outcomes flipped): RLCD loses less accuracy than positive-only SFT but calibrates to the noise (ECE .164), which a known flip rate can undo. Trained too long it memorises the noisy outcomes and falls to .813; stopping early on the feedback alone picked a safe step.
+- **Adaptation costs the original domain:** 2.7 to 4.3 in-domain points for RLCD and 3.6 to 5.2 for full-label SFT at N 5000; positive-only SFT under 1.
+- **Label noise:** two language-model judges (no human) find a label problem in 12 to 14 percent of Banking77 test labels, so the ceiling is near .96 (docs/audit/SUMMARY.md).
+
+**Limits.** v2 and v3 ran on 0.6B only; v3 used one domain, one logging policy and simulated feedback. Together with v2, the claim that survives is narrow: RLCD adds value over positive-only SFT when feedback is partial, and nowhere else tested.
+
 ## Install
 
 Python 3.11 and [uv](https://docs.astral.sh/uv/):
@@ -192,10 +245,6 @@ Every run's `metrics.json`, config and training log are committed under `runs/`.
 | all | every report figure | `uv run python scripts/make_figures.py` (committed metrics files only) | `docs/figures/` |
 
 Training and evaluation themselves (`make train-sft`, `scripts/train_rlcd.py`, `make eval`) run on Kaggle through the thin notebooks in `notebooks/`.
-
-## Results
-
-With LoRA SFT, in-domain accuracy is .956 at 0.6B and .952 at 1.7B with ECE .013 and .015, against .492 and .549 for the frozen bases, and .868 and .885 on intents never trained on; on a 500-record subset it beats same-size JSON generation by 25 to 33 points and gpt-4.1-mini in-domain, while gpt-4.1-mini leads on Banking77, emotion and Yelp (docs/RESULTS_v1.md sections 2 to 4). On full deterministic labels, no RLCD arm beats SFT plus one in-domain temperature on unseen-schema ECE (four-schema mean .121 for SFT plus T; the arms, each with its own temperature, are at best level with it), because a bandit outcome carries less information than the label (docs/RESULTS_v2.md section 3). Where only the correctness of the model's own action is observed, on Banking77 from a deployment log, RLCD ties positive-only SFT at 500 interactions and beats it by 2.4 to 2.7 points from 2000, with ECE lower by .05 to .06 at every N, stays 1.5 points [1.0, 2.0] behind full-label SFT at 5000 (seed means of both), and under noisy feedback calibrates to the noise rather than to correctness (docs/RESULTS_v3.md section 8). A temperature fitted on top of it changes ECE by at most .003 (section 3), and a blind audit by two language-model judges finds a label problem in 12 to 14 percent of Banking77 test labels (section 9, docs/audit/SUMMARY.md).
 
 ## Documentation
 
