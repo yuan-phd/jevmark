@@ -8,8 +8,6 @@ jevmark is not affiliated with or endorsed by TypeSafe AI. Their Jev model is th
 
 Three phases, each with its own report; every number there is cited to a committed `metrics.json`. In one line: the supervised model works in-domain and reads options it never saw; RLCD adds nothing on full labels; it helps when the only feedback is whether the model's own answer was right.
 
-![Accuracy and ECE against N on Banking77 for every v3 learner](docs/figures/v3_n_curve.png)
-
 ### v1: the supervised model (docs/RESULTS_v1.md)
 
 Accuracy / ECE on gold-dependent questions, full test splits (frozen base: accuracy only):
@@ -30,12 +28,16 @@ Accuracy / ECE on gold-dependent questions, full test splits (frozen base: accur
 - **Overconfident off-distribution:** ECE .11 to .22 on the unseen schemas, where the frozen base is better calibrated.
 - **Scale:** 1.7B helps only far from the training data (unseen intents, AG News, SST-5), not in-domain.
 
+![Accuracy, ECE and batch-1 latency on the 500-record subset for jevmark, JSON generation and gpt-4.1-mini](docs/figures/v1_subset.png)
+
 ### v2: RLCD on full labels (docs/RESULTS_v2.md)
 
 - **One temperature is the strongest cheap fix.** Fitted in-domain, it brings in-domain ECE to .003 to .005 and the unseen-schema mean from .152 to .121, but each unseen schema needs its own temperature (1.4 to 2.9).
 - **A proper score as a REINFORCE reward is broken.** A wrong action's Brier reward is never below gold's, so training pushes probability away from gold; SST-5 score accuracy fell from .636 to .111.
 - **No RLCD arm beats SFT plus that temperature** on unseen-schema ECE (five arms, three seeds, 0.6B). With its own temperature the best arm is level (-.002 [-.006, +.004]), and so is the control, more cross-entropy. Outcome-only reward pushes ECE to .24 to .26.
 - **Why:** with a known gold label, "was the sampled answer right" carries less information than the label itself.
+
+![Unseen-schema mean ECE per RLCD arm, raw and with its own temperature, against SFT and SFT plus T](docs/figures/v2_arm_ece.png)
 
 ### v3: RLCD from deployment feedback (docs/RESULTS_v3.md)
 
@@ -54,6 +56,10 @@ sft_06b answered 9942 Banking77 messages with 10 percent exploration, and only w
 - **Noisy feedback** (20 percent of outcomes flipped): RLCD loses less accuracy than positive-only SFT but calibrates to the noise (ECE .164), which a known flip rate can undo. Trained too long it memorises the noisy outcomes and falls to .813; stopping early on the feedback alone picked a safe step.
 - **Adaptation costs the original domain:** 2.7 to 4.3 in-domain points for RLCD and 3.6 to 5.2 for full-label SFT at N 5000; positive-only SFT under 1.
 - **Label noise:** two language-model judges (no human) find a label problem in 12 to 14 percent of Banking77 test labels, so the ceiling is near .96 (docs/audit/SUMMARY.md).
+
+![Coverage against accuracy of the kept answers at N 5000 for every v3 learner](docs/figures/v3_coverage.png)
+
+The figure is the cascade at N 5000: as the confidence threshold rises, each learner answers fewer questions and the answers it keeps are more accurate. Wherever their curves overlap, RLCD's kept answers are more accurate than positive-only SFT's and zero-shot's, and less accurate than full-label SFT's.
 
 **Limits.** v2 and v3 ran on 0.6B only; v3 used one domain, one logging policy and simulated feedback. Together with v2, the claim that survives is narrow: RLCD adds value over positive-only SFT when feedback is partial, and nowhere else tested.
 
