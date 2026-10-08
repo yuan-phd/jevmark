@@ -57,9 +57,13 @@ sft_06b answered 9942 Banking77 messages with 10 percent exploration, and only w
 - **Adaptation costs the original domain:** 2.7 to 4.3 in-domain points for RLCD and 3.6 to 5.2 for full-label SFT at N 5000; positive-only SFT under 1.
 - **Label noise:** two language-model judges (no human) find a label problem in 12 to 14 percent of Banking77 test labels, so the ceiling is near .96 (docs/audit/SUMMARY.md).
 
+![Accuracy and ECE against N on Banking77 for every v3 learner](docs/figures/v3_n_curve.png)
+
+The learning curve: the table above as a figure, with 95 percent intervals and, at N 5000, the range over three training seeds for RLCD and full-label SFT.
+
 ![Coverage against accuracy of the kept answers at N 5000 for every v3 learner](docs/figures/v3_coverage.png)
 
-The figure is the cascade at N 5000: as the confidence threshold rises, each learner answers fewer questions and the answers it keeps are more accurate. Wherever their curves overlap, RLCD's kept answers are more accurate than positive-only SFT's and zero-shot's, and less accurate than full-label SFT's.
+The cascade at N 5000: as the confidence threshold rises, each learner answers fewer questions and the answers it keeps are more accurate. Wherever their curves overlap, RLCD's kept answers are more accurate than positive-only SFT's and zero-shot's, and less accurate than full-label SFT's.
 
 **Limits.** v2 and v3 ran on 0.6B only; v3 used one domain, one logging policy and simulated feedback. Together with v2, the claim that survives is narrow: RLCD adds value over positive-only SFT when feedback is partial, and nowhere else tested.
 
