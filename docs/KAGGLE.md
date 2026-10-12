@@ -300,20 +300,20 @@ Commit each run as in section 10.
 
 ## 12. v3: adaptation from deployment feedback (phase 3, decision 56)
 
-Results: docs/RESULTS_v3.md. Notebook: `notebooks/kaggle_v3.ipynb`. Everything runs on 0.6B and starts from the sft_06b adapter in the `jevmark-sft-adapters` dataset (section 10). Token, secret, import and notebook settings are as in sections 1 to 3. Use one `COMMIT` for all sessions, pushed before session A. Session D (task 3.6, added after C) keeps that commit: its plan lives in the notebook, and the training and evaluation code are unchanged since, so import the current `notebooks/kaggle_v3.ipynb` and leave `COMMIT` at the sessions A to C commit (b5913eff27e1dc6290bd215e7d83b533b105ad83). Session E (task 3.6, decision 59) needs `--noise soft`, which only the soft-target commit and later have, so it runs at that commit; the log-mode code is otherwise unchanged from b5913ef.
+Results: docs/RESULTS_v3.md. Notebook: `notebooks/kaggle_v3.ipynb`. Everything runs on 0.6B and starts from the sft_06b adapter in the `jevmark-sft-adapters` dataset (section 10). Token, secret, import and notebook settings are as in sections 1 to 3. Use one `COMMIT` for all sessions, pushed before session A. Session D (task 3.6, added after C) keeps that commit: its plan lives in the notebook, and the training and evaluation code are unchanged since, so import the current `notebooks/kaggle_v3.ipynb` and leave `COMMIT` at the sessions A to C commit (b5913eff27e1dc6290bd215e7d83b533b105ad83). Session E (task 3.6, decision 59) needs `--noise soft`, which only the soft-target commit and later have, so it runs at that commit; the log-mode code is otherwise unchanged from b5913ef. Sessions F1 and F2 train the off-policy arms (direct_log, outcome_minus_p_log, ips_log and ips_positive; `scripts/train_rlcd.py` log mode) on the seed 0 log, so they run at the commit that added those arms or later; the other arms' code is unchanged by it.
 
 ### Parameters per session
 
-| Parameter | Session A | Session B | Session C | Session D | Session E |
-|---|---|---|---|---|---|
-| `SESSION` | `SESSION = "A"` | `SESSION = "B"` | `SESSION = "C"` | `SESSION = "D"` | `SESSION = "E"` |
-| `COMMIT` | the pushed commit | the same | the same | the same | the soft-target commit (task 3.6) |
-| `ADAPTER_DATASET` | `/kaggle/input/jevmark-sft-adapters` | the same | the same | the same | the same |
-| `LOG_DATASET` | not read | `/kaggle/input/jevmark-v3-logs` | the same | the same | the same |
-| `LOG_SHA256` | not read (filled by the session) | `{0: "<seed 0 sha256>", 1: "<seed 1 sha256>"}` from session A's LOG DONE lines | the same | the same (only seed 0 is read) | the same (only seed 0 is read) |
-| `SMOKE_STEPS` | 10 | 10 | 10 | 10 | 10 |
-| `MAX_HOURS` | 2.0 | 2.0 | 2.0 | 2.0 | 2.0 |
-| Inputs to add | the adapter dataset | the adapter dataset and `jevmark-v3-logs` | the same as B | the same as B | the same as B |
+| Parameter | Session A | Session B | Session C | Session D | Session E | Sessions F1 and F2 |
+|---|---|---|---|---|---|---|
+| `SESSION` | `SESSION = "A"` | `SESSION = "B"` | `SESSION = "C"` | `SESSION = "D"` | `SESSION = "E"` | `SESSION = "F1"`, `SESSION = "F2"` |
+| `COMMIT` | the pushed commit | the same | the same | the same | the soft-target commit (task 3.6) | the commit that added the off-policy arms, or later |
+| `ADAPTER_DATASET` | `/kaggle/input/jevmark-sft-adapters` | the same | the same | the same | the same | the same |
+| `LOG_DATASET` | not read | `/kaggle/input/jevmark-v3-logs` | the same | the same | the same | the same |
+| `LOG_SHA256` | not read (filled by the session) | `{0: "<seed 0 sha256>", 1: "<seed 1 sha256>"}` from session A's LOG DONE lines | the same | the same (only seed 0 is read) | the same (only seed 0 is read) | the same (only seed 0 is read) |
+| `SMOKE_STEPS` | 10 | 10 | 10 | 10 | 10 | 10 |
+| `MAX_HOURS` | 2.0 | 2.0 | 2.0 | 2.0 | 2.0 | 1.5 |
+| Inputs to add | the adapter dataset | the adapter dataset and `jevmark-v3-logs` | the same as B | the same as B | the same as B | the same as B |
 
 ### What each session runs
 
@@ -326,6 +326,8 @@ Every session clones, installs, builds the nine v1.3 splits (`make data-build`),
 | C | as B | direct_brier at N 5000, seed 2; direct_brier and positive_sft at N 5000 with `--noisy`; direct_brier at N 5000 on the seed 1 log | 5628 | 6.5 h |
 | D (task 3.6) | as B, seed 0 log only | full_sft at N 5000, seeds 1 and 2, on the seed 0 log | 2814 | 2.6 h (measured rates: 60.5 min per 1407-step full_sft run and 11.5 min per evaluation, plus about 20 min setup) |
 | E (task 3.6, decision 59) | as B, seed 0 log only | direct_brier at N 5000 with `--noise soft` (trains on .2 + .6 x the clean outcome, selects on the stored flipped outcome), then its `adapter_last` evaluated as `<run>_last` (LAST DONE line) | 1407 | 1.7 h (60 min training, two 11.5-min evaluations, about 20 min setup) |
+| F1 | as B, seed 0 log only | direct_log, outcome_minus_p_log, ips_log, ips_positive at N 2000 (seed 0, clean outcomes) | 2252 | 2.7 h (measured rates of D and E: 24 min per 563-step run, 11.5 min per evaluation, about 20 min setup) |
+| F2 | as B, seed 0 log only | direct_log, outcome_minus_p_log, ips_log, ips_positive at N 5000 (seed 0, clean outcomes) | 5628 | 5.1 h (60.5 min per 1407-step run, 11.5 min per evaluation, about 20 min setup) |
 
 Run names: `v3_06b_<arm>_n<N>_s<seed>`, plus `_noisy` (fixed) or `_noisy_soft` (soft), plus `_log1` for the seed 1 log; session E adds `<run>_last`. The smoke run is `<first run>_smoke` (gitignored).
 
@@ -348,7 +350,7 @@ Run names: `v3_06b_<arm>_n<N>_s<seed>`, plus `_noisy` (fixed) or `_noisy_soft` (
 - **Evaluation:** about 11 minutes per run on the four v3 splits, a quarter of the questions of the 45-minute nine-split evaluation.
 - **Other:** each session adds about 20 minutes for clone, install, data build and the smoke run, and session A about 30 minutes for the zero-shot evaluation and the two log passes.
 
-The total is about 16.5 GPU hours with overhead (A: 3.7 h training, 1.1 h evaluation, 0.7 h logs and setup; B: 3.6, 0.7 and 0.3; C: 5.4, 0.7 and 0.3). Each session stays under the 9-hour limit, and the longest single run (1407 steps) takes about 1.4 hours, so `MAX_HOURS = 2.0` per run leaves room without letting a stuck run take the session. A run that stops at `MAX_HOURS` resumes as in section 10, with the same `--log`, `--n` and `--noisy`.
+The total is about 16.5 GPU hours with overhead (A: 3.7 h training, 1.1 h evaluation, 0.7 h logs and setup; B: 3.6, 0.7 and 0.3; C: 5.4, 0.7 and 0.3). Each session stays under the 9-hour limit, and the longest single run (1407 steps) takes about 1.4 hours, so `MAX_HOURS = 2.0` per run leaves room without letting a stuck run take the session. Sessions F1 and F2 use `MAX_HOURS = 1.5`: the measured 1407-step run trains in about 61 minutes, and the off-policy arms have the same forward and backward pass per step as direct_brier, so 1.5 hours is about 1.5 times the longest run. A run that stops at `MAX_HOURS` resumes as in section 10, with the same `--log`, `--n` and `--noisy`.
 
 ## 13. Evaluating one stored adapter: `notebooks/kaggle_eval.ipynb` with `ADAPTER_EVAL` (task 3.6)
 

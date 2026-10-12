@@ -9,8 +9,9 @@ No model is loaded. It reads, under --runs-dir:
 - v3_<size>_temp_n<N>: the temperature learner (scripts/calibrate.py --fit-log);
   its probabilities are the zero-shot results scaled by its calibration.json;
 - every v3_<size>_<arm>_n<N>_s<seed>[_noisy][_log<k>] with a results.jsonl.gz, for
-  the arms positive_sft, full_sft and direct_brier (scripts/train_rlcd.py log mode,
-  then scripts/evaluate.py);
+  the arms positive_sft, full_sft and direct_brier, and the off-policy arms
+  (direct_log, outcome_minus_p_log, ips_log, ips_positive; scripts/train_rlcd.py
+  log mode, then scripts/evaluate.py);
 - v3_<size>_direct_brier_n<N>_s<seed>_temp: direct_brier plus a temperature fitted on
   the logged outcomes under its own probabilities on the records it trained on
   (evaluate.py --log-prefix, then calibrate.py --fit-log --fit-probs); its
@@ -26,7 +27,8 @@ every run, so differences are paired), and writes runs/v3_stage_<size>/metrics.j
   full_sft, direct_brier and direct_brier_temp (seed 0, the seed 0 log, clean
   outcomes), and the paired differences direct_brier minus positive_sft, direct_brier
   minus full_sft, direct_brier_temp minus direct_brier and direct_brier_temp minus
-  temperature;
+  temperature; the off-policy arms as further columns (N 2000 and 5000), and under
+  off_policy each one's paired difference from direct_brier and from positive_sft;
 - seeds: direct_brier at N 5000 for training seeds 0, 1 and 2 (mean and range) and
   on the seed 1 log (logging variance), with each run's difference from seed 0, and
   the seed mean minus positive_sft and minus full_sft at N 5000 (each draw averages
@@ -40,7 +42,9 @@ every run, so differences are paired), and writes runs/v3_stage_<size>/metrics.j
 - forgetting: every learner's accuracy and ECE on test_indomain and
   test_unseen_intents minus the zero-shot run's, paired;
 - other: each run's predicted-other rate (other is never gold in these questions)
-  and its accuracy on the questions where no run predicted other;
+  and its accuracy on the questions where no phase 3 run predicted other (the
+  off-policy runs are scored on that same set and do not change it, so the phase 3
+  values stay as first written);
 - coverage: share kept and accuracy at confidence thresholds 0.8, 0.9 and 0.95;
 - b2_reference: gpt-4.1-mini on the 500-record subset of test_banking77 next to
   every run on the same records.
@@ -76,6 +80,8 @@ from jevmark.provenance import git_state
 REPO = Path(__file__).resolve().parents[1]
 NS = (500, 2000, 5000)
 ARMS = ("positive_sft", "full_sft", "direct_brier")
+OFF_POLICY_ARMS = ("direct_log", "outcome_minus_p_log", "ips_log", "ips_positive")  # the off-policy baselines
+OFF_POLICY_NS = (2000, 5000)
 TEMP_ON_RLCD = "direct_brier_temp"
 LEARNERS = ("zero_shot", "temperature", *ARMS, TEMP_ON_RLCD)
 FORGETTING_SPLITS = ("test_indomain", "test_unseen_intents")
@@ -83,7 +89,7 @@ COVERAGE_THRESHOLDS = (0.8, 0.9, 0.95)
 METRICS = ("accuracy", "ece", "brier", "nll")
 OTHER = "other"
 B2_RUN = "b2_gpt-4.1-mini"
-RUN_PATTERN = re.compile(r"^v3_(?P<size>06b|17b)_(?P<arm>positive_sft|full_sft|direct_brier)_n(?P<n>\d+)_s(?P<seed>\d+)(?P<noisy>_noisy)?(?:_log(?P<log>\d+))?$")
+RUN_PATTERN = re.compile(r"^v3_(?P<size>06b|17b)_(?P<arm>positive_sft|full_sft|direct_brier|direct_log|outcome_minus_p_log|ips_log|ips_positive)_n(?P<n>\d+)_s(?P<seed>\d+)(?P<noisy>_noisy)?(?:_log(?P<log>\d+))?$")
 
 
 # Runs
@@ -315,6 +321,13 @@ def compare(runs_dir: Path, size: str, resamples: int, subset_path: Path = SUBSE
         brier_temp, temp = column(n, TEMP_ON_RLCD), column(n, "temperature")
         row["direct_brier_temp_minus_direct_brier"] = main.delta(brier_temp, brier) if brier_temp and brier else None
         row["direct_brier_temp_minus_temperature"] = main.delta(brier_temp, temp) if brier_temp and temp else None
+        off_policy = {}
+        for arm in OFF_POLICY_ARMS:
+            name = column(n, arm)
+            row[arm] = main.point(name) if name else None
+            if name:
+                off_policy[arm] = {"minus_direct_brier": main.delta(name, brier) if brier else None, "minus_positive_sft": main.delta(name, pos) if pos else None}
+        row["off_policy"] = off_policy
         n_curve[str(n)] = row
 
     seed_runs = {f"seed_{s}": learner_name("direct_brier", 5000, s) for s in (0, 1, 2)}
@@ -360,7 +373,8 @@ def compare(runs_dir: Path, size: str, resamples: int, subset_path: Path = SUBSE
         s = splits[split]
         forgetting[split] = {"zero_shot": s.point("zero_shot"), "minus_zero_shot": {name: {m: s.delta(name, "zero_shot")[m] for m in ("accuracy", "ece")} for name in s.results if name != "zero_shot"}}
 
-    never_other = [i for i in range(len(main.results["zero_shot"])) if not any(main.results[name][i].labels[main.results[name][i].prediction] == OTHER for name in main.results)]
+    phase3 = [name for name in main.results if not name.startswith(tuple(f"{arm}_n" for arm in OFF_POLICY_ARMS))]
+    never_other = [i for i in range(len(main.results["zero_shot"])) if not any(main.results[name][i].labels[main.results[name][i].prediction] == OTHER for name in phase3)]
     other = {name: {"predicted_other_rate": predicted_other_rate(rs), "accuracy_where_no_run_predicted_other": sum(rs[i].correct for i in never_other) / len(never_other) if never_other else None} for name, rs in main.results.items()}
     other["n_questions_where_no_run_predicted_other"] = len(never_other)
 
@@ -397,6 +411,7 @@ def compare(runs_dir: Path, size: str, resamples: int, subset_path: Path = SUBSE
         "coverage": {name: coverage(rs) for name, rs in main.results.items()},
         "b2_reference": b2_reference,
         "missing": sorted({learner_name(a, n) for a in ARMS for n in NS} - present),
+        "missing_off_policy": sorted({learner_name(a, n) for a in OFF_POLICY_ARMS for n in OFF_POLICY_NS} - present),
     }
 
 
@@ -433,8 +448,18 @@ def print_tables(result: Mapping[str, Any]) -> None:
             d = row[key]
             cells.append("-" if d is None else f"{d['accuracy']['delta']:+.3f} [{d['accuracy']['ci'][0]:+.3f}, {d['accuracy']['ci'][1]:+.3f}]")
         print(f"{n:6} " + "   ".join(cells))
+    print("\n== off-policy arms: accuracy and ECE, then accuracy minus direct_brier / minus positive_sft (paired)")
+    for n, row in result["n_curve"].items():
+        for arm in OFF_POLICY_ARMS:
+            if not row.get(arm):
+                continue
+            d = row["off_policy"][arm]
+            cells = ["-" if d[key] is None else f"{d[key]['accuracy']['delta']:+.3f} [{d[key]['accuracy']['ci'][0]:+.3f}, {d[key]['accuracy']['ci'][1]:+.3f}]" for key in ("minus_direct_brier", "minus_positive_sft")]
+            print(f"{n:6} {arm:20} {fmt(row[arm], 'accuracy'):>24} {fmt(row[arm], 'ece'):>24}   " + "   ".join(cells))
     if result["missing"]:
         print(f"\nmissing runs: {', '.join(result['missing'])}")
+    if result["missing_off_policy"]:
+        print(f"missing off-policy runs: {', '.join(result['missing_off_policy'])}")
 
 
 def main(argv: Sequence[str] | None = None) -> int:

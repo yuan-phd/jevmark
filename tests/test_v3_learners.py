@@ -388,3 +388,102 @@ def test_soft_noise_is_refused_for_positive_sft_and_full_sft(setup, tmp_path):
         with pytest.raises(SystemExit, match="soft"):
             train(setup, tmp_path, f"arm={arm}", "--noise", "soft")
 
+
+
+# Off-policy arms: direct_log, outcome_minus_p_log, ips_log, ips_positive
+
+
+def test_ips_weights_and_their_normaliser_by_hand():
+    # 1 / q = 2, 10, 4, 50; clipped at 5: 2, 5, 4, 5; mean 4; normalised .5, 1.25, 1, 1.25.
+    weights, info = rl.ips_weights([0.5, 0.1, 0.25, 0.02])
+    assert weights == pytest.approx([0.5, 1.25, 1.0, 1.25])
+    assert info["normaliser"] == pytest.approx(4.0) and info["clipped"] == 2 and info["clipped_share"] == 0.5 and info["n"] == 4 and info["clip"] == 5.0
+    assert sum(weights) / len(weights) == pytest.approx(1.0)
+
+
+def test_off_policy_losses_match_a_hand_computation():
+    logits = {0: torch.tensor([2.0, 0.0, 0.0]), 1: torch.tensor([0.0, 1.0]), 2: torch.tensor([0.5, 0.5, 3.0])}
+    p = [math.exp(2) / (math.exp(2) + 2), math.exp(1) / (1 + math.exp(1)), math.exp(0.5) / (2 * math.exp(0.5) + math.exp(3))]
+    # encoded, action, outcome, gold, propensity, weight
+    batch = [rl.LogExample(0, 0, 1, None, 0.5, 0.8), rl.LogExample(1, 1, 0, None, 0.05, 1.4), rl.LogExample(2, 0, 0, None, 0.02, 0.8)]
+    fixed = FixedLogits(logits)
+    log_score = [-(math.log(p[0])), -math.log(1 - p[1]), -math.log(1 - p[2])]  # r log p + (1 - r) log(1 - p), negated
+
+    loss, stats = rl.log_batch_loss(fixed, batch, "direct_log")
+    assert float(loss) == pytest.approx(sum(log_score) / 3) and "weight_mean" not in stats
+
+    loss, stats = rl.log_batch_loss(fixed, batch, "ips_log")
+    assert float(loss) == pytest.approx((0.8 * log_score[0] + 1.4 * log_score[1] + 0.8 * log_score[2]) / 3)
+    assert stats["weight_mean"] == pytest.approx(1.0) and stats["weight_clipped_share"] == pytest.approx(2 / 3)  # 1 / q = 2, 20, 50
+
+    loss, _ = rl.log_batch_loss(fixed, batch, "ips_positive")
+    assert float(loss) == pytest.approx((-0.8 * math.log(p[0]) - 1.4 * math.log(p[1]) - 0.8 * math.log(p[2])) / 3)
+
+    # outcome_minus_p_log: reward r - p_a, baseline its micro-batch mean, weight min(p / q, 5).
+    rewards = [1 - p[0], -p[1], -p[2]]
+    baseline = sum(rewards) / 3
+    w = [min(p[0] / 0.5, 5.0), min(p[1] / 0.05, 5.0), min(p[2] / 0.02, 5.0)]
+    assert w[1] == 5.0 and w[0] < 5.0  # p[1] / .05 = 14.6 is clipped
+    expected = sum(-(rewards[k] - baseline) * w[k] * math.log(p[k]) for k in range(3)) / 3  # p[k] is each logged action's probability
+    loss, stats = rl.log_batch_loss(fixed, batch, "outcome_minus_p_log")
+    assert float(loss) == pytest.approx(expected)
+    assert stats["weight_mean"] == pytest.approx(sum(w) / 3) and stats["weight_clipped_share"] == pytest.approx(sum(p[k] / q > 5 for k, q in enumerate((0.5, 0.05, 0.02))) / 3)
+
+
+def test_ips_runs_record_the_prefix_normaliser_and_ips_positive_trains_on_positives_only(setup, tmp_path, monkeypatch):
+    seen = []
+    real = rl.log_batch_loss
+
+    def spy(jev, batch, arm):
+        seen.extend((e.outcome, e.weight) for e in batch)
+        return real(jev, batch, arm)
+
+    monkeypatch.setattr(rl, "log_batch_loss", spy)
+    train(setup, tmp_path, "arm=ips_positive")
+    prefix_log = setup.log[:36]
+    raw = [min(1 / i.propensity, 5.0) for i in prefix_log]
+    normaliser = sum(raw) / len(raw)
+    positives = [w / normaliser for w, i in zip(raw, prefix_log) if i.outcome == 1]
+    run_dir = tmp_path / f"v3_06b_ips_positive_n{N}_s0"
+    summary = json.loads((run_dir / "train_summary.json").read_text())
+    start = next(e for e in events(run_dir) if e.get("event") == "start")
+    for ips in (summary["ips"], start["ips"], yaml.safe_load((run_dir / "config.yaml").read_text())["v3"]["ips"]):
+        assert ips["normaliser"] == pytest.approx(normaliser) and ips["n"] == 36 and ips["n_used"] == len(positives)
+        assert ips["mean_weight_used"] == pytest.approx(sum(positives) / len(positives))
+        assert ips["clipped"] == sum(1 / i.propensity > 5.0 for i in prefix_log) and ips["clipped_used"] == sum(1 / i.propensity > 5.0 for i in prefix_log if i.outcome == 1)
+    assert seen and {o for o, _ in seen} == {1} and {round(w, 9) for _, w in seen} <= {round(w, 9) for w in positives}
+    steps = [e for e in events(run_dir) if "loss" in e]
+    assert all("weight_mean" in e and "weight_clipped_share" in e for e in steps)
+
+
+def test_outcome_minus_p_log_records_its_weights_and_resumes_exactly(setup, tmp_path):
+    train(setup, tmp_path / "a", "arm=outcome_minus_p_log")
+    train(setup, tmp_path / "b", "arm=outcome_minus_p_log", "--limit-steps", "5")
+    train(setup, tmp_path / "b", "arm=outcome_minus_p_log", "--resume")
+    name = f"v3_06b_outcome_minus_p_log_n{N}_s0"
+    a = json.loads((tmp_path / "a" / name / "train_summary.json").read_text())["weights"]
+    b = json.loads((tmp_path / "b" / name / "train_summary.json").read_text())["weights"]
+    assert a["n"] == b["n"] == 10 * 4 and a["clip"] == 5.0 and 0 < a["mean"] <= 5.0 and 0 <= a["clipped_share"] <= 1
+    assert a["mean"] == pytest.approx(b["mean"], rel=1e-5) and a["clipped_share"] == pytest.approx(b["clipped_share"])
+    steps = [e for e in events(tmp_path / "a" / name) if "loss" in e]
+    assert sum(e["weight_mean"] for e in steps) / len(steps) == pytest.approx(a["mean"], rel=1e-6)
+
+
+def test_weighted_arms_refuse_a_log_without_propensities_and_the_others_train_on_it(setup, tmp_path):
+    bare = setup.root / "v3_log_bare" / "log.jsonl"
+    make_log(bare, setup.records, 0, setup.data_sha)
+    rows = [json.loads(line) for line in bare.read_text().splitlines()]
+    bare.write_text("".join(json.dumps({k: v for k, v in row.items() if k != "propensity"}) + "\n" for row in rows))
+    for arm in rl.PROPENSITY_ARMS:
+        with pytest.raises(SystemExit, match="propensity"):
+            train(setup, tmp_path, f"arm={arm}", log_path=bare)
+    for arm in ("direct_log", "positive_sft"):
+        train(setup, tmp_path, f"arm={arm}", "--limit-steps", "1", log_path=bare)
+
+
+def test_fixed_noise_is_allowed_for_the_off_policy_arms_and_soft_noise_is_not(setup, tmp_path):
+    for arm in rl.OFF_POLICY_ARMS:
+        train(setup, tmp_path, f"arm={arm}", "--noise", "fixed", "--limit-steps", "1")
+        assert (tmp_path / f"v3_06b_{arm}_n{N}_s0_noisy" / "config.yaml").is_file()
+        with pytest.raises(SystemExit, match="soft"):
+            train(setup, tmp_path, f"arm={arm}", "--noise", "soft")

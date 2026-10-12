@@ -329,16 +329,19 @@ def test_v3_notebook_parameters_and_session_plans_match_kaggle_md_and_train_rlcd
     for name in ("REPO", "COMMIT", "SESSION", "ADAPTER_DATASET", "LOG_DATASET", "LOG_SHA256", "SMOKE_STEPS", "MAX_HOURS"):
         assert re.search(rf"^{name} = ", params, re.M), name
     plan_for = v3_plan()
-    plans = {session: plan_for(session) for session in "ABCDE"}
+    plans = {session: plan_for(session) for session in ("A", "B", "C", "D", "E", "F1", "F2")}
     names = {session: [run_name_of(*run) for run in plan] for session, (plan, run_name_of) in plans.items()}
     assert names["A"] == [f"v3_06b_{arm}_n{n}_s0" for arm in ("full_sft", "positive_sft") for n in (500, 2000, 5000)]
     assert names["B"] == ["v3_06b_direct_brier_n500_s0", "v3_06b_direct_brier_n2000_s0", "v3_06b_direct_brier_n5000_s0", "v3_06b_direct_brier_n5000_s1"]
     assert names["C"] == ["v3_06b_direct_brier_n5000_s2", "v3_06b_direct_brier_n5000_s0_noisy", "v3_06b_positive_sft_n5000_s0_noisy", "v3_06b_direct_brier_n5000_s0_log1"]
     assert names["D"] == ["v3_06b_full_sft_n5000_s1", "v3_06b_full_sft_n5000_s2"]  # task 3.6
     assert names["E"] == ["v3_06b_direct_brier_n5000_s0_noisy_soft"]  # task 3.6, decision 59
+    for session, n in (("F1", 2000), ("F2", 5000)):  # the off-policy arms
+        assert names[session] == [f"v3_06b_{arm}_n{n}_s0" for arm in ("direct_log", "outcome_minus_p_log", "ips_log", "ips_positive")]
     all_names = [n for session in "ABC" for n in names[session]]
     assert len(all_names) == len(set(all_names)) == 14  # the 14 trained runs of V3_DESIGN section 8
     assert not (set(names["D"]) | set(names["E"])) & set(all_names)
+    assert not set(names["F1"] + names["F2"]) & set(all_names + names["D"] + names["E"])
     spec = importlib.util.spec_from_file_location("train_rlcd_nb", REPO / "scripts" / "train_rlcd.py")
     rl = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = rl
@@ -349,9 +352,9 @@ def test_v3_notebook_parameters_and_session_plans_match_kaggle_md_and_train_rlcd
             assert run_name_of(arm, n, seed, noisy, log) == rl.log_run_name({"size": "06b", "arm": arm, "seed": seed}, n, noisy, log)
     kaggle_md = (REPO / "docs" / "KAGGLE.md").read_text()
     section = kaggle_md[kaggle_md.index("## 12. v3") :]
-    for session in "ABCDE":
+    for session in ("A", "B", "C", "D", "E", "F1", "F2"):
         assert f'SESSION = "{session}"' in section, session
-    assert 'assert SESSION in ("A", "B", "C", "D", "E")' in cells[1]
+    assert 'assert SESSION in ("A", "B", "C", "D", "E", "F1", "F2")' in cells[1]
     assert "jevmark-v3-logs" in section and "LOG_SHA256" in section
 
 

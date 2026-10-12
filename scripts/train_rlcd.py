@@ -80,9 +80,9 @@ Log mode (v3, task 3.3, decision 56, docs/V3_DESIGN.md section 5): --log
 runs/v3_log_s<k>/log.jsonl --n N with configs/v3_06b.yaml replaces sampling by the
 logged interactions of a deployment-feedback log (jevmark/feedback.py). Each logged
 record's question is rebuilt in its stored option order, which is the order the
-logging policy read; the logged action and its outcome are the only feedback, with no behaviour mixture, no importance weights,
-no KL term and no reference model. Training uses the first 0.9 N interactions,
-every epoch in a seeded order. The arms:
+logging policy read; the logged action and its outcome are the only feedback, with no behaviour mixture, no KL term
+and no reference model. Training uses the first 0.9 N interactions, every epoch in a seeded order. Only the
+off-policy arms below read the logged propensity q(a) and weight by it. The arms:
 
 - positive_sft: cross-entropy on the logged action of every interaction whose
   outcome is 1; outcome-0 interactions are skipped.
@@ -91,6 +91,28 @@ every epoch in a seeded order. The arms:
   train, and --noise fixed is refused for it.
 - direct_brier: (r - p_a)^2 on the logged action's probability for every
   interaction, positives and negatives.
+
+Off-policy arms, the baselines a bandit reader expects:
+
+- direct_log: -(r log p_a + (1 - r) log(1 - p_a)) on the logged action, p clipped to
+  [1e-6, 1 - 1e-6], every interaction, no weights.
+- outcome_minus_p_log: REINFORCE on the logged action, the log-mode variant of the
+  outcome_minus_p arm: reward r - p_a with p_a detached, baseline the
+  mean reward over the micro-batch (with one logged action per question a group
+  mean over G samples would be the sample itself), importance weight
+  min(p(a) / q(a), 5) with q the logged propensity; loss -(R - mean R) w log p_a.
+- ips_log: direct_log with each interaction weighted by min(1 / q(a), 5) divided by
+  the mean of those clipped weights over the 0.9 N training prefix, a constant
+  computed once; no per-batch normalisation.
+- ips_positive: positive_sft with the same normalised weights on the outcome-1
+  interactions it keeps.
+
+The three weighted arms refuse a log without propensities. The training log's step
+lines carry the micro-batches' mean weight and clipped share; for the ips arms the
+start line and train_summary.json carry the normaliser, the clipped share over the
+prefix and the mean normalised weight over the interactions the arm trains on, and
+for outcome_minus_p_log train_summary.json carries the mean weight and clipped share
+over all training steps.
 
 --noise selects the outcome the learner trains on (decisions 56 and 59). Without it,
 the logged outcome. --noise fixed (alias --noisy): the stored flipped outcome, one
@@ -128,7 +150,7 @@ import random
 import sys
 import time
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -426,7 +448,13 @@ def apply_noisy_defaults(config: dict[str, Any], overrides: Sequence[str]) -> No
 
 # Log mode (v3, task 3.3, decision 56)
 
-LOG_ARMS = ("positive_sft", "full_sft", "direct_brier")
+V3_ARMS = ("positive_sft", "full_sft", "direct_brier")
+OFF_POLICY_ARMS = ("direct_log", "outcome_minus_p_log", "ips_log", "ips_positive")  # the off-policy baselines
+LOG_ARMS = (*V3_ARMS, *OFF_POLICY_ARMS)
+PROPENSITY_ARMS = ("outcome_minus_p_log", "ips_log", "ips_positive")  # read the logged q(a)
+IPS_ARMS = ("ips_log", "ips_positive")  # weight min(1 / q(a), clip), divided by its mean over the training prefix
+POSITIVE_ARMS = ("positive_sft", "ips_positive")  # train only on outcome-1 interactions
+LOG_WEIGHT_CLIP = 5.0
 
 
 @dataclass(frozen=True)
@@ -435,6 +463,8 @@ class LogExample:
     action: int  # the logged action's index in the stored option order
     outcome: float  # the training or selection target: the logged outcome, the stored flipped one, or the soft target (--noise)
     gold: int | None  # the gold index, only for full_sft
+    propensity: float | None = None  # the logged q(action)
+    weight: float = 1.0  # the ips arms' normalised weight; 1 for every other arm
 
 
 def log_steps(n_train: int, epochs: int, min_steps: int, effective_batch: int) -> int:
@@ -491,25 +521,53 @@ def log_examples(interactions: Sequence[Interaction], records: dict[str, dict[st
         request = Request.from_dict({"state": record["state"], "questions": {interaction.question_id: question}})
         gold = list(question["criteria"]).index(record["gold"][interaction.question_id]) if with_gold else None
         outcome = {"clean": interaction.outcome, "flipped": interaction.flipped_outcome, "soft": soft_target(interaction.outcome, flip_rate)}[column]
-        examples.append(LogExample(encode(request, jev.tokenizer, max_tokens), interaction.action, outcome, gold))
+        examples.append(LogExample(encode(request, jev.tokenizer, max_tokens), interaction.action, outcome, gold, interaction.propensity))
     return examples
 
 
+def ips_weights(propensities: Sequence[float], clip: float = LOG_WEIGHT_CLIP) -> tuple[list[float], dict[str, Any]]:
+    """min(1 / q, clip) for each propensity, divided by their mean: one constant over the given (training prefix) interactions."""
+    raw = [min(1.0 / q, clip) for q in propensities]
+    mean = sum(raw) / len(raw)
+    return [w / mean for w in raw], {"clip": clip, "n": len(raw), "normaliser": mean, "clipped": sum(1.0 / q > clip for q in propensities), "clipped_share": sum(1.0 / q > clip for q in propensities) / len(raw)}
+
+
 def log_batch_loss(jev: JevMark, batch: Sequence[LogExample], arm: str) -> tuple[torch.Tensor, dict[str, float]]:
-    """Mean loss over the micro-batch, and the mean probability of the logged action and outcome rate."""
-    losses, p_action = [], []
-    for z, example in zip(jev.slot_logits([e.encoded for e in batch]), batch):
-        logp = F.log_softmax(z.float(), dim=-1)
-        if arm == "positive_sft":
-            losses.append(-logp[example.action])
+    """Mean loss over the micro-batch, and the mean probability of the logged action and outcome rate; for the weighted arms also the mean weight and clipped share."""
+    if arm not in LOG_ARMS:
+        raise ValueError(f"unknown log-mode arm {arm!r}; expected one of {LOG_ARMS}")
+    logps = [F.log_softmax(z.float(), dim=-1) for z in jev.slot_logits([e.encoded for e in batch])]
+    p_action = [float(logp.detach()[e.action].exp()) for logp, e in zip(logps, batch)]
+    losses, weights, clipped = [], [], []
+    if arm == "outcome_minus_p_log":
+        rewards = [e.outcome - p for e, p in zip(batch, p_action)]
+        baseline = sum(rewards) / len(rewards)
+    for k, (logp, example) in enumerate(zip(logps, batch)):
+        a, r = example.action, example.outcome
+        if arm in ("positive_sft", "ips_positive"):
+            loss = -logp[a]
         elif arm == "full_sft":
-            losses.append(-logp[example.gold])
+            loss = -logp[example.gold]
         elif arm == "direct_brier":
-            losses.append((example.outcome - logp[example.action].exp()) ** 2)
-        else:
-            raise ValueError(f"unknown log-mode arm {arm!r}; expected one of {LOG_ARMS}")
-        p_action.append(float(logp.detach()[example.action].exp()))
-    return torch.stack(losses).mean(), {"p_action": sum(p_action) / len(p_action), "outcome_rate": sum(e.outcome for e in batch) / len(batch)}
+            loss = (r - logp[a].exp()) ** 2
+        elif arm in ("direct_log", "ips_log"):
+            p = logp[a].exp().clamp(P_CLIP, 1.0 - P_CLIP)
+            loss = -(r * torch.log(p) + (1.0 - r) * torch.log(1.0 - p))
+        else:  # outcome_minus_p_log
+            ratio = p_action[k] / example.propensity
+            w = min(ratio, LOG_WEIGHT_CLIP)
+            weights.append(w)
+            clipped.append(ratio > LOG_WEIGHT_CLIP)
+            loss = -(rewards[k] - baseline) * w * logp[a]
+        if arm in IPS_ARMS:
+            loss = example.weight * loss
+            weights.append(example.weight)
+            clipped.append(1.0 / example.propensity > LOG_WEIGHT_CLIP)
+        losses.append(loss)
+    stats = {"p_action": sum(p_action) / len(p_action), "outcome_rate": sum(e.outcome for e in batch) / len(batch)}
+    if weights:
+        stats.update({"weight_mean": sum(weights) / len(weights), "weight_clipped_share": sum(clipped) / len(clipped)})
+    return torch.stack(losses).mean(), stats
 
 
 def select_score(jev: JevMark, examples: Sequence[LogExample], batch_size: int) -> dict[str, Any]:
@@ -596,9 +654,22 @@ def main_log(args: argparse.Namespace, started: float) -> int:
     jev = JevMark.load(config, device=args.device)
     records = {r["id"]: r for r in read_jsonl(data_path)}
     train_column = {None: "clean", "fixed": "flipped", "soft": "soft"}[noise]
+    if arm in PROPENSITY_ARMS:
+        without = sum(i.propensity is None for i in (*split.train, *split.select))
+        if without:
+            raise SystemExit(f"{arm} weights by the logged propensity q(a), but {without} of the first {n} interactions in {log_path} have none; train it on a log written by collect_log.py with propensities")
     train_all = log_examples(split.train, records, jev, max_tokens, train_column, with_gold=arm == "full_sft", flip_rate=flip_rate)
-    used = [k for k, e in enumerate(train_all) if arm != "positive_sft" or e.outcome == 1]
+    weighting = None
+    if arm in IPS_ARMS:
+        normalised, weighting = ips_weights([e.propensity for e in train_all])
+        train_all = [replace(e, weight=w) for e, w in zip(train_all, normalised)]
+    used = [k for k, e in enumerate(train_all) if arm not in POSITIVE_ARMS or e.outcome == 1]
     pool = [train_all[k] for k in used]
+    if weighting is not None:
+        weighting.update({"over": "the first 0.9 N interactions (the training prefix)", "n_used": len(pool), "mean_weight_used": sum(e.weight for e in pool) / len(pool) if pool else None,
+                          "clipped_used": sum(1.0 / e.propensity > LOG_WEIGHT_CLIP for e in pool)})
+        config["v3"]["ips"] = weighting
+        (run_dir / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
     # Selection reads what a real log would hold: the stored flipped outcome under either noise mode (decision 59).
     select = log_examples(split.select, records, jev, max_tokens, "flipped" if noisy else "clean", with_gold=False)
     if not pool:
@@ -615,7 +686,8 @@ def main_log(args: argparse.Namespace, started: float) -> int:
             say("WARNING: NaN or inf in first-batch slot logits under fp16; reloading the model in fp32 (decision 28)")
             jev.use_fp32()
             fallback_used = True
-        log_line(log_path_out, {"event": "start", "arm": arm, "log": str(log_path), "log_sha256": log_sha, "log_seed": log_seed, "n": n, "n_train": len(split.train), "n_used": len(pool), "n_select": len(select), "noisy": noisy, "noise": noise, "init": str(init_dir), "init_adapter_sha256": config["v3"]["init_adapter_sha256"], "fp32_fallback_used": fallback_used, "autocast": str(jev.autocast_dtype), "total_steps": total_steps, "warmup_steps": warmup, "accumulation": accumulation})
+        log_line(log_path_out, {"event": "start", "arm": arm, "log": str(log_path), "log_sha256": log_sha, "log_seed": log_seed, "n": n, "n_train": len(split.train), "n_used": len(pool), "n_select": len(select), "noisy": noisy, "noise": noise, "init": str(init_dir), "init_adapter_sha256": config["v3"]["init_adapter_sha256"], "fp32_fallback_used": fallback_used, "autocast": str(jev.autocast_dtype), "total_steps": total_steps, "warmup_steps": warmup, "accumulation": accumulation,
+                                    **({"ips": weighting} if weighting else {}), **({"weight_clip": LOG_WEIGHT_CLIP} if arm in PROPENSITY_ARMS else {})})
 
     attach_sft_adapter(jev, init_dir / "adapter", config)
     trainable = [p for p in jev.model.parameters() if p.requires_grad]
@@ -646,7 +718,8 @@ def main_log(args: argparse.Namespace, started: float) -> int:
     memory = f"peak {check['peak_gib']:.2f} GiB of {check['total_gib']:.2f} GiB" if "peak_gib" in check else "peak memory not measured on CPU"
     say(f"PREFLIGHT PASS: worst-case micro-batch of {check['records']} records ({check['longest_tokens']} tokens): {memory}")
 
-    progress: dict[str, Any] = {"step": 0, "epoch": 0, "micro_done": 0, "best_criterion": None, "best_step": None, "fp32_fallback_used": fallback_used, "init_select": None, "curve": []}
+    progress: dict[str, Any] = {"step": 0, "epoch": 0, "micro_done": 0, "best_criterion": None, "best_step": None, "fp32_fallback_used": fallback_used, "init_select": None, "curve": [],
+                                "weights": {"n": 0, "sum": 0.0, "clipped": 0}}
     if args.resume:
         progress = load_state(run_dir, jev, optimizer, scheduler, scaler)
         log_line(log_path_out, {"event": "resume", "step": progress["step"], "epoch": progress["epoch"]})
@@ -686,6 +759,11 @@ def main_log(args: argparse.Namespace, started: float) -> int:
                 scaler.scale(loss / len(group)).backward()
                 losses.append(loss.item())
                 stats.append(stat)
+                if "weight_mean" in stat:
+                    totals = progress.setdefault("weights", {"n": 0, "sum": 0.0, "clipped": 0})
+                    totals["n"] += len(batch)
+                    totals["sum"] += stat["weight_mean"] * len(batch)
+                    totals["clipped"] += round(stat["weight_clipped_share"] * len(batch))
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(trainable, float(train_cfg["grad_clip"]))
             scaler.step(optimizer)
@@ -694,7 +772,7 @@ def main_log(args: argparse.Namespace, started: float) -> int:
             scheduler.step()
             progress["step"] += 1
             progress["micro_done"] += len(group)
-            mean = {k: sum(x[k] for x in stats) / len(stats) for k in ("p_action", "outcome_rate")}
+            mean = {k: sum(x[k] for x in stats) / len(stats) for k in stats[0]}
             log_line(log_path_out, {"step": progress["step"], "epoch": progress["epoch"], "loss": sum(losses) / len(losses), **mean, "lr": scheduler.get_last_lr()[0], "elapsed_s": round(time.perf_counter() - started, 1)})
             at_end = progress["step"] == limit
             if progress["step"] % int(train_cfg["eval_every"]) == 0 or at_end:
@@ -750,6 +828,12 @@ def main_log(args: argparse.Namespace, started: float) -> int:
         "autocast": str(jev.autocast_dtype),
         "wall_clock_seconds_this_session": round(time.perf_counter() - started, 1),
     }
+    if arm in IPS_ARMS:
+        summary["ips"] = config["v3"]["ips"]
+    if arm == "outcome_minus_p_log":
+        totals = progress["weights"]
+        summary["weights"] = {"clip": LOG_WEIGHT_CLIP, "of": "min(p(a) / q(a), clip) over every training example of every step", "n": totals["n"],
+                              "mean": totals["sum"] / totals["n"] if totals["n"] else None, "clipped_share": totals["clipped"] / totals["n"] if totals["n"] else None}
     (run_dir / "train_summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     say(f"done at step {progress['step']}: best step {progress['best_step']}, selection log-likelihood {progress['best_criterion']:.4f}")
     return 0

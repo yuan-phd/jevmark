@@ -44,7 +44,7 @@ class Interaction:
     labels: tuple[str, ...]  # option labels in the order the model read them
     probs: tuple[float, ...]  # the logging policy's p over those labels
     action: int  # index into labels
-    propensity: float  # q(action) under (1 - epsilon) p + epsilon / K
+    propensity: float | None  # q(action) under (1 - epsilon) p + epsilon / K; None only in a log written without it
     outcome: int  # 1 if the chosen option is gold
     flipped_outcome: int  # outcome flipped with probability flip_rate
     model: str
@@ -57,7 +57,7 @@ class Interaction:
 
     @classmethod
     def from_dict(cls, row: Mapping[str, Any]) -> Interaction:
-        return cls(**{**row, "labels": tuple(row["labels"]), "probs": tuple(row["probs"])})
+        return cls(**{**row, "labels": tuple(row["labels"]), "probs": tuple(row["probs"]), "propensity": row.get("propensity")})
 
 
 @dataclass(frozen=True)

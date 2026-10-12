@@ -176,3 +176,32 @@ def test_run_names_parse():
     m = compare_v3.RUN_PATTERN.match("v3_06b_direct_brier_n5000_s0_noisy_log1")
     assert (m["arm"], m["n"], m["seed"], bool(m["noisy"]), m["log"]) == ("direct_brier", "5000", "0", True, "1")
     assert compare_v3.RUN_PATTERN.match("v3_06b_temp_n500") is None and compare_v3.RUN_PATTERN.match("v3_06b_zeroshot") is None
+
+
+def test_off_policy_arms_are_columns_with_paired_deltas_and_leave_phase_3_values_unchanged(runs):
+    """The off-policy arms direct_log, outcome_minus_p_log, ips_log and ips_positive at N 2000 and 5000."""
+    runs_dir, subset = runs
+    before = compare_v3.compare(runs_dir, "06b", 30, subset)
+    assert before["missing_off_policy"] == sorted(f"{a}_n{n}_s0" for a in compare_v3.OFF_POLICY_ARMS for n in (2000, 5000))
+    assert before["n_curve"]["5000"]["off_policy"] == {} and before["n_curve"]["5000"]["ips_log"] is None
+    for k, arm in enumerate(compare_v3.OFF_POLICY_ARMS):
+        for n in (2000, 5000):
+            write_run(runs_dir, f"v3_06b_{arm}_n{n}_s0", results(2.0 + k, 60 + k, other_bias=3.0))  # predicts other often
+    after = compare_v3.compare(runs_dir, "06b", 30, subset)
+    assert after["missing_off_policy"] == [] and after["missing"] == []
+    for n in ("2000", "5000"):
+        row = after["n_curve"][n]
+        assert set(row["off_policy"]) == set(compare_v3.OFF_POLICY_ARMS)
+        for arm in compare_v3.OFF_POLICY_ARMS:
+            for other, key in (("direct_brier", "minus_direct_brier"), ("positive_sft", "minus_positive_sft")):
+                d = row["off_policy"][arm][key]["accuracy"]
+                assert d["delta"] == pytest.approx(row[arm]["accuracy"] - row[other]["accuracy"]) and d["ci"][0] <= d["ci"][1]
+    assert after["n_curve"]["500"]["off_policy"] == {} and after["n_curve"]["500"]["direct_log"] is None
+    assert "ips_positive_n5000_s0" in after["forgetting"]["test_indomain"]["minus_zero_shot"] and "ips_log_n2000_s0" in after["coverage"]
+    # The off-policy runs predict other often, yet the phase 3 "no run predicted other" set and its values do not move.
+    assert after["other"]["n_questions_where_no_run_predicted_other"] == before["other"]["n_questions_where_no_run_predicted_other"]
+    for name in before["other"]:
+        assert after["other"][name] == before["other"][name], name
+    for learner in compare_v3.LEARNERS:
+        assert after["n_curve"]["5000"][learner] == before["n_curve"]["5000"][learner]
+    assert compare_v3.RUN_PATTERN.match("v3_06b_outcome_minus_p_log_n5000_s0_noisy")["arm"] == "outcome_minus_p_log"
