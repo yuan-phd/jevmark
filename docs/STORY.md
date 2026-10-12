@@ -41,7 +41,7 @@ Predictions: 1 is a tie at N 500 and holds from N 2000, 2 holds, 3 fails, 4 hold
 ## Five lessons about data and pipelines
 
 1. **A model uses the surface form when that is enough:** sft_06b answered a domain question and its negation the same way in 89 percent of pairs, so phrasing-only accuracy is now a build check.
-2. **Question order can leak a label:** a sentiment noul before the score revealed "not neutral", so a record holds one gold-dependent question, after the choice or score.
+2. **Question order can leak a label:** a sentiment noul before the score revealed "not neutral" (+5.0 points over the majority baseline in the v1.2 leak probe, docs/DATA.md section 8), so a record holds one gold-dependent question, after the choice or score (decision 42).
 3. **A fast GPU cycle pays only if its sample is right:** the first 300 records of a file covered 3 to 16 intents, so the sampler is stratified.
 4. **Check memory on the worst case first:** a run that ran out of memory at step 392 now fails in its first minute on a pre-flight pass.
 5. **A file in git is history, not state:** a committed summary let a step-200 adapter pass as `sft_06b`, so training refuses to start over old run files.

@@ -20,7 +20,7 @@ Both logs were written at commit b5913ef, not dirty, by the sft_06b adapter (sha
 **Learners.** All start from sft_06b and see the first N interactions of the seed 0 log, N in {500, 2000, 5000}:
 
 1. **zero-shot:** sft_06b unchanged (`runs/v3_06b_zeroshot`). Its per-question probabilities equal `runs/sft_06b`'s on the three shared splits; test_banking77 accuracy .851 and ECE .067, as in v1 (`runs/v3_06b_zeroshot/metrics.json:splits.test_banking77.overall`).
-2. **temperature:** one T fitted on the first 0.9 N logged outcomes by Bernoulli maximum likelihood of p(action): T 1.547, 1.522 and 1.453 at N 500, 2000 and 5000 (`runs/v3_06b_temp_n<N>/calibration.json`, `S:temperatures`).
+2. **temperature:** one T fitted on the first 0.9 N logged outcomes by Bernoulli maximum likelihood of p(action): T 1.546, 1.522 and 1.453 at N 500, 2000 and 5000 (`runs/v3_06b_temp_n<N>/calibration.json`, `S:temperatures`).
 3. **positive_sft:** cross-entropy on the logged action of the outcome-1 interactions (322, 1332 and 3342 of 450, 1800 and 4500; `runs/v3_06b_positive_sft_n<N>_s0/train_summary.json:n_used`).
 4. **direct_brier (RLCD):** (r - p_a)^2 on the logged action's probability for every interaction, beta 0, no importance weights.
 5. **full_sft:** cross-entropy on gold for every interaction, the upper bound.
@@ -65,7 +65,7 @@ Paired differences, direct_brier minus the other learner (`S:n_curve.<N>.direct_
 
 - **The temperature** changes no prediction, so its accuracy is zero-shot's at every N. It has the lowest or joint-lowest ECE at every N, but its Brier and NLL stay far above every trained learner's.
 - **positive_sft** gains 3.5 to 5.4 points of accuracy and is the worst-calibrated learner at every N, with ECE and NLL above zero-shot's at every N.
-- **direct_brier** ties positive_sft at N 500 and leads it by 2.4 to 2.7 points from N 2000, with ECE lower by .052 to .060 at every N. It stays 0.7 to 1.8 points below full_sft, at similar or lower ECE but higher Brier and NLL. It closes 70, 90 and 81 percent of the accuracy gap between zero-shot and full_sft at N 500, 2000 and 5000.
+- **direct_brier** ties positive_sft at N 500 and leads it by 2.4 to 2.7 points from N 2000, with ECE lower by .052 to .060 at every N. It stays 0.7 to 1.8 points below full_sft, at similar or lower ECE but higher Brier and NLL. It closes 69, 91 and 81 percent of the accuracy gap between zero-shot and full_sft at N 500, 2000 and 5000, computed from the stored accuracies (`S:n_curve.<N>.<learner>.accuracy`).
 
 ![Accuracy and ECE against N for every learner, with seed ranges at N 5000](figures/v3_n_curve.png)
 
@@ -153,7 +153,7 @@ V-c, a per-epoch redraw of the flip, was designed but not run (decision 59): a f
 
 **What the residual and the collapse are.**
 - **The residual is single-draw variance, not a limit of the objective and not under-convergence.** With the sampling variance removed and nothing else changed, channel-scale ECE falls from .058 to .019 to .024, near the .014 that a channel-calibrated copy of the clean run would score, and the inverted top-1 ECE reaches .017 to .031 against the clean run's .026 (`runs/v3_06b_direct_brier_n5000_s0_noisy_soft{,_last}_inverted/metrics.json:inverted_top1_only`). The target compression is not the problem: a correct action's .8 and a wrong one's .2 are both reachable under the sum-to-one constraint.
-- **The collapse is memorisation of fixed draws.** Trained to step 1407, the fixed-noise run falls to .813, below zero-shot's .851, while the clean run keeps .933 and the soft run .922 over the same steps. This reading rests on three pieces of evidence together: the fixed-noise criterion degrading after its best step (+.284) while the soft one stays flat (+.003); the clean control not collapsing (+.059, accuracy kept); and the fixed-noise run's predicted-`other` rate rising from .007 to .043, which a correct answer marked wrong would push it towards. Isolating memorisation from the extra information a soft target gives would need fixed noise without repeated passes, which needs a larger log and is out of scope.
+- **The collapse is memorisation of fixed draws.** Trained to step 1407, the fixed-noise run falls to .813 (`runs/v3_06b_direct_brier_n5000_s0_noisy_last/metrics.json:splits.v3_banking77_test_full.overall.accuracy`), below zero-shot's .851 (`runs/v3_06b_zeroshot/metrics.json:splits.v3_banking77_test_full.overall.accuracy`), while the clean run keeps .933 and the soft run .922 over the same steps. This reading rests on three pieces of evidence together: the fixed-noise criterion degrading after its best step (+.284) while the soft one stays flat (+.003); the clean control not collapsing (+.059, accuracy kept); and the fixed-noise run's predicted-`other` rate rising from .007 to .043, which a correct answer marked wrong would push it towards. Isolating memorisation from the extra information a soft target gives would need fixed noise without repeated passes, which needs a larger log and is out of scope.
 - **Early stopping on feedback is essential, and it worked.** The feedback-only criterion picked step 250, before the collapse, without reading gold.
 - **The inversion needs the noise rate and applies everywhere.** The learned compression towards the channel scale is global: the soft run's in-domain ECE rises by .068 to .076 against zero-shot, and the fixed-noise run's by .050, so a caller would invert every answer, not only those on the adapted domain, and needs f to do it.
 
@@ -198,7 +198,7 @@ Accuracy and ECE minus zero-shot on test_indomain (zero-shot .956, ECE .013) and
 | direct_brier n5000 noisy | -.014 [-.017, -.011] | +.050 | +.018 | -.018 |
 | positive_sft n5000 noisy | -.008 [-.010, -.005] | +.005 | +.004 | -.001 |
 
-- **Every trained learner loses in-domain accuracy and gains on the unseen intents**, which share the CLINC format but not the label set.
+- **Every trained learner loses in-domain accuracy and gains on the unseen intents**, which share the CLINC format but not the label set: all 21 trained learners in `S:forgetting.<split>.minus_zero_shot` (the temperature learner changes no prediction, so its accuracy difference is 0).
 - **The in-domain cost grows with N for direct_brier and full_sft**, up to 2.7 to 4.3 points for direct_brier at N 5000 across seeds and 3.6 to 5.2 points for full_sft. positive_sft costs under 1 point at every N. The clean direct_brier runs keep in-domain ECE within .010 of zero-shot; full_sft at N 5000 adds .015 to .043.
 - **Forgetting varies more across seeds than Banking77 accuracy does:** -.027, -.043 and -.029 for direct_brier's three training seeds and -.052, -.036 and -.050 for full_sft's, ranges of 1.6 points each against .6 on Banking77. Beta 0 is a choice, and this is its cost.
 
@@ -265,7 +265,7 @@ The predictions as stated before the runs, each with its verdict.
 ## 9. Limitations
 
 - **One domain.** Banking77 only, with 10 options and gold always present, so `other` is never right and "never answer other" is free to learn; other domains, other option counts or a gold-absent construction may differ.
-- **One logging policy.** sft_06b at epsilon 0.1, already .836 accurate on the log domain; a weaker or more exploratory policy changes how many negatives there are and which ones.
+- **One logging policy.** sft_06b at epsilon 0.1, already .836 accurate on the log domain (`runs/v3_log_s0/metrics.json:accuracy`); a weaker or more exploratory policy changes how many negatives there are and which ones.
 - **A simulated feedback channel.** Outcomes come from gold labels, revealed perfectly or flipped symmetrically at a known rate; real deployment feedback is delayed, biased towards some errors and of unknown noise rate, which the inversion needs.
 - **One size.** 0.6B only (decision 56).
 - **positive_sft has one seed.** Its side of every comparison carries no seed variance; direct_brier's and full_sft's three seeds each span .6 points on Banking77 accuracy, which suggests it is small. full_sft was run on three seeds at N 5000 (section 3); at N 500 and 2000 every learner has seed 0 only.
@@ -275,4 +275,4 @@ The predictions as stated before the runs, each with its verdict.
 
 ## 10. What v3 shows and what it does not
 
-v3 shows that when a deployed model sees only the correctness of its own actions on a new domain, training on that signal with a pathwise Brier loss beats discarding the failures, by 2.4 to 2.7 points of accuracy from 2000 logged interactions and by about .05 to .06 ECE at every N, and that it closes 70 to 90 percent of the accuracy gap between zero-shot and full-label SFT. It does not show that RLCD approaches full labels as feedback grows, since the 1.5-point gap at N 5000 (seed means of both) is no smaller than at N 500, and it does not show calibration robust to noisy feedback, where a proper score calibrates to the channel and needs a known noise rate to be undone. Together with v2, the claim that survives is narrow: RLCD adds value over positive-only SFT when the only feedback is partial, and nowhere else that was tested.
+v3 shows that when a deployed model sees only the correctness of its own actions on a new domain, training on that signal with a pathwise Brier loss beats discarding the failures, by 2.4 to 2.7 points of accuracy from 2000 logged interactions and by about .05 to .06 ECE at every N, and that it closes 69 to 91 percent of the accuracy gap between zero-shot and full-label SFT. It does not show that RLCD approaches full labels as feedback grows, since the 1.5-point gap at N 5000 (seed means of both) is no smaller than at N 500, and it does not show calibration robust to noisy feedback, where a proper score calibrates to the channel and needs a known noise rate to be undone. Together with v2, the claim that survives is narrow: RLCD adds value over positive-only SFT when the only feedback is partial, and nowhere else that was tested.
