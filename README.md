@@ -6,7 +6,7 @@ jevmark is not affiliated with or endorsed by TypeSafe AI. Their Jev model is th
 
 ## Results
 
-Three phases, each with its own report; every number there is cited to a committed `metrics.json`. In one line: the supervised model works in-domain and reads options it never saw; RLCD adds nothing on full labels; it helps when the only feedback is whether the model's own answer was right.
+Three phases, each with its own report; every number there is cited to a committed `metrics.json`. In one line: the supervised model works in-domain and reads options it never saw; RLCD adds nothing on full labels; it helps when the only feedback is whether the model's own answer was right. Decision numbers in the reports refer to the author's private working log; every number and conclusion in the reports is backed by the cited metrics files and does not depend on that log.
 
 ### v1: the supervised model (docs/RESULTS_v1.md)
 
