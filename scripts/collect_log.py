@@ -2,6 +2,7 @@
 
     python scripts/collect_log.py --ckpt runs/sft_06b --seed 0 --device cuda
     python scripts/collect_log.py --ckpt runs/sft_06b --seed 1 --device cuda   # logging variance only
+    python scripts/collect_log.py --ckpt runs/sft_17b --seed 0 --device cuda   # the 1.7B log, runs/v3_log_17b_s0
 
 The checkpoint (the logging policy, sft_06b in v3) reads every record of
 data/v3_banking77_train.jsonl once, in a fixed order shuffled by
@@ -13,8 +14,10 @@ gold; the noisy condition's outcome is the revealed one flipped with probability
 own calibration.json temperature, read in one forward pass per batch; the first
 batch is checked for NaN or inf under fp16, with a reload in fp32 on failure.
 
-Writes runs/v3_log_s<seed>/log.jsonl (gitignored, keep a copy: every learner trains
-on it) and metrics.json with the logging policy's accuracy (argmax against gold),
+Writes runs/v3_log_s<seed>/log.jsonl for a 0.6B logging policy, or
+runs/v3_log_<size>_s<seed>/log.jsonl for another size read from the checkpoint's name
+(runs/sft_17b writes v3_log_17b_s<seed>), so logs of different policies never share a
+directory (gitignored, keep a copy: every learner trains on it) and metrics.json with the logging policy's accuracy (argmax against gold),
 outcome and flipped-outcome rates, predicted-other and chosen-other rates, the data
 file's sha256 (refused if it differs from configs/v3_data.yaml), the log's sha256,
 the commit and precision. An existing log is never overwritten.
@@ -27,6 +30,7 @@ import datetime
 import hashlib
 import json
 import random
+import re
 import sys
 import time
 from collections.abc import Sequence
@@ -64,15 +68,22 @@ def first_batch_check(jev: JevMark, batch: Sequence[Encoded]) -> bool:
     return True
 
 
+def log_run_name(checkpoint: Path, seed: int, limit: int | None = None) -> str:
+    """v3_log_s<seed> for the 0.6B policy (the phase 3 name), v3_log_<size>_s<seed> for another size named in the checkpoint."""
+    size = re.search(r"(06b|17b)", checkpoint.name)
+    prefix = "v3_log" if size is None or size.group(1) == "06b" else f"v3_log_{size.group(1)}"
+    return f"{prefix}_s{seed}" + (f"_limit{limit}" if limit else "")
+
+
 def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--ckpt", required=True, help="the logging policy's run directory (runs/sft_06b in v3)")
     parser.add_argument("--config", default=None, help="default: the run's config.yaml")
-    parser.add_argument("--seed", type=int, default=0, help="seeds the actions and the flips; the run is v3_log_s<seed>")
+    parser.add_argument("--seed", type=int, default=0, help="seeds the actions and the flips; the run is v3_log_s<seed> (v3_log_<size>_s<seed> for a policy other than 0.6B)")
     parser.add_argument("--order-seed", type=int, default=0, help="seeds the message order, the same for every log seed")
     parser.add_argument("--epsilon", type=float, default=EPSILON)
     parser.add_argument("--flip-rate", type=float, default=FLIP_RATE)
-    parser.add_argument("--limit", type=int, default=None, help="only the first N messages of the order, for smoke runs; writes runs/v3_log_s<seed>_limit<N>/")
+    parser.add_argument("--limit", type=int, default=None, help="only the first N messages of the order, for smoke runs; writes the log run name plus _limit<N>")
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--device", default=None, help="cpu, cuda or cuda:N; default cuda when available")
     parser.add_argument("--v3-config", default=str(REPO / "configs" / "v3_data.yaml"), help="names the data file and its recorded sha256")
@@ -88,7 +99,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     started = time.perf_counter()
     git = git_state()  # before any output exists (decision 35)
-    run_name = f"v3_log_s{args.seed}" + (f"_limit{args.limit}" if args.limit else "")
+    run_name = log_run_name(Path(args.ckpt), args.seed, args.limit)
     out_dir = Path(args.runs_dir) / run_name
     if (out_dir / "log.jsonl").exists():
         log(f"{out_dir / 'log.jsonl'} exists; a log is collected once and never overwritten")

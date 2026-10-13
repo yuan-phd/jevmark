@@ -330,7 +330,7 @@ def test_v3_notebook_parameters_and_session_plans_match_kaggle_md_and_train_rlcd
     for name in ("REPO", "COMMIT", "SESSION", "ADAPTER_DATASET", "LOG_DATASET", "LOG_SHA256", "SMOKE_STEPS", "MAX_HOURS"):
         assert re.search(rf"^{name} = ", params, re.M), name
     plan_for = v3_plan()
-    plans = {session: plan_for(session) for session in ("A", "B", "C", "D", "E", "F1", "F2", "F3", "K")}
+    plans = {session: plan_for(session) for session in ("A", "B", "C", "D", "E", "F1", "F2", "F3", "K", "I", "J")}
     names = {session: [run_name_of(*run) for run in plan] for session, (plan, run_name_of) in plans.items()}
     assert names["A"] == [f"v3_06b_{arm}_n{n}_s0" for arm in ("full_sft", "positive_sft") for n in (500, 2000, 5000)]
     assert names["B"] == ["v3_06b_direct_brier_n500_s0", "v3_06b_direct_brier_n2000_s0", "v3_06b_direct_brier_n5000_s0", "v3_06b_direct_brier_n5000_s1"]
@@ -341,6 +341,7 @@ def test_v3_notebook_parameters_and_session_plans_match_kaggle_md_and_train_rlcd
         assert names[session] == [f"v3_06b_{arm}_n{n}_s0" for arm in ("direct_log", "outcome_minus_p_log", "ips_log", "ips_positive")]
     assert names["F3"] == ["v3_06b_direct_log_n5000_s1", "v3_06b_direct_log_n5000_s2"]  # direct_log training seeds
     assert names["K"] == [f"v3_06b_{arm}_n5000_s0_noisy_flip{f}" for f in ("0.1", "0.3") for arm in ("direct_brier", "positive_sft")]  # the noise-rate sweep
+    assert names["I"] == ["v3_17b_positive_sft_n5000_s0"] and names["J"] == ["v3_17b_full_sft_n5000_s0", "v3_17b_direct_brier_n5000_s0"]  # 1.7B
     all_names = [n for session in "ABC" for n in names[session]]
     assert len(all_names) == len(set(all_names)) == 14  # the 14 trained runs of V3_DESIGN section 8
     assert not (set(names["D"]) | set(names["E"])) & set(all_names)
@@ -352,15 +353,16 @@ def test_v3_notebook_parameters_and_session_plans_match_kaggle_md_and_train_rlcd
     sys.modules[spec.name] = rl
     spec.loader.exec_module(rl)
     for session, (plan, run_name_of) in plans.items():
+        size = "17b" if session in ("I", "J") else "06b"
         for arm, n, seed, noisy, log, flip in plan:
             assert arm in rl.LOG_ARMS and not (noisy and arm == "full_sft") and (noisy != "soft" or arm == "direct_brier")
             assert flip is None or noisy  # a sibling log is only for noisy runs; train_rlcd.py refuses a clean one
-            assert run_name_of(arm, n, seed, noisy, log, flip) == rl.log_run_name({"size": "06b", "arm": arm, "seed": seed}, n, noisy, log, rl.FLIP_RATE if flip is None else flip)
+            assert run_name_of(arm, n, seed, noisy, log, flip) == rl.log_run_name({"size": size, "arm": arm, "seed": seed}, n, noisy, log, rl.FLIP_RATE if flip is None else flip)
     kaggle_md = (REPO / "docs" / "KAGGLE.md").read_text()
     section = kaggle_md[kaggle_md.index("## 12. v3") :]
-    for session in ("A", "B", "C", "D", "E", "F1", "F2", "F3", "K"):
+    for session in ("A", "B", "C", "D", "E", "F1", "F2", "F3", "K", "I", "J"):
         assert f'SESSION = "{session}"' in section, session
-    assert 'assert SESSION in ("A", "B", "C", "D", "E", "F1", "F2", "F3", "K")' in cells[1]
+    assert 'assert SESSION in ("A", "B", "C", "D", "E", "F1", "F2", "F3", "K", "I", "J")' in cells[1]
     assert "jevmark-v3-logs" in section and "LOG_SHA256" in section
 
 
@@ -370,26 +372,27 @@ def test_v3_notebook_session_a_evaluates_zero_shot_and_collects_both_logs_before
     order = [
         joined.index("make data-build PY=python"),
         joined.index("!python scripts/build_v3_data.py"),
-        joined.index('target = WORK / "runs" / "sft_06b" / "adapter"'),
-        joined.index("evaluate.py --ckpt runs/sft_06b --run-name v3_06b_zeroshot --device cuda"),
-        joined.index("collect_log.py --ckpt runs/sft_06b --seed {k} --device cuda"),
+        joined.index('target = WORK / "runs" / SFT / "adapter"'),
+        joined.index("evaluate.py --ckpt runs/{SFT} --run-name {ZERO_RUN} --device cuda"),
+        joined.index("collect_log.py --ckpt runs/{SFT} --seed {k} --device cuda"),
         joined.index("run_name={SMOKE_RUN} {NOISY_FLAG} --limit-steps {SMOKE_STEPS}"),
-        joined.index("--log runs/{log_dir}/log.jsonl --n {n} --init runs/sft_06b arm={arm} seed={seed} {noisy_flag} --max-hours {MAX_HOURS}"),
+        joined.index("--log runs/{log_dir}/log.jsonl --n {n} --init runs/{SFT} arm={arm} seed={seed} {noisy_flag} --max-hours {MAX_HOURS}"),
         joined.index("!python scripts/evaluate.py --ckpt runs/{run_name} --device cuda"),
     ]
     assert order == sorted(order)
-    logs = next(c for c in cells if "collect_log.py" in c)
-    assert 'if SESSION == "A":' in logs and 'LOG_SHA256[k] = m["log_sha256"]' in logs and "LOG DONE seed" in logs
+    logs = next(c for c in cells if "!python scripts/collect_log.py" in c)
+    assert "if COLLECTS:" in logs and 'LOG_SHA256[k] = m["log_sha256"]' in logs and 'LOG_SHA256_17B = m["log_sha256"]' in logs and "LOG DONE {log_dir_of(k)} seed" in logs
     clone = cells[1]
-    assert '"v3_06b_zeroshot", "v3_log_s0", "v3_log_s1"' in clone and clone.index('run(["git", "checkout"') < clone.index("shutil.rmtree")
+    assert 'COLLECTS = SESSION in ("A", "I")' in clone and "*([ZERO_RUN, *(log_dir_of(k) for k in LOGS)] if COLLECTS else [])" in clone
+    assert clone.index('run(["git", "checkout"') < clone.index("shutil.rmtree")
 
 
 def test_v3_notebook_sessions_b_and_c_check_the_log_sha256_and_every_run_is_copied_with_a_run_done_line():
     cells = code_cells("kaggle_v3.ipynb")
-    clone, logs = cells[1], next(c for c in cells if "collect_log.py" in c)
+    clone, logs = cells[1], next(c for c in cells if "!python scripts/collect_log.py" in c)
     assert 're.fullmatch(r"[0-9a-f]{64}", LOG_SHA256.get(k, ""))' in clone
     other = logs[logs.index("else:") :]
-    assert "file_sha256(target / \"log.jsonl\")" in other and "digest != recorded or digest != LOG_SHA256[k]" in other and "raise RuntimeError" in other
+    assert "file_sha256(target / \"log.jsonl\")" in other and "digest != recorded or digest != expected_log_sha(k)" in other and "raise RuntimeError" in other
     loop = next(c for c in cells if "for (arm, n, seed, noisy, log, flip), run_name in zip(PLAN, RUNS):" in c)
     assert 'if not TRAINED.get("smoke"):' in loop and loop.index('if not TRAINED.get("smoke"):') < loop.index("for (arm, n, seed, noisy, log, flip)")
     body = loop[loop.index("for (arm, n, seed, noisy, log, flip)") :]
@@ -406,7 +409,7 @@ def test_v3_notebook_sessions_b_and_c_check_the_log_sha256_and_every_run_is_copi
     ]
     positions = [body.index(step) for step in steps]
     assert positions == sorted(positions)
-    assert "expected = LOG_SHA256[log] if flip is None else FLIP_LOG_SHA256[flip]" in loop
+    assert "expected = expected_log_sha(log) if flip is None else FLIP_LOG_SHA256[flip]" in loop
     assert 'metrics["v3"]["log_sha256"] == summary["log_sha256"] == expected' in loop and "RUN DONE" in loop
     assert joined_count(cells, "require_training(") == 2
 
@@ -512,4 +515,24 @@ def test_v3_session_k_derives_the_sibling_logs_it_expects_and_evaluates_direct_b
     assert hashlib.sha256(log_bytes(log)).hexdigest() == json.loads((source / "metrics.json").read_text())["log_sha256"]
     for flip, digest in flip_sha.items():
         assert hashlib.sha256(log_bytes(reflip(log, 0, flip))).hexdigest() == digest
+
+
+def test_v3_sessions_i_and_j_run_at_1_7b_on_the_1_7b_log():
+    for session in ("I", "J"):
+        size, logs, log_dir_of, expected_log_sha = v3_plan(("SIZE", "sorted({plan[4] for plan in PLAN})", "log_dir_of", "expected_log_sha"))(session)
+        assert size == "17b" and logs == [0] and log_dir_of(0) == "v3_log_17b_s0"
+    assert v3_plan(("SIZE",))("A") == "06b" and v3_plan(("log_dir_of",))("A")(1) == "v3_log_s1"
+    assert v3_plan(("COLLECTS",))("I") is True and v3_plan(("COLLECTS",))("J") is False
+    clone = code_cells("kaggle_v3.ipynb")[1]
+    assert 'if SESSION == "J":' in clone and "LOG_SHA256_17B" in clone and re.search(r'^LOG_SHA256_17B = ""', code_cells("kaggle_v3.ipynb")[0], re.M)
+    joined = "\n".join(code_cells("kaggle_v3.ipynb"))
+    assert joined.count("--config configs/v3_{SIZE}.yaml") == 2 and joined.count("--init runs/{SFT}") == 2 and "configs/v3_06b.yaml" not in joined
+    for size in ("06b", "17b"):
+        assert (REPO / "configs" / f"v3_{size}.yaml").is_file()
+    collect = importlib.util.spec_from_file_location("collect_log_for_notebook", REPO / "scripts" / "collect_log.py")
+    module = importlib.util.module_from_spec(collect)
+    collect.loader.exec_module(module)
+    log_dir_of = v3_plan(("log_dir_of",))
+    for session, sft in (("A", "sft_06b"), ("I", "sft_17b")):
+        assert module.log_run_name(Path("runs") / sft, 0) == log_dir_of(session)(0)
 

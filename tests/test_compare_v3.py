@@ -205,3 +205,24 @@ def test_off_policy_arms_are_columns_with_paired_deltas_and_leave_phase_3_values
     for learner in compare_v3.LEARNERS:
         assert after["n_curve"]["5000"][learner] == before["n_curve"]["5000"][learner]
     assert compare_v3.RUN_PATTERN.match("v3_06b_outcome_minus_p_log_n5000_s0_noisy")["arm"] == "outcome_minus_p_log"
+
+
+def test_the_1_7b_comparison_has_only_its_n_5000_runs_and_lists_the_rest_as_missing(tmp_path):
+    runs_dir = tmp_path / "runs"
+    write_run(runs_dir, "v3_17b_zeroshot", results(1.5, 0))
+    for k, arm in enumerate(("positive_sft", "full_sft", "direct_brier")):
+        write_run(runs_dir, f"v3_17b_{arm}_n5000_s0", results(2.5 + k, 60 + k))
+    write_run(runs_dir, "v3_06b_direct_brier_n5000_s0", results(9.0, 70))  # another size is never read
+    subset = tmp_path / "subset.json"
+    subset.write_text(json.dumps({"splits": {"test_banking77": []}, "sub_splits": {}}))
+    out = tmp_path / "stage17.json"
+    assert compare_v3.main(["--size", "17b", "--runs-dir", str(runs_dir), "--subset", str(subset), "--resamples", "50", "--out", str(out)]) == 0
+    m = json.loads(out.read_text())
+    row = m["n_curve"]["5000"]
+    assert m["size"] == "17b" and all(row[arm] for arm in ("zero_shot", "positive_sft", "full_sft", "direct_brier"))
+    assert row["direct_brier_minus_positive_sft"] and row["direct_brier_minus_full_sft"] and row["temperature"] is None
+    assert m["n_curve"]["500"]["direct_brier"] is None and "direct_brier_n500_s0" in m["missing"]
+    assert set(m["sources"]) == {"zero_shot", "positive_sft_n5000_s0", "full_sft_n5000_s0", "direct_brier_n5000_s0"}
+    assert all(Path(source["dir"]).name.startswith("v3_17b_") for source in m["sources"].values())
+    assert set(m["forgetting"]["test_indomain"]["minus_zero_shot"]) == {"positive_sft_n5000_s0", "full_sft_n5000_s0", "direct_brier_n5000_s0"}
+

@@ -4,6 +4,7 @@
     python scripts/train_rlcd.py --config configs/rlcd_06b.yaml arm=direct_brier seed=0 --resume
     python scripts/train_rlcd.py --config configs/rlcd_06b.yaml --env noisy arm=direct_brier seed=0
     python scripts/train_rlcd.py --config configs/v3_06b.yaml --log runs/v3_log_s0/log.jsonl --n 5000 arm=direct_brier seed=0
+    python scripts/train_rlcd.py --config configs/v3_17b.yaml --log runs/v3_log_17b_s0/log.jsonl --n 5000 arm=direct_brier seed=0
 
 The trainable LoRA starts as the SFT adapter of --init (a run directory holding
 adapter/); a second copy of the backbone with that adapter merged is the frozen
@@ -139,7 +140,9 @@ Run names: v3_<size>_<arm>_n<N>_s<seed>, plus _noisy (fixed) or _noisy_soft (sof
 plus _flip<rate> for a noisy run on a log whose flip rate is not 0.2 (a sibling log
 from derive_flip_log.py), plus _log<k> for a log drawn with seed k > 0. A clean run
 on a sibling log is refused: it would read nothing the source log does not hold.
---resume needs the same --log, --n and noise mode, which name the run.
+--resume needs the same --log, --n and noise mode, which name the run. A log whose
+metrics.json names its logging policy's adapter is refused unless that adapter is the
+one the run starts from (--init), so a 1.7B learner never trains on the 0.6B log.
 """
 
 from __future__ import annotations
@@ -641,6 +644,10 @@ def main_log(args: argparse.Namespace, started: float) -> int:
     init_dir = Path(config["v3"]["init"])
     if adapter_sha256(init_dir / "adapter") != config["v3"]["init_adapter_sha256"]:
         raise SystemExit(f"the adapter at {init_dir} is not the one this run started from (sha256 differs)")
+    policy_sha = (log_metrics_of(log_path).get("logging_policy") or {}).get("adapter_sha256")
+    if policy_sha and policy_sha != config["v3"]["init_adapter_sha256"]:
+        raise SystemExit(f"--log {log_path} was drawn by the adapter with sha256 {policy_sha}, but this run starts from {init_dir} "
+                         f"({config['v3']['init_adapter_sha256']}); a v3 learner adapts the model that logged its feedback, so use that model's log")
     arm, seed, n, noise = config["arm"], int(config["seed"]), int(config["v3"]["n"]), noise_of(config["v3"])
     noisy = noise is not None
     train_cfg = config["training"]

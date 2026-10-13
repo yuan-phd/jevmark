@@ -534,3 +534,37 @@ def test_a_sibling_log_trains_on_its_own_flips_and_refuses_a_clean_run(setup, tm
     with pytest.raises(SystemExit, match="differs from v3_log_s0 only in its flipped outcomes"):
         train(setup, runs, "arm=direct_brier", "--limit-steps", "1", log_path=sibling)
 
+
+# 1.7B: the config and the logging-policy check
+
+
+def test_the_1_7b_config_differs_from_0_6b_only_in_backbone_size_start_and_checkpointing():
+    def flat(d, prefix=""):
+        out = {}
+        for k, v in d.items():
+            out.update(flat(v, f"{prefix}{k}.") if isinstance(v, dict) else {f"{prefix}{k}": v})
+        return out
+
+    small, large = flat(load_config(REPO / "configs" / "v3_06b.yaml")), flat(load_config(REPO / "configs" / "v3_17b.yaml"))
+    differ = {k for k in small.keys() | large.keys() if small.get(k) != large.get(k)}
+    assert differ == {"size", "backbone.id", "backbone.revision", "v3.init", "training.gradient_checkpointing"}
+    sft = flat(load_config(REPO / "runs" / "sft_17b" / "config.yaml"))
+    assert large["v3.init"] == "runs/sft_17b" and large["training.gradient_checkpointing"] is True
+    for key in ("backbone.id", "backbone.revision", "tokenizer_reference.id", "tokenizer_reference.revision", "lora.r", "lora.alpha", "lora.target_modules", "max_tokens"):
+        assert large[key] == sft[key], key
+
+
+def test_a_log_drawn_by_another_adapter_is_refused(setup, tmp_path):
+    logs = tmp_path / "logs" / "v3_log_17b_s0"
+    logs.mkdir(parents=True)
+    digest = write_log(logs / "log.jsonl", setup.log)
+    metrics = {"sampling": {"seed": 0}, "data_files_sha256": {"v3_banking77_train.jsonl": setup.data_sha}, "log_sha256": digest,
+               "logging_policy": {"adapter_sha256": "0" * 64}}
+    (logs / "metrics.json").write_text(json.dumps(metrics))
+    with pytest.raises(SystemExit, match="a v3 learner adapts the model that logged its feedback"):
+        train(setup, tmp_path / "runs", "arm=direct_brier", "--limit-steps", "1", log_path=logs / "log.jsonl")
+    metrics["logging_policy"]["adapter_sha256"] = rl.adapter_sha256(setup.init / "adapter")
+    (logs / "metrics.json").write_text(json.dumps(metrics))
+    train(setup, tmp_path / "runs", "arm=direct_brier", "--limit-steps", "1", log_path=logs / "log.jsonl")
+    assert (tmp_path / "runs" / f"v3_06b_direct_brier_n{N}_s0" / "train_summary.json").is_file()
+

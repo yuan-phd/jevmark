@@ -236,6 +236,13 @@ def test_collect_log_refuses_a_data_file_with_another_hash(tiny_logging_policy, 
     assert collect.main(argv) == 1 and not (tmp_path / "v3_log_s0").exists()
 
 
+def test_collect_log_names_a_log_by_its_policys_size():
+    collect = load_script("collect_log")
+    assert collect.log_run_name(Path("runs/sft_06b"), 0) == "v3_log_s0" and collect.log_run_name(Path("runs/sft_06b"), 1, 50) == "v3_log_s1_limit50"
+    assert collect.log_run_name(Path("runs/sft_17b"), 0) == "v3_log_17b_s0" and collect.log_run_name(Path("runs/sft_17b"), 0, 50) == "v3_log_17b_s0_limit50"
+    assert collect.log_run_name(Path("/tmp/tiny_policy"), 2) == "v3_log_s2"  # no size in the name: the phase 3 name
+
+
 # Sibling logs at other flip rates: feedback.reflip and scripts/derive_flip_log.py (the noise-rate sweep)
 
 
