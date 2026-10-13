@@ -134,9 +134,12 @@ last step; step 0 (the starting adapter) is logged as the reference and is not a
 candidate, and gold is never read for it. config.yaml and train_summary.json record
 the log's sha256 and seed, N, the arm, the noise mode (v3.noise; v3.noisy is true for
 either mode; a config without v3.noise reads as fixed when v3.noisy is true) and the
-selection curve. Run names: v3_<size>_<arm>_n<N>_s<seed>, plus _noisy (fixed) or
-_noisy_soft (soft), plus _log<k> for a log drawn with seed k > 0. --resume needs the
-same --log, --n and noise mode, which name the run.
+selection curve; a noisy run also records the log's flip rate (v3.flip_rate).
+Run names: v3_<size>_<arm>_n<N>_s<seed>, plus _noisy (fixed) or _noisy_soft (soft),
+plus _flip<rate> for a noisy run on a log whose flip rate is not 0.2 (a sibling log
+from derive_flip_log.py), plus _log<k> for a log drawn with seed k > 0. A clean run
+on a sibling log is refused: it would read nothing the source log does not hold.
+--resume needs the same --log, --n and noise mode, which name the run.
 """
 
 from __future__ import annotations
@@ -472,12 +475,22 @@ def log_steps(n_train: int, epochs: int, min_steps: int, effective_batch: int) -
     return max(min_steps, math.ceil(epochs * n_train / effective_batch))
 
 
-def log_seed_of(log_path: Path) -> int:
-    """The seed the log was drawn with, from collect_log.py's metrics.json next to it."""
+def log_metrics_of(log_path: Path) -> dict[str, Any]:
+    """The metrics.json next to the log, written by collect_log.py or derive_flip_log.py."""
     metrics = log_path.parent / "metrics.json"
     if not metrics.is_file():
         raise SystemExit(f"--log {log_path}: no metrics.json next to it, so its seed and data hash are unknown")
-    return int(json.loads(metrics.read_text())["sampling"]["seed"])
+    return json.loads(metrics.read_text())
+
+
+def log_seed_of(log_path: Path) -> int:
+    """The seed the log was drawn with."""
+    return int(log_metrics_of(log_path)["sampling"]["seed"])
+
+
+def flip_rate_of(log_path: Path) -> float:
+    """The flip rate of the log's flipped outcomes (0.2 for a log written before the rate was recorded)."""
+    return float(log_metrics_of(log_path).get("sampling", {}).get("flip_rate", FLIP_RATE))
 
 
 NOISE_MODES = ("fixed", "soft")
@@ -497,11 +510,12 @@ def soft_target(outcome: int, flip_rate: float) -> float:
     return flip_rate + (1 - 2 * flip_rate) * outcome
 
 
-def log_run_name(config: dict[str, Any], n: int, noise: str | bool | None, log_seed: int) -> str:
+def log_run_name(config: dict[str, Any], n: int, noise: str | bool | None, log_seed: int, flip_rate: float = FLIP_RATE) -> str:
     if config.get("run_name"):
         return config["run_name"]
     noise = "fixed" if noise is True else (None if noise is False else noise)
-    return f"v3_{config['size']}_{config['arm']}_n{n}_s{config['seed']}" + NOISE_SUFFIX[noise] + (f"_log{log_seed}" if log_seed else "")
+    rate = f"_flip{flip_rate:g}" if noise and not math.isclose(flip_rate, FLIP_RATE) else ""
+    return f"v3_{config['size']}_{config['arm']}_n{n}_s{config['seed']}" + NOISE_SUFFIX[noise] + rate + (f"_log{log_seed}" if log_seed else "")
 
 
 def log_examples(interactions: Sequence[Interaction], records: dict[str, dict[str, Any]], jev: JevMark, max_tokens: int, column: str, with_gold: bool, flip_rate: float = FLIP_RATE) -> list[LogExample]:
@@ -595,8 +609,12 @@ def main_log(args: argparse.Namespace, started: float) -> int:
     log_path = Path(args.log)
     log_sha = file_sha256(log_path)
     log_seed = log_seed_of(log_path)
+    flip_rate = flip_rate_of(log_path)
+    derived = log_metrics_of(log_path).get("derived_from")
+    if derived and args.noise is None:
+        raise SystemExit(f"--log {log_path} differs from {derived['run']} only in its flipped outcomes; a clean run reads none of them, so train it on {derived['run']}")
     config = load_config(args.config, args.overrides)
-    run_dir = Path(args.runs_dir) / log_run_name(config, args.n, args.noise, log_seed)
+    run_dir = Path(args.runs_dir) / log_run_name(config, args.n, args.noise, log_seed, flip_rate)
     if args.resume:
         if not (run_dir / "last" / "state.pt").is_file():
             raise SystemExit(f"--resume: no saved state at {run_dir / 'last'}")
@@ -633,8 +651,7 @@ def main_log(args: argparse.Namespace, started: float) -> int:
     if logged_data_sha and logged_data_sha != data_sha:
         raise SystemExit(f"{data_path} has sha256 {data_sha}, but the log was drawn from {logged_data_sha}")
     config["v3"]["data_sha256"] = data_sha
-    flip_rate = float(json.loads((log_path.parent / "metrics.json").read_text()).get("sampling", {}).get("flip_rate", FLIP_RATE))
-    if noise == "soft":
+    if noisy:
         config["v3"]["flip_rate"] = flip_rate
 
     split = prefix(read_log(log_path), n, float(config["v3"]["train_share"]))
@@ -820,6 +837,7 @@ def main_log(args: argparse.Namespace, started: float) -> int:
         "n_select": len(select),
         "noisy": noisy,
         "noise": noise,
+        "flip_rate": flip_rate if noisy else None,
         "init": str(init_dir),
         "init_adapter_sha256": config["v3"]["init_adapter_sha256"],
         "init_select": progress["init_select"],

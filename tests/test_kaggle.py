@@ -1,6 +1,7 @@
 """Kaggle wrapper: requirements file in sync with uv.lock, and the notebook's structure and token handling."""
 
 import importlib.util
+import hashlib
 import json
 import re
 import sys
@@ -314,12 +315,12 @@ def test_rlcd_notebook_env_matches_train_rlcd():
 # v3 (tasks 3.4 and 3.5, decision 56)
 
 
-def v3_plan():
-    """PLAN and run_name_of from the notebook's clone cell, executed without the clone."""
+def v3_plan(names=("PLAN", "run_name_of")):
+    """PLAN and run_name_of (or the given names) from the notebook's clone cell, executed without the clone."""
     clone = code_cells("kaggle_v3.ipynb")[1]
     block = clone[clone.index("PLAN = {") : clone.index("RUNS = [run_name_of")]
     namespace = {"SESSION": None}
-    exec("def plan_for(SESSION):\n" + "\n".join("    " + line for line in block.splitlines()) + "\n    return PLAN, run_name_of", namespace)
+    exec("def plan_for(SESSION):\n" + "\n".join("    " + line for line in block.splitlines()) + f"\n    return {', '.join(names)}", namespace)
     return namespace["plan_for"]
 
 
@@ -329,7 +330,7 @@ def test_v3_notebook_parameters_and_session_plans_match_kaggle_md_and_train_rlcd
     for name in ("REPO", "COMMIT", "SESSION", "ADAPTER_DATASET", "LOG_DATASET", "LOG_SHA256", "SMOKE_STEPS", "MAX_HOURS"):
         assert re.search(rf"^{name} = ", params, re.M), name
     plan_for = v3_plan()
-    plans = {session: plan_for(session) for session in ("A", "B", "C", "D", "E", "F1", "F2", "F3")}
+    plans = {session: plan_for(session) for session in ("A", "B", "C", "D", "E", "F1", "F2", "F3", "K")}
     names = {session: [run_name_of(*run) for run in plan] for session, (plan, run_name_of) in plans.items()}
     assert names["A"] == [f"v3_06b_{arm}_n{n}_s0" for arm in ("full_sft", "positive_sft") for n in (500, 2000, 5000)]
     assert names["B"] == ["v3_06b_direct_brier_n500_s0", "v3_06b_direct_brier_n2000_s0", "v3_06b_direct_brier_n5000_s0", "v3_06b_direct_brier_n5000_s1"]
@@ -339,24 +340,27 @@ def test_v3_notebook_parameters_and_session_plans_match_kaggle_md_and_train_rlcd
     for session, n in (("F1", 2000), ("F2", 5000)):  # the off-policy arms
         assert names[session] == [f"v3_06b_{arm}_n{n}_s0" for arm in ("direct_log", "outcome_minus_p_log", "ips_log", "ips_positive")]
     assert names["F3"] == ["v3_06b_direct_log_n5000_s1", "v3_06b_direct_log_n5000_s2"]  # direct_log training seeds
+    assert names["K"] == [f"v3_06b_{arm}_n5000_s0_noisy_flip{f}" for f in ("0.1", "0.3") for arm in ("direct_brier", "positive_sft")]  # the noise-rate sweep
     all_names = [n for session in "ABC" for n in names[session]]
     assert len(all_names) == len(set(all_names)) == 14  # the 14 trained runs of V3_DESIGN section 8
     assert not (set(names["D"]) | set(names["E"])) & set(all_names)
     assert not set(names["F1"] + names["F2"] + names["F3"]) & set(all_names + names["D"] + names["E"])
     assert not set(names["F3"]) & set(names["F1"] + names["F2"])
+    assert not set(names["K"]) & {n for session, ns in names.items() if session != "K" for n in ns}
     spec = importlib.util.spec_from_file_location("train_rlcd_nb", REPO / "scripts" / "train_rlcd.py")
     rl = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = rl
     spec.loader.exec_module(rl)
     for session, (plan, run_name_of) in plans.items():
-        for arm, n, seed, noisy, log in plan:
+        for arm, n, seed, noisy, log, flip in plan:
             assert arm in rl.LOG_ARMS and not (noisy and arm == "full_sft") and (noisy != "soft" or arm == "direct_brier")
-            assert run_name_of(arm, n, seed, noisy, log) == rl.log_run_name({"size": "06b", "arm": arm, "seed": seed}, n, noisy, log)
+            assert flip is None or noisy  # a sibling log is only for noisy runs; train_rlcd.py refuses a clean one
+            assert run_name_of(arm, n, seed, noisy, log, flip) == rl.log_run_name({"size": "06b", "arm": arm, "seed": seed}, n, noisy, log, rl.FLIP_RATE if flip is None else flip)
     kaggle_md = (REPO / "docs" / "KAGGLE.md").read_text()
     section = kaggle_md[kaggle_md.index("## 12. v3") :]
-    for session in ("A", "B", "C", "D", "E", "F1", "F2", "F3"):
+    for session in ("A", "B", "C", "D", "E", "F1", "F2", "F3", "K"):
         assert f'SESSION = "{session}"' in section, session
-    assert 'assert SESSION in ("A", "B", "C", "D", "E", "F1", "F2", "F3")' in cells[1]
+    assert 'assert SESSION in ("A", "B", "C", "D", "E", "F1", "F2", "F3", "K")' in cells[1]
     assert "jevmark-v3-logs" in section and "LOG_SHA256" in section
 
 
@@ -370,7 +374,7 @@ def test_v3_notebook_session_a_evaluates_zero_shot_and_collects_both_logs_before
         joined.index("evaluate.py --ckpt runs/sft_06b --run-name v3_06b_zeroshot --device cuda"),
         joined.index("collect_log.py --ckpt runs/sft_06b --seed {k} --device cuda"),
         joined.index("run_name={SMOKE_RUN} {NOISY_FLAG} --limit-steps {SMOKE_STEPS}"),
-        joined.index("--log runs/v3_log_s{log}/log.jsonl --n {n} --init runs/sft_06b arm={arm} seed={seed} {noisy_flag} --max-hours {MAX_HOURS}"),
+        joined.index("--log runs/{log_dir}/log.jsonl --n {n} --init runs/sft_06b arm={arm} seed={seed} {noisy_flag} --max-hours {MAX_HOURS}"),
         joined.index("!python scripts/evaluate.py --ckpt runs/{run_name} --device cuda"),
     ]
     assert order == sorted(order)
@@ -386,9 +390,9 @@ def test_v3_notebook_sessions_b_and_c_check_the_log_sha256_and_every_run_is_copi
     assert 're.fullmatch(r"[0-9a-f]{64}", LOG_SHA256.get(k, ""))' in clone
     other = logs[logs.index("else:") :]
     assert "file_sha256(target / \"log.jsonl\")" in other and "digest != recorded or digest != LOG_SHA256[k]" in other and "raise RuntimeError" in other
-    loop = next(c for c in cells if "for (arm, n, seed, noisy, log), run_name in zip(PLAN, RUNS):" in c)
-    assert 'if not TRAINED.get("smoke"):' in loop and loop.index('if not TRAINED.get("smoke"):') < loop.index("for (arm, n, seed, noisy, log)")
-    body = loop[loop.index("for (arm, n, seed, noisy, log)") :]
+    loop = next(c for c in cells if "for (arm, n, seed, noisy, log, flip), run_name in zip(PLAN, RUNS):" in c)
+    assert 'if not TRAINED.get("smoke"):' in loop and loop.index('if not TRAINED.get("smoke"):') < loop.index("for (arm, n, seed, noisy, log, flip)")
+    body = loop[loop.index("for (arm, n, seed, noisy, log, flip)") :]
     steps = [
         "!python scripts/train_rlcd.py",
         "training_exit = _exit_code",
@@ -398,11 +402,12 @@ def test_v3_notebook_sessions_b_and_c_check_the_log_sha256_and_every_run_is_copi
         "!python scripts/evaluate.py --ckpt runs/{run_name}",
         'check_exit(f"evaluate.py for {run_name}", _exit_code)',
         "copy_run(run_name)\n",
-        "DONE.append(run_summary(run_name, log, summary, run_started))",
+        "DONE.append(run_summary(run_name, log, flip, summary, run_started))",
     ]
     positions = [body.index(step) for step in steps]
     assert positions == sorted(positions)
-    assert 'metrics["v3"]["log_sha256"] == summary["log_sha256"] == LOG_SHA256[log]' in loop and "RUN DONE" in loop
+    assert "expected = LOG_SHA256[log] if flip is None else FLIP_LOG_SHA256[flip]" in loop
+    assert 'metrics["v3"]["log_sha256"] == summary["log_sha256"] == expected' in loop and "RUN DONE" in loop
     assert joined_count(cells, "require_training(") == 2
 
 
@@ -464,7 +469,7 @@ def test_v3_notebook_noise_flags_parse_to_the_modes_train_rlcd_uses():
     spec.loader.exec_module(rl)
     clone = code_cells("kaggle_v3.ipynb")[1]
     namespace = {}
-    exec(clone[clone.index("NOISE_FLAG = ") : clone.index("EVAL_LAST = ")], namespace)
+    exec(clone[clone.index("NOISE_FLAG = ") : clone.index("EVAL_LAST_ARMS = ")], namespace)
     expected = {False: None, True: "fixed", "soft": "soft"}
     for noisy, flag in namespace["NOISE_FLAG"].items():
         args = rl.parse_args(["--config", "x", "--log", "l", "--n", "5", *flag.split()])
@@ -475,12 +480,12 @@ def test_v3_notebook_noise_flags_parse_to_the_modes_train_rlcd_uses():
 
 def test_v3_notebook_session_e_evaluates_adapter_last_after_the_selected_adapter():
     cells = code_cells("kaggle_v3.ipynb")
-    assert 'EVAL_LAST = SESSION == "E"' in cells[1] and '*([f"{r}_last" for r in RUNS] if EVAL_LAST else [])' in cells[1]
-    loop = next(c for c in cells if "for (arm, n, seed, noisy, log), run_name in zip(PLAN, RUNS):" in c)
+    assert 'EVAL_LAST_ARMS = {"E": {"direct_brier"}, "K": {"direct_brier"}}.get(SESSION, set())' in cells[1] and "*LAST_RUNS" in cells[1]
+    loop = next(c for c in cells if "for (arm, n, seed, noisy, log, flip), run_name in zip(PLAN, RUNS):" in c)
     steps = [
         "!python scripts/evaluate.py --ckpt runs/{run_name} --device cuda",
-        "DONE.append(run_summary(run_name, log, summary, run_started))",
-        "if EVAL_LAST:",
+        "DONE.append(run_summary(run_name, log, flip, summary, run_started))",
+        "if arm in EVAL_LAST_ARMS:",
         "!python scripts/prepare_adapter_run.py --adapter runs/{run_name}/adapter_last --source-run runs/{run_name} --adapter-dir adapter_last --name {last_name}",
         "!python scripts/evaluate.py --ckpt runs/{last_name} --device cuda",
         "copy_run(last_name)",
@@ -489,4 +494,22 @@ def test_v3_notebook_session_e_evaluates_adapter_last_after_the_selected_adapter
     ]
     positions = [loop.index(step) for step in steps]
     assert positions == sorted(positions)
+
+
+def test_v3_session_k_derives_the_sibling_logs_it_expects_and_evaluates_direct_brier_last():
+    plan, log_dir_of, flip_sha, last_arms = v3_plan(("PLAN", "log_dir_of", "FLIP_LOG_SHA256", "EVAL_LAST_ARMS"))("K")
+    assert sorted(flip_sha) == [0.1, 0.3] and last_arms == {"direct_brier"}
+    assert {log_dir_of(log, flip) for *_, log, flip in plan} == {"v3_log_s0_flip0.1", "v3_log_s0_flip0.3"}
+    assert v3_plan(("EVAL_LAST_ARMS",))("E") == {"direct_brier"} and v3_plan(("EVAL_LAST_ARMS",))("C") == set()
+    joined = "\n".join(code_cells("kaggle_v3.ipynb"))
+    assert "scripts/derive_flip_log.py --log-dir runs/v3_log_s{k} --flip-rate {flip}" in joined and "FLIP LOG OK" in joined
+    source = REPO / "runs" / "v3_log_s0"
+    if not (source / "log.jsonl").is_file():
+        pytest.skip("the seed 0 log is gitignored and not present here; FLIP_LOG_SHA256 is checked where it is")
+    from jevmark.feedback import log_bytes, read_log, reflip
+
+    log = read_log(source / "log.jsonl")
+    assert hashlib.sha256(log_bytes(log)).hexdigest() == json.loads((source / "metrics.json").read_text())["log_sha256"]
+    for flip, digest in flip_sha.items():
+        assert hashlib.sha256(log_bytes(reflip(log, 0, flip))).hexdigest() == digest
 

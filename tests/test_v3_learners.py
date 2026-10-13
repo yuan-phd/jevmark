@@ -487,3 +487,50 @@ def test_fixed_noise_is_allowed_for_the_off_policy_arms_and_soft_noise_is_not(se
         assert (tmp_path / f"v3_06b_{arm}_n{N}_s0_noisy" / "config.yaml").is_file()
         with pytest.raises(SystemExit, match="soft"):
             train(setup, tmp_path, f"arm={arm}", "--noise", "soft")
+
+
+# Sibling logs at other flip rates (the noise-rate sweep)
+
+
+def test_run_names_carry_a_flip_rate_other_than_0_2():
+    base = {"size": "06b", "arm": "direct_brier", "seed": 0}
+    assert rl.log_run_name(base, 5000, "fixed", 0, 0.1) == "v3_06b_direct_brier_n5000_s0_noisy_flip0.1"
+    assert rl.log_run_name(base, 5000, "fixed", 0, 0.3) == "v3_06b_direct_brier_n5000_s0_noisy_flip0.3"
+    assert rl.log_run_name(base, 5000, "soft", 1, 0.3) == "v3_06b_direct_brier_n5000_s0_noisy_soft_flip0.3_log1"
+    assert rl.log_run_name(base, 5000, "fixed", 0, 0.2) == rl.log_run_name(base, 5000, "fixed", 0) == "v3_06b_direct_brier_n5000_s0_noisy"
+    assert rl.log_run_name(base, 5000, None, 0, 0.1) == "v3_06b_direct_brier_n5000_s0"
+
+
+def test_a_sibling_log_trains_on_its_own_flips_and_refuses_a_clean_run(setup, tmp_path, monkeypatch):
+    derive = load_script("derive_flip_log")
+    logs = tmp_path / "logs"
+    source = logs / "v3_log_s0"
+    source.mkdir(parents=True)
+    digest = write_log(source / "log.jsonl", setup.log)
+    (source / "metrics.json").write_text(json.dumps({"sampling": {"seed": 0, "flip_rate": 0.2}, "data_files_sha256": {"v3_banking77_train.jsonl": setup.data_sha}, "log_sha256": digest}))
+    assert derive.main(["--log-dir", str(source), "--flip-rate", "0.3"]) == 0
+    sibling = logs / "v3_log_s0_flip0.3" / "log.jsonl"
+    flips = [i.flipped_outcome for i in rl.read_log(sibling)]
+    assert flips != [i.flipped_outcome for i in setup.log]  # some interaction flips at 0.3 that did not at 0.2
+    seen = []
+    original = rl.log_examples
+
+    def spy(interactions, *args, **kwargs):
+        examples = original(interactions, *args, **kwargs)
+        seen.append(([i.index for i in interactions], [e.outcome for e in examples]))
+        return examples
+
+    monkeypatch.setattr(rl, "log_examples", spy)
+    runs = tmp_path / "runs"
+    train(setup, runs, "arm=direct_brier", "--noisy", "--limit-steps", "2", log_path=sibling)
+    run = runs / f"v3_06b_direct_brier_n{N}_s0_noisy_flip0.3"
+    config = yaml.safe_load((run / "config.yaml").read_text())
+    summary = json.loads((run / "train_summary.json").read_text())
+    assert config["v3"]["flip_rate"] == 0.3 and summary["flip_rate"] == 0.3 and summary["log_sha256"] == file_sha256(sibling)
+    sibling_flips = {i.index: i.flipped_outcome for i in rl.read_log(sibling)}
+    assert len(seen) == 2  # the training prefix, then the selection interactions
+    for indices, outcomes in seen:
+        assert outcomes == [sibling_flips[k] for k in indices]  # trained and selected on the sibling's flips
+    with pytest.raises(SystemExit, match="differs from v3_log_s0 only in its flipped outcomes"):
+        train(setup, runs, "arm=direct_brier", "--limit-steps", "1", log_path=sibling)
+

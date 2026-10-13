@@ -16,7 +16,10 @@ probability of the logged action.
 
 Randomness: actions come from random.Random(f"v3_log:{seed}") and flips from
 random.Random(f"v3_flip:{seed}"), one draw of each per interaction, so the flips
-do not depend on which actions were drawn.
+do not depend on which actions were drawn. An interaction flips when its draw u is
+below the rate, so redrawing the flips of a log at another rate from the same
+stream (reflip) gives nested flips: every interaction flipped at a lower rate is
+also flipped at a higher one, and a comparison across rates is paired.
 """
 
 from __future__ import annotations
@@ -26,7 +29,7 @@ import json
 import math
 import random
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -114,9 +117,23 @@ def interactions(
     return out
 
 
+def reflip(log: Sequence[Interaction], seed: int, rate: float) -> list[Interaction]:
+    """The log with every flipped outcome redrawn at rate from the log's own flip stream, in log order; nothing else changes.
+
+    At the rate the log was drawn with, this reproduces its flipped outcomes exactly.
+    """
+    flip = FlipChannel(seed, rate)
+    return [replace(i, flipped_outcome=flip(i.outcome)) for i in log]
+
+
+def log_bytes(log: Sequence[Interaction]) -> bytes:
+    """The log as written by write_log: one JSON object per line, UTF-8."""
+    return "".join(json.dumps(i.to_dict(), ensure_ascii=False) + "\n" for i in log).encode("utf-8")
+
+
 def write_log(path: Path, log: Sequence[Interaction]) -> str:
     """Write the log as JSONL and return its sha256."""
-    raw = "".join(json.dumps(i.to_dict(), ensure_ascii=False) + "\n" for i in log).encode("utf-8")
+    raw = log_bytes(log)
     path.write_bytes(raw)
     return hashlib.sha256(raw).hexdigest()
 

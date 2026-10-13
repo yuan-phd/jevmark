@@ -7,6 +7,7 @@ import math
 import random
 import sys
 from collections import Counter
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -23,8 +24,10 @@ from jevmark.feedback import (
     bernoulli_log_likelihood,
     file_sha256,
     interactions,
+    log_bytes,
     prefix,
     read_log,
+    reflip,
     sample_action,
     write_log,
 )
@@ -231,3 +234,76 @@ def test_collect_log_refuses_a_data_file_with_another_hash(tiny_logging_policy, 
     wrong.write_text(yaml.safe_dump({"files": {"train": "v3_banking77_train.jsonl"}, "sha256": {"v3_banking77_train.jsonl": "0" * 64}}))
     argv = ["--ckpt", str(run_dir), "--data-dir", str(data_dir), "--runs-dir", str(tmp_path), "--device", "cpu", "--v3-config", str(wrong)]
     assert collect.main(argv) == 1 and not (tmp_path / "v3_log_s0").exists()
+
+
+# Sibling logs at other flip rates: feedback.reflip and scripts/derive_flip_log.py (the noise-rate sweep)
+
+
+def synthetic_log(n=3000, seed=0, rate=0.2):
+    rng = random.Random(seed)
+    data = [(f"r{i}", "label", ["x", "y", "z"], [0.6, 0.3, 0.1], rng.choice("xyz")) for i in range(n)]
+    return interactions(data, seed=seed, model="m", commit="c", flip_rate=rate)
+
+
+def test_reflip_at_the_logs_rate_reproduces_it_and_other_rates_nest():
+    log = synthetic_log()
+    assert reflip(log, 0, 0.2) == log
+    flipped = {rate: [i.outcome != i.flipped_outcome for i in reflip(log, 0, rate)] for rate in (0.1, 0.2, 0.3)}
+    assert all(not low or high for low, high in zip(flipped[0.1], flipped[0.2]))
+    assert all(not low or high for low, high in zip(flipped[0.2], flipped[0.3]))
+    for rate, flips in flipped.items():
+        assert abs(sum(flips) / len(flips) - rate) < 4 * math.sqrt(rate * (1 - rate) / len(flips))
+    other = reflip(log, 0, 0.1)
+    assert [(i.action, i.outcome, i.propensity, i.probs) for i in other] == [(i.action, i.outcome, i.propensity, i.probs) for i in log]
+    assert reflip(log, 1, 0.2) != log  # another seed's stream gives other flips
+    assert synthetic_log(rate=0.1) == other  # what collect_log.py would have written at that rate
+
+
+def write_source(tmp_path, log, rate=0.2):
+    source = tmp_path / "v3_log_s0"
+    source.mkdir(parents=True)
+    digest = write_log(source / "log.jsonl", log)
+    (source / "metrics.json").write_text(json.dumps({"run_name": "v3_log_s0", "decision": 56, "sampling": {"seed": 0, "flip_rate": rate},
+                                                     "data_files_sha256": {"v3_banking77_train.jsonl": "d" * 64}, "n": len(log), "log_sha256": digest}))
+    return source
+
+
+def test_derive_flip_log_writes_the_sibling_and_its_metrics(tmp_path):
+    derive = load_script("derive_flip_log")
+    log = synthetic_log()
+    source = write_source(tmp_path, log)
+    before = (source / "log.jsonl").read_bytes()
+    assert derive.main(["--log-dir", str(source), "--flip-rate", "0.1"]) == 0
+    out = tmp_path / "v3_log_s0_flip0.1"
+    assert (out / "log.jsonl").read_bytes() == log_bytes(reflip(log, 0, 0.1))
+    assert (source / "log.jsonl").read_bytes() == before
+    m = json.loads((out / "metrics.json").read_text())
+    assert m["log_sha256"] == file_sha256(out / "log.jsonl") and m["run_name"] == "v3_log_s0_flip0.1"
+    assert m["sampling"] == {"seed": 0, "flip_rate": 0.1} and m["data_files_sha256"] == {"v3_banking77_train.jsonl": "d" * 64}
+    assert m["derived_from"]["run"] == "v3_log_s0" and m["derived_from"]["log_sha256"] == file_sha256(source / "log.jsonl") and m["derived_from"]["flip_rate"] == 0.2
+    derived = read_log(out / "log.jsonl")
+    assert m["flip_share"] == sum(i.outcome != i.flipped_outcome for i in derived) / len(derived)
+    assert m["flipped_outcome_rate"] == sum(i.flipped_outcome for i in derived) / len(derived)
+    assert "decision" not in m
+
+
+def test_derive_flip_log_refuses_what_it_cannot_derive(tmp_path):
+    derive = load_script("derive_flip_log")
+    log = synthetic_log(n=200)
+    source = write_source(tmp_path / "a", log)
+    for rate, match in (("0.2", "same log"), ("0.5", "flip-rate"), ("0", "flip-rate")):
+        with pytest.raises(SystemExit, match=match):
+            derive.main(["--log-dir", str(source), "--flip-rate", rate])
+    assert derive.main(["--log-dir", str(source), "--flip-rate", "0.3"]) == 0
+    with pytest.raises(SystemExit, match="never overwritten"):
+        derive.main(["--log-dir", str(source), "--flip-rate", "0.3"])
+    with pytest.raises(SystemExit, match="itself derived"):
+        derive.main(["--log-dir", str(tmp_path / "a" / "v3_log_s0_flip0.3"), "--flip-rate", "0.1"])
+    tampered = write_source(tmp_path / "b", [replace(i, flipped_outcome=1 - i.flipped_outcome) if i.index == 5 else i for i in log])
+    with pytest.raises(SystemExit, match="does not reproduce"):
+        derive.main(["--log-dir", str(tampered), "--flip-rate", "0.1"])
+    edited = write_source(tmp_path / "c", log)
+    (edited / "log.jsonl").write_bytes((edited / "log.jsonl").read_bytes() + b"\n")
+    with pytest.raises(SystemExit, match="records"):
+        derive.main(["--log-dir", str(edited), "--flip-rate", "0.1"])
+
