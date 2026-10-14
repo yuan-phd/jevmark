@@ -251,6 +251,8 @@ Every run's `metrics.json`, config and training log are committed under `runs/`.
 | v3 | temperature on direct_brier | `uv run python scripts/evaluate.py --ckpt runs/<run> --log-prefix runs/v3_log_s0/log.jsonl --n <N> --no-probes --device cpu` (with the adapter and base weights; 2 to 18 minutes per run on a laptop CPU), then `uv run python scripts/calibrate.py runs/<run> --fit-log runs/v3_log_s0/log.jsonl --n <N> --fit-probs runs/<run>_prefix` | `runs/<run>_prefix/`, `runs/<run>_temp/` |
 | v3 | the noise inversion | `uv run python scripts/invert_noisy.py runs/v3_06b_<arm>_n5000_s0_noisy --clean runs/v3_06b_<arm>_n5000_s0` | `runs/v3_06b_<arm>_n5000_s0_noisy_inverted/` |
 | v3 | every v3 table | `uv run python scripts/compare_v3.py` | `runs/v3_stage_06b/` |
+| v3 | the flip-rate sweep: sibling logs, inversions, table | `uv run python scripts/derive_flip_log.py --log-dir runs/v3_log_s0 --flip-rate <f>` for f 0.1 and 0.3 (needs the seed 0 `log.jsonl`); `uv run python scripts/invert_noisy.py runs/v3_06b_<arm>_n5000_s0_noisy_flip<f> --flip <f> --clean runs/v3_06b_<arm>_n5000_s0`; then `uv run python scripts/compare_noise.py` | `runs/v3_log_s0_flip<f>/`, `runs/<run>_inverted/`, `runs/v3_noise_sweep_06b/` |
+| v3 | the 1.7B tables | `uv run python scripts/compare_v3.py --size 17b`; `uv run python scripts/paired_deltas.py --pair runs/v3_17b_<x> runs/v3_06b_<x> ...` for zeroshot and the three learners at N 5000 `--out runs/paired_v3_17b_vs_06b/metrics.json` | `runs/v3_stage_17b/`, `runs/paired_v3_17b_vs_06b/` |
 | v3 | the label-noise audit summary | `uv run python scripts/summarise_label_audit.py` | `docs/audit/summary.json` |
 | all | every report figure | `uv run python scripts/make_figures.py` (committed metrics files only) | `docs/figures/` |
 

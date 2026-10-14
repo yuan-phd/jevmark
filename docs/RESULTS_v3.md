@@ -1,6 +1,6 @@
 # jevmark v3 results: adaptation from deployment feedback
 
-Every number cites the file it comes from, as `path:key`. Unless another file is named, numbers are from `runs/v3_stage_06b/metrics.json` (written by `scripts/compare_v3.py` at commit 83454a4, not dirty, regenerated at commit 9353145 with full_sft's seeds 1 and 2 added and at commit cd1217c with direct_brier plus a temperature added; every earlier value is unchanged), shortened to `S:key`. The v1 report (`docs/RESULTS_v1.md`, frozen, decision 49) and the v2 report (`docs/RESULTS_v2.md`) are the background this starts from.
+Every number cites the file it comes from, as `path:key`. Unless another file is named, numbers are from `runs/v3_stage_06b/metrics.json` (written by `scripts/compare_v3.py` at commit 83454a4, not dirty, regenerated at commit 9353145 with full_sft's seeds 1 and 2 added, at commit cd1217c with direct_brier plus a temperature added, and at commit 25d68e8 with the off-policy runs and direct_log's seeds of section 11 added; every earlier value is unchanged), shortened to `S:key`. Three more files are shortened the same way: `N:` for `runs/v3_noise_sweep_06b/metrics.json` (`scripts/compare_noise.py` at commit 36e8ee1, not dirty; the flip-rate sweep of section 4), `L:` for `runs/v3_stage_17b/metrics.json` (`scripts/compare_v3.py --size 17b` at commit 25d68e8, not dirty; section 12) and `P:` for `runs/paired_v3_17b_vs_06b/metrics.json` (`scripts/paired_deltas.py`, the same arm at both sizes; section 12). The v1 report (`docs/RESULTS_v1.md`, frozen, decision 49) and the v2 report (`docs/RESULTS_v2.md`) are the background this starts from.
 
 ## 1. Setup
 
@@ -109,7 +109,7 @@ The training-seed mean against the other learners, each draw averaging the three
 
 ## 4. Noisy feedback: the channel, the residual and the collapse
 
-The noisy condition trains on outcomes flipped with probability 0.2, for direct_brier and positive_sft at N 5000 (`S:noisy`). Both runs read the flipped column for training and selection: 2886 positives in the first 4500 interactions and a selection outcome rate of .638, against 3342 and .750 clean (`runs/v3_06b_positive_sft_n5000_s0_noisy/train_summary.json:n_used`, `:init_select`).
+The noisy condition trains on outcomes flipped with probability 0.2, for direct_brier and positive_sft at N 5000 (`S:noisy`); the same comparison at flip rates 0.1 and 0.3 follows under **Other flip rates**. Both runs read the flipped column for training and selection: 2886 positives in the first 4500 interactions and a selection outcome rate of .638, against 3342 and .750 clean (`runs/v3_06b_positive_sft_n5000_s0_noisy/train_summary.json:n_used`, `:init_select`).
 
 | learner | clean accuracy | noisy accuracy | noisy minus clean | clean ECE | noisy ECE | noisy minus clean |
 |---|---|---|---|---|---|---|
@@ -118,9 +118,45 @@ The noisy condition trains on outcomes flipped with probability 0.2, for direct_
 
 direct_brier's change minus positive_sft's change (`S:noisy.direct_brier_change_minus_positive_sft_change`): accuracy +.017 [+.007, +.028], ECE +.167 [+.151, +.182], Brier +.013 [+.000, +.025], NLL +.277 [+.233, +.320]. In absolute terms noisy direct_brier is still the better of the two: accuracy .907 against .866, Brier .174 against .219, NLL .460 against .573 (`S:noisy.<arm>.noisy`).
 
-**The channel.** A proper score is minimised by the probability of the variable it is scored against. direct_brier scores p(action) against the revealed outcome, so it learns P(revealed outcome = 1 | action). Under a symmetric flip at rate f that is (1 - f) for a correct action and f for a wrong one, so p = f + (1 - 2f) P(correct): the model is calibrated to the channel, not to correctness, and its confidence lives on [.2, .8]. That is why its stored ECE against correctness is .164 and almost no answer reaches a coverage threshold of .80 (section 6). On average the selected noisy run (step 250) sits exactly on the channel line: mean top-1 .743 against .2 + .6 x .907 = .744 (`runs/v3_06b_direct_brier_n5000_s0_noisy_inverted/metrics.json:stored_channel.mean_confidence`, `:stored_channel.mean_channel_outcome`). A known flip rate is invertible, p_correct = (p - f) / (1 - 2f).
+**The channel.** A proper score is minimised by the probability of the variable it is scored against. direct_brier scores p(action) against the revealed outcome, so it learns P(revealed outcome = 1 | action). Under a symmetric flip at rate f that is (1 - f) for a correct action and f for a wrong one, so p = f + (1 - 2f) P(correct): the model is calibrated to the channel, not to correctness, and its confidence lives on [.2, .8]. That is why its stored ECE against correctness is .164 and almost no answer reaches a coverage threshold of .80 (section 6). On average the selected noisy run (step 250) sits near the channel line: mean top-1 .743 against .2 + .6 x .907 = .744 (`runs/v3_06b_direct_brier_n5000_s0_noisy_inverted/metrics.json:stored_channel.mean_confidence`, `:stored_channel.mean_channel_outcome`). Across the three rates of the sweep below it stays near the line, within .03, above it at 0.1 and 0.3, so the close match at 0.2 is partly chance. A known flip rate is invertible, p_correct = (p - f) / (1 - 2f).
 
 **Two scales.** Calibration is compared here on the channel scale: ECE of the stored top-1 probability against the channel outcome of the top option, .2 + .6 x correct, with the same 15 bins (`scripts/invert_noisy.py`, decision 59). Its reference is the mapped-clean run: the clean run's top-1 passed through .2 + .6 p and scored the same way, what a channel-calibrated copy of the clean run would score, .014 [.011, .019] (`:clean_reference.mapped_channel`). The linear map shrinks every calibration gap by 1 - 2f = .6, so comparing a noisy run with the clean run's own .026 would flatter it. The per-option inversion (clip to [0, 1], renormalise) is kept as the distribution a caller would receive, but it overshoots: when every non-top option is below .2 they all clip to 0 and the top becomes 1 (inverted mean top-1 .972, gold clipped to 0 on 184 questions, `:inverted`, `:questions_gold_clipped_to_zero`). An earlier reading of this section (decision 57) took the inverted top-1 of .861 against .907 accuracy as underconfidence and attributed the residual partly to under-convergence; the first came from clipping at 1 and the second is refuted below (decision 59).
+
+**Other flip rates.** The flips are redrawn at 0.1 and 0.3 from the same seeded stream as the 0.2 log, one draw per interaction, so the three logs are nested: an interaction flipped at 0.1 is flipped at 0.2 and 0.3 too, and the rates are paired comparisons (`scripts/derive_flip_log.py`; `runs/v3_log_s0_flip{0.1,0.3}/metrics.json`, flip shares .105 and .298 over the whole log; redrawing at 0.2 reproduces the seed 0 log byte for byte). direct_brier and positive_sft trained at N 5000, seed 0, on each sibling log at commit 36e8ee1, not dirty, fp16 without fallback, and direct_brier's step-1407 adapter was evaluated as well. Everything is scored as at 0.2: the channel line is f + (1 - 2f) x accuracy, channel-scale ECE scores the stored top-1 against f + (1 - 2f) x correct, the reference is the clean run of the same learner mapped through f + (1 - 2f) p, and the inverted top-1 is (top-1 - f) / (1 - 2f), clipped (`N:by_rate.<f>.<arm>`, `N:clean.<arm>`).
+
+direct_brier:
+
+| f | accuracy | minus clean | stored ECE | channel-scale ECE | reference | inverted top-1 ECE | mean top-1 | channel line | step 1407 accuracy | criterion growth after the best step |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 0 (clean) | .929 | | .026 | | | | | | .933 | .059 |
+| 0.1 | .923 [.914, .932] | -.006 [-.013, +.001] | .059 | .038 [.035, .046] | .021 | .020 [.017, .030] | .870 | .838 | .892 | .114 |
+| 0.2 | .907 [.897, .916] | -.022 [-.030, -.014] | .164 | .058 [.052, .063] | .014 | .051 [.042, .059] | .743 | .744 | .813 | .284 |
+| 0.3 | .888 [.877, .898] | -.041 [-.050, -.032] | .214 | .069 [.065, .073] | .009 | .068 [.058, .078] | .674 | .655 | .734 | .757 |
+
+positive_sft:
+
+| f | accuracy | minus clean | stored ECE | channel-scale ECE | reference | inverted top-1 ECE | mean top-1 | channel line | criterion growth after the best step |
+|---|---|---|---|---|---|---|---|---|---|
+| 0 (clean) | .905 | | .078 | | | | | | .268 |
+| 0.1 | .890 [.880, .901] | -.015 [-.021, -.008] | .046 | .124 [.118, .133] | .063 | .071 [.062, .082] | .935 | .812 | 1.244 |
+| 0.2 | .866 [.855, .878] | -.039 [-.048, -.031] | .050 | .196 [.190, .203] | .047 | .105 [.095, .117] | .915 | .720 | 2.216 |
+| 0.3 | .867 [.856, .879] | -.038 [-.046, -.030] | .043 | .251 [.247, .256] | .031 | .097 [.087, .109] | .896 | .647 | 2.916 |
+
+Sources: accuracy and stored ECE `N:by_rate.<f>.<arm>.{accuracy,ece}`; minus clean `.minus_clean`; channel-scale ECE, reference, mean top-1 and channel line `.channel.channel_scale`; inverted top-1 ECE `.channel.inverted_top1_ece`; step 1407 `.last.accuracy`; criterion growth `.selection.growth`, the excess of the selection criterion over its floor -H(f) at step 1407 minus the same at the selected step (`N:clean.<arm>.selection.growth` for the clean rows). Selected steps: direct_brier 300, 450, 250, 250 and positive_sft 200, 100, 250, 100 for clean, 0.1, 0.2, 0.3 (`.selection.best_step`).
+
+direct_brier's accuracy loss from clean minus positive_sft's, positive when direct_brier loses less (`N:by_rate.<f>.direct_brier_loss_minus_positive_sft_loss.accuracy`): +.009 [+.000, +.018] at 0.1, +.017 [+.007, +.028] at 0.2, -.003 [-.014, +.007] at 0.3.
+
+The predictions for the sweep, stated before it ran:
+1. *direct_brier sits on the channel line at every f.* Near it, not on it: mean top-1 minus the line is +.031, -.001 and +.019 (`.channel.channel_scale.mean_top1_minus_channel_line`). At 0.1 and 0.3 the selected adapter is more confident than the channel, and its channel-scale ECE exceeds the reference by .017, .044 and .060 as f grows.
+2. *Its accuracy loss grows with f but stays below positive_sft's at every f.* The loss grows: -.006 (interval including 0), -.022, -.041. It stays below positive_sft's at 0.1 (interval reaching 0) and 0.2, and fails at 0.3, where the two losses are level (-.041 against -.038). direct_brier is still the more accurate learner at every rate (.923 against .890, .907 against .866, .888 against .867, from the stored accuracies), because it starts 2.4 points higher, but at 0.3 its stored Brier and NLL are worse than positive_sft's (.232 against .205, .577 against .502; `.brier`, `.nll`). One training seed at each rate.
+3. *The collapse at step 1407 grows with f.* Held: the step-1407 adapter is -.031 [-.039, -.023], -.094 [-.106, -.083] and -.154 [-.168, -.139] below the selected one (`.last.minus_selected.accuracy`), against +.004 for the clean run, and the criterion's growth after the best step is .114, .284 and .757. At 0.3 the step-1407 adapter (.734) is 12 points below zero-shot (.851, `N:zero_shot.accuracy`); every selected adapter is above zero-shot.
+4. *At 0.3 the inversion's amplification, 1 / (1 - 2f) = 2.5 (`N:by_rate.0.3.amplification`), makes the inverted ECE worse than at 0.2 even with similar channel-scale ECE.* Held, with overlapping intervals: inverted top-1 ECE .068 [.058, .078] against .051 [.042, .059], channel-scale ECE .069 against .058.
+
+- **At 0.1 the noise costs direct_brier almost nothing:** -.006 in accuracy with an interval including 0, and an inverted top-1 ECE of .020 [.017, .030], level with the clean run's stored .026.
+- **positive_sft is no worse at 0.3 than at 0.2** (.867 against .866). It selected step 100 at 0.3 against 250 at 0.2, stopping closer to its start, and its criterion degrades after the best step four to eleven times as much as direct_brier's (1.244, 2.216, 2.916 against .114, .284, .757); early stopping protects it, not its objective.
+- **positive_sft's stored ECE improves under noise** (.043 to .050 against .078 clean): the flipped positives include wrong actions, which soften its overconfidence. It is not calibrated to the channel: its mean top-1 is .12 to .25 above the line.
+- **Noisier targets move the model less on the old domains:** direct_brier's in-domain accuracy minus zero-shot is -.026, -.014 and -.010 at 0.1, 0.2 and 0.3, against -.027 clean (`runs/v3_06b_direct_brier_n5000_s0_noisy{_flip0.1,,_flip0.3}/metrics.json:splits.test_indomain.overall.accuracy` minus zero-shot's .956, point differences).
+- **Coverage follows the channel:** the stored direct_brier probabilities keep .509 of answers at .80 at 0.1 and .002 at 0.3; inverted, .883 at .95 (accuracy of those kept .967) at 0.1 and .922 (.915) at 0.3 (`runs/v3_06b_direct_brier_n5000_s0_noisy_flip<f>_inverted/metrics.json:stored.coverage`, `:inverted.coverage`). The inversion clips gold to 0 on 124 and 251 questions (`:questions_gold_clipped_to_zero`), so the inverted NLL (1.2 and 2.3) is not a usable number.
 
 **Two diagnostics** (decision 59). V-a evaluates the clean run's final adapter (step 1407) as a control for the fixed-noise run's final adapter. V-b trains direct_brier on the expected flipped outcome, .8 for a correct logged action and .2 otherwise (`--noise soft`), the infinite-draw limit: it needs the clean outcome, an oracle input, so it is a diagnostic and not a learner. It selects on the stored flipped outcomes exactly as the fixed-noise run does, and its configuration is otherwise identical (run at commit 3d260cd; the log-mode code is otherwise unchanged from b5913ef). Six adapters of direct_brier at N 5000, seed 0, seed 0 log, on v3_banking77_test_full:
 
@@ -172,7 +208,7 @@ The inversion diagnostic for both noisy learners, on the stored and the inverted
 
 Sources: `runs/v3_06b_<arm>_n5000_s0_noisy_inverted/metrics.json:{stored,inverted,inverted_top1_only,clean_reference}`. The same inversion makes positive_sft worse (.050 to .121), as it should: positive_sft models no outcome rate, so it has no channel calibration to undo, and its stored ECE improved under noise only because false positives softened it.
 
-Under feedback flipped at a known rate, RLCD's proper score does what it should: it calibrates to the channel it is shown, and inverting the rate brings it back to correctness. What is left over in a real log comes from having only one noisy draw per interaction, and the same single draw is what the learner memorises when it passes over the log too often, falling below zero-shot by step 1407. Selecting the checkpoint on the logged feedback alone stopped it in time, so the method is usable under noise when the flip rate is known and early stopping is kept; neither holds by default in a real deployment, where the noise rate is unknown and the channel compression would apply to every answer the model gives.
+Under feedback flipped at a known rate, RLCD's proper score does what it should: it calibrates to the channel it is shown, and inverting the rate brings it back to correctness. What is left over in a real log comes from having only one noisy draw per interaction, and the same single draw is what the learner memorises when it passes over the log too often, falling below zero-shot by step 1407. Selecting the checkpoint on the logged feedback alone stopped it in time, so the method is usable under noise when the flip rate is known and early stopping is kept; neither holds by default in a real deployment, where the noise rate is unknown and the channel compression would apply to every answer the model gives. Over flip rates 0.1, 0.2 and 0.3 the picture is the same, with the losses and the collapse growing with f; RLCD's smaller accuracy loss than positive-only SFT holds at 0.1 and 0.2 and is gone at 0.3, on one seed per rate.
 
 ## 5. Forgetting
 
@@ -260,14 +296,16 @@ The predictions as stated before the runs, each with its verdict.
 1. **"RLCD beats positive-only SFT in accuracy at every N, because it uses negative feedback."** Not held at every N: a tie at N 500, +.002 [-.006, +.009]; held from N 2000, +.027 [+.019, +.035] at N 2000 and +.024 [+.016, +.031] at N 5000, +.026 [+.019, +.033] for the three-seed mean (section 2, section 3). The design stated before the runs that if prediction 1 failed, v2 and v3 together are a complete negative result about RLCD as reconstructed. It fails only at the smallest N and by a tie, and holds clearly from N 2000, so v3 is not that complete negative result: with 1800 or more logged interactions, negative feedback adds 2.4 to 2.7 points over discarding it.
 2. **"RLCD's ECE is lower than positive-only SFT's, which only ever sees confirmed answers and should be overconfident."** Held at every N: -.060 [-.066, -.048], -.060 [-.067, -.050] and -.052 [-.060, -.043], with Brier and NLL agreeing; positive_sft is the worst-calibrated learner at every N, and its coverage at .95 keeps 90 percent of answers at 93 to 94 percent accuracy (sections 2 and 6).
 3. **"RLCD approaches full-label SFT as N grows; the gap at N 5000 is the price of not having labels."** Failed: the accuracy gap is -.017 [-.023, -.011], -.007 [-.014, +.000] and -.018 [-.025, -.011] at N 500, 2000 and 5000; it does not shrink with N. With both learners on three training seeds, the price of not having labels at N 5000 is 1.5 points of accuracy, direct_brier's seed mean minus full_sft's, -.015 [-.020, -.010], with ECE level, +.003 [-.001, +.008], and higher Brier and NLL, +.027 [+.020, +.034] and +.082 [+.061, +.101] (section 3); full_sft's seed 0 alone had given -.016, so the verdict does not depend on it.
-4. **"Under noisy feedback, RLCD degrades less than positive-only SFT."** Held for accuracy, failed for calibration. Accuracy: direct_brier loses 2.2 points and positive_sft 3.9, a difference of +.017 [+.007, +.028]. Calibration: direct_brier's ECE rises by .138 while positive_sft's falls by .029, a difference of +.167 [+.151, +.182], with NLL +.277 [+.233, +.320] and Brier +.013 [+.000, +.025]. As stored, the calibration failure is the proper score calibrating to the noisy outcome it was given: the selected run sits on the channel line on average (mean top-1 .743 against .744), and its channel-scale ECE is .058 against a mapped-clean reference of .014. That remainder is single-draw variance in a one-draw log, not a limit of the objective: with the variance removed it falls to .019 to .024 (section 4, decision 59).
+4. **"Under noisy feedback, RLCD degrades less than positive-only SFT."** Held for accuracy, failed for calibration. Accuracy: direct_brier loses 2.2 points and positive_sft 3.9, a difference of +.017 [+.007, +.028]. Calibration: direct_brier's ECE rises by .138 while positive_sft's falls by .029, a difference of +.167 [+.151, +.182], with NLL +.277 [+.233, +.320] and Brier +.013 [+.000, +.025]. As stored, the calibration failure is the proper score calibrating to the noisy outcome it was given: the selected run sits near the channel line on average (mean top-1 .743 against .744; within .03 of it at 0.1 and 0.3), and its channel-scale ECE is .058 against a mapped-clean reference of .014. That remainder is single-draw variance in a one-draw log, not a limit of the objective: with the variance removed it falls to .019 to .024 (section 4, decision 59). At the other rates of section 4 the accuracy half holds at 0.1, +.009 [+.000, +.018], and fails at 0.3, -.003 [-.014, +.007], one seed per rate.
 
 ## 9. Limitations
 
 - **One domain.** Banking77 only, with 10 options and gold always present, so `other` is never right and "never answer other" is free to learn; other domains, other option counts or a gold-absent construction may differ.
 - **One logging policy.** sft_06b at epsilon 0.1, already .836 accurate on the log domain (`runs/v3_log_s0/metrics.json:accuracy`); a weaker or more exploratory policy changes how many negatives there are and which ones.
 - **A simulated feedback channel.** Outcomes come from gold labels, revealed perfectly or flipped symmetrically at a known rate; real deployment feedback is delayed, biased towards some errors and of unknown noise rate, which the inversion needs.
-- **One size.** 0.6B only (decision 56).
+- **Two sizes, one seed at the larger.** 0.6B for everything; 1.7B for the N 5000 comparison of three learners, on one training seed and one log (section 12).
+- **The checkpoint grid.** Checkpoints are every 50 steps. At N 2000 direct_log and ips_log peaked at step 50, the first candidate, so a finer grid could favour the log-score arms there (section 11).
+- **The noise sweep has one seed per rate.** The rates are paired through nested flips, which makes the trends over f firmer than independent draws would, but the learner comparison at a given rate carries training-seed variance (section 4).
 - **positive_sft has one seed.** Its side of every comparison carries no seed variance; direct_brier's and full_sft's three seeds each span .6 points on Banking77 accuracy, which suggests it is small. full_sft was run on three seeds at N 5000 (section 3); at N 500 and 2000 every learner has seed 0 only.
 - **Forgetting varies by seed** (-.027 to -.043 in-domain for direct_brier at N 5000), more than the Banking77 result does, and beta 0 leaves it unconstrained.
 - **Selection on the log's last 0.1 N** chose early steps for every learner; a different selection slice or rule could change the ranking at N 500, where 50 interactions select.
@@ -276,3 +314,140 @@ The predictions as stated before the runs, each with its verdict.
 ## 10. What v3 shows and what it does not
 
 v3 shows that when a deployed model sees only the correctness of its own actions on a new domain, training on that signal with a pathwise Brier loss beats discarding the failures, by 2.4 to 2.7 points of accuracy from 2000 logged interactions and by about .05 to .06 ECE at every N, and that it closes 69 to 91 percent of the accuracy gap between zero-shot and full-label SFT. It does not show that RLCD approaches full labels as feedback grows, since the 1.5-point gap at N 5000 (seed means of both) is no smaller than at N 500, and it does not show calibration robust to noisy feedback, where a proper score calibrates to the channel and needs a known noise rate to be undone. Together with v2, the claim that survives is narrow: RLCD adds value over positive-only SFT when the only feedback is partial, and nowhere else that was tested.
+
+Phase 4 adds three checks (sections 4, 11 and 12), and they leave that claim standing. Importance weighting adds nothing on this log, and a log score in place of the Brier score is a choice within the same pathwise family, with a small lead on Brier and NLL and more in-domain forgetting. At 1.7B the ordering holds and direct_brier comes within .4 points of full-label SFT, with an interval covering 0, on one seed. Under noise, RLCD's smaller accuracy loss than positive-only SFT holds at flip rates 0.1 and 0.2 and is gone at 0.3.
+
+## 11. Off-policy baselines
+
+**Question.** A reader from contextual bandits expects importance weighting and a policy-gradient baseline next to the pathwise Brier objective. Does direct_brier's lead over positive_sft survive them, and does any of them beat direct_brier?
+
+**Arms.** Four more learners on the seed 0 log, with the budget, selection rule and starting adapter of section 1, beta 0, and q the logged propensity (`scripts/train_rlcd.py`):
+- **direct_log:** the log score, -(r log p_a + (1 - r) log(1 - p_a)), on the logged action of every interaction, without weights; the same pathwise family as direct_brier with another proper score.
+- **outcome_minus_p_log:** REINFORCE on the logged action with reward r - p_a (p_a detached), the micro-batch mean reward as baseline, and importance weight min(p(a) / q(a), 5).
+- **ips_log:** direct_log with each interaction weighted by min(1 / q(a), 5), divided by one constant, the mean weight over the 0.9 N training prefix: 1.752 and 1.774 at N 2000 and 5000, with 12.0 and 12.5 percent of the prefix clipped (`runs/v3_06b_ips_log_n<N>_s0/train_summary.json:ips`).
+- **ips_positive:** positive_sft with the same weights on its outcome-1 interactions.
+
+**Runs.** Each arm at N 2000 and 5000, seed 0, at commit b6b9e85; direct_log also at N 5000 for training seeds 1 and 2, at commit 409c983. All not dirty, fp16 without fallback, on the log, data and starting adapter of sections 2 to 6 (`runs/v3_06b_<arm>_n<N>_s<k>/metrics.json:git`, `:v3`).
+
+On v3_banking77_test_full, seed 0 (`S:n_curve.<N>.<arm>`):
+
+| N | learner | accuracy | ECE | Brier | NLL |
+|---|---|---|---|---|---|
+| 2000 | positive_sft | .890 [.879, .901] | .082 | .185 | .622 |
+| 2000 | ips_positive | .892 [.881, .902] | .077 | .183 | .593 |
+| 2000 | direct_log | .907 [.897, .917] | .014 | .140 | .319 |
+| 2000 | ips_log | .906 [.897, .916] | .012 | .143 | .323 |
+| 2000 | outcome_minus_p_log | .916 [.906, .925] | .030 | .132 | .325 |
+| 2000 | direct_brier | .917 [.907, .926] | .022 | .127 | .299 |
+| 2000 | full_sft | .924 [.915, .933] | .017 | .114 | .236 |
+| 5000 | positive_sft | .905 [.896, .915] | .078 | .169 | .663 |
+| 5000 | ips_positive | .905 [.895, .915] | .078 | .169 | .650 |
+| 5000 | direct_log | .933 [.925, .942] | .022 | .103 | .248 |
+| 5000 | ips_log | .930 [.921, .939] | .026 | .106 | .253 |
+| 5000 | outcome_minus_p_log | .928 [.918, .937] | .029 | .115 | .293 |
+| 5000 | direct_brier | .929 [.920, .938] | .026 | .111 | .274 |
+| 5000 | full_sft | .947 [.938, .955] | .030 | .082 | .212 |
+
+Paired differences from direct_brier (`S:n_curve.<N>.off_policy.<arm>.minus_direct_brier`):
+
+| N | arm | accuracy | ECE | Brier | NLL |
+|---|---|---|---|---|---|
+| 2000 | direct_log | -.010 [-.016, -.004] | -.008 [-.016, +.005] | +.014 [+.009, +.018] | +.020 [+.008, +.032] |
+| 2000 | ips_log | -.011 [-.016, -.005] | -.011 [-.016, +.001] | +.016 [+.011, +.021] | +.025 [+.013, +.036] |
+| 2000 | outcome_minus_p_log | -.001 [-.006, +.003] | +.008 [+.001, +.015] | +.005 [+.001, +.009] | +.027 [+.017, +.036] |
+| 2000 | ips_positive | -.025 [-.032, -.018] | +.055 [+.045, +.062] | +.056 [+.045, +.066] | +.294 [+.249, +.340] |
+| 5000 | direct_log | +.005 [-.000, +.010] | -.004 [-.009, +.002] | -.008 [-.013, -.003] | -.026 [-.039, -.013] |
+| 5000 | ips_log | +.001 [-.004, +.007] | -.000 [-.007, +.006] | -.006 [-.011, -.001] | -.020 [-.034, -.007] |
+| 5000 | outcome_minus_p_log | -.001 [-.006, +.003] | +.003 [-.002, +.010] | +.004 [+.000, +.009] | +.019 [+.007, +.032] |
+| 5000 | ips_positive | -.024 [-.031, -.016] | +.052 [+.043, +.059] | +.057 [+.046, +.069] | +.376 [+.320, +.430] |
+
+Against positive_sft (`.minus_positive_sft`), every arm that keeps the negative interactions leads in accuracy with an interval above 0, by +.016 to +.026 at N 2000 and +.022 to +.028 at N 5000. ips_positive is level with it: +.002 [-.001, +.005] and +.000 [-.003, +.004].
+
+**direct_log over training seeds** at N 5000 (`S:seeds.direct_log`, next to `S:seeds.training_seeds` and `S:seeds.full_sft.training_seeds`):
+
+| run | accuracy | ECE | Brier | NLL |
+|---|---|---|---|---|
+| direct_log seed 0 | .933 [.925, .942] | .022 | .103 | .248 |
+| direct_log seed 1 | .934 [.925, .943] | .027 | .101 | .239 |
+| direct_log seed 2 | .931 [.922, .940] | .019 | .110 | .275 |
+| direct_log mean (range) | .933 (.931, .934) | .022 (.019, .027) | .105 (.101, .110) | .254 (.239, .275) |
+| direct_brier mean (range) | .931 (.929, .935) | .025 (.019, .031) | .109 (.105, .111) | .274 (.274, .274) |
+| full_sft mean (range) | .946 (.943, .949) | .022 (.017, .030) | .082 (.079, .086) | .192 (.175, .212) |
+
+direct_log's seed mean minus direct_brier's, each draw averaging each group under the same record resample (`S:seeds.direct_log_seed_mean_minus_direct_brier_seed_mean`): accuracy +.002 [-.001, +.005], ECE -.003 [-.006, +.000], Brier -.005 [-.008, -.001], NLL -.020 [-.029, -.010]. direct_brier's three NLLs agree to within .0005 (.2737, .2742, .2737; `runs/v3_06b_direct_brier_n5000_s<k>/metrics.json:splits.v3_banking77_test_full.overall.nll`), although the three runs differ in accuracy and Brier; direct_log's spread over .036.
+
+**Forgetting, other and coverage.** In-domain accuracy minus zero-shot at N 5000 (`S:forgetting.test_indomain.minus_zero_shot`): positive_sft -.008, ips_positive -.009, outcome_minus_p_log -.026, direct_brier -.027, ips_log -.036, direct_log -.038 [-.043, -.034] (seeds 1 and 2: -.046, -.043), full_sft -.052. At N 2000 the log-score arms cost about what direct_brier does, -.018 and -.021 against -.017. Every arm gains on the unseen intents, by about +.02 to +.035 (`S:forgetting.test_unseen_intents.minus_zero_shot`). The predicted-`other` rate is 0 to .001 for every new arm except ips_positive (.010 and .007; `S:other`). Coverage at .95 (`S:coverage`): direct_log .492 and .762 at N 2000 and 5000, direct_brier .649 and .743, ips_log .547 and .729, outcome_minus_p_log .701 and .739, with 98.4 to 99.5 percent accuracy among those kept.
+
+**Selection.** At N 2000 direct_log and ips_log peaked at step 50, the first candidate, against step 150 for direct_brier and 200 for outcome_minus_p_log; at N 5000 they selected steps 250, 250 and 300 against direct_brier's 300 (`runs/<run>/train_summary.json:best_step`). The log score overfits sooner on a small log, and the 50-step grid may cost it accuracy at N 2000 (section 9). ips_positive at N 5000 selected step 200 with a criterion below its starting adapter's (-.376 against -.300, `:best_criterion`, `:init_select.criterion`), positive_sft's pattern of section 1.
+
+**Why ips_positive equals positive_sft on this log.** At N 5000, 561 of the 4500 prefix interactions have 1 / q above the clip, but only 25 of the 3342 positives that ips_positive trains on, and the weights on those positives average .693 (`runs/v3_06b_ips_positive_n5000_s0/train_summary.json:ips.clipped_used`, `:ips.mean_weight_used`): a correct logged action is usually the policy's own top choice, with a high propensity and a weight near one constant. A constant scale on the loss is largely removed by AdamW's per-parameter normalisation, so the weights cannot change what positive_sft learns here, and they cannot restore the information the discarded negatives carried.
+
+**The predictions, stated before the runs.**
+1. *ips_positive does not close the gap to direct_brier.* Held: -.025 [-.032, -.018] and -.024 [-.031, -.016]; it equals positive_sft to within .002 on accuracy at both N.
+2. *ips_log and direct_log land within .01 accuracy of direct_brier.* Held at N 5000 (+.001 and +.005); fails narrowly at N 2000 (-.011 and -.010, intervals excluding 0).
+3. *outcome_minus_p_log is at or below direct_brier.* Held: accuracy -.001 at both N, with Brier and NLL slightly worse and intervals excluding 0 on NLL (+.027, +.019).
+4. *If ips_log or ips_positive beats direct_brier with an interval excluding 0, the method changes to the propensity-weighted form.* ips_log does beat direct_brier at N 5000 on Brier (-.006 [-.011, -.001]) and NLL (-.020 [-.034, -.007]), but the unweighted direct_log beats it by more on both (-.008 and -.026), so the gain comes from the log score, not from the propensity correction, and the method stays unweighted. Log score against Brier is a choice within the pathwise family. Over three seeds it gives the log score a small lead on Brier and NLL and none on accuracy, a wider spread across seeds, and more in-domain forgetting, and at N 2000, on one seed, direct_brier is ahead on accuracy, Brier and NLL. Brier stays the default here; the log score is the alternative with that trade-off.
+
+direct_brier's lead over positive_sft survives the bandit baselines: every arm that keeps the negatives, weighted or not, is ahead of positive_sft, and none is ahead of direct_brier on accuracy with an interval excluding 0.
+
+## 12. Scale: 1.7B
+
+**Question.** Does the ordering hold at a larger size? The prediction, stated before the runs: positive_sft < direct_brier < full_sft at 1.7B, and because the zero-shot start is higher (.852), every gap is smaller in absolute terms.
+
+**Setup.** sft_17b (adapter sha256 566ff13b...) is both the model adapted and the logging policy, so it collected its own seed 0 log on the same log domain with the same seeded streams as the 0.6B log: the same message order and the same flip draws, with only the chosen actions different (`runs/v3_log_17b_s0/metrics.json`).
+
+| log | sha256 | policy accuracy | outcome rate | flip share | predicted `other` | mean propensity | outcome temperature T (N 5000) |
+|---|---|---|---|---|---|---|---|
+| 0.6B seed 0 | 847f44c4... | .836 | .739 | .202 | .059 | .724 | 1.453 |
+| 1.7B seed 0 | 86f4add7... | .837 | .753 | .202 | .074 | .752 | 1.751 |
+
+(`runs/v3_log_s0/metrics.json`, `runs/v3_log_17b_s0/metrics.json`, `S:temperatures.5000`, `L:temperatures.5000`.) The larger policy is no more accurate on the log, but more confident and less calibrated, so its outcome-fitted temperature is larger. positive_sft, full_sft and direct_brier then trained at N 5000, seed 0, with `configs/v3_17b.yaml`, which differs from `configs/v3_06b.yaml` only in the backbone, the starting adapter and gradient checkpointing. All three runs, the zero-shot evaluation and the log are at commit c9e29c6, not dirty, fp16 without fallback; a 1407-step run took 2.49 to 2.78 hours and an evaluation 25 to 28 minutes on one T4. The zero-shot run reproduces sft_17b's v1 numbers on the three shared splits (test_banking77 .852, ECE .087; `runs/v3_17b_zeroshot/metrics.json`, `runs/sft_17b/metrics.json`).
+
+On v3_banking77_test_full at N 5000 (`L:n_curve.5000`; 0.6B from `S:n_curve.5000` and `S:seeds`):
+
+| learner | 1.7B accuracy | 1.7B ECE | 1.7B Brier | 1.7B NLL | 0.6B accuracy, seed 0 | 0.6B accuracy, seed mean (range) | 0.6B ECE, seed mean |
+|---|---|---|---|---|---|---|---|
+| zero-shot | .848 [.836, .860] | .089 [.078, .100] | .242 | .660 | .851 | | .063 |
+| temperature | .848 | .031 [.026, .044] | .222 | .519 | .851 | | .020 |
+| positive_sft | .913 [.902, .923] | .067 [.058, .077] | .154 | .545 | .905 | (seed 0 only) | .078 |
+| direct_brier | .949 [.941, .957] | .021 [.015, .028] | .079 | .188 | .929 | .931 (.929, .935) | .025 |
+| full_sft | .953 [.945, .960] | .023 [.018, .030] | .072 | .162 | .947 | .946 (.943, .949) | .022 |
+
+Paired differences at 1.7B (`L:n_curve.5000.direct_brier_minus_positive_sft`, `.direct_brier_minus_full_sft`) and the 0.6B seed-mean counterparts (`S:seeds.training_seed_mean_minus_positive_sft`, `S:seeds.training_seed_mean_minus_full_sft_seed_mean`):
+
+| | accuracy | ECE | Brier | NLL |
+|---|---|---|---|---|
+| 1.7B direct_brier minus positive_sft | +.036 [+.028, +.045] | -.046 [-.054, -.037] | -.075 [-.088, -.061] | -.357 [-.411, -.306] |
+| 1.7B direct_brier minus full_sft | -.004 [-.010, +.002] | -.002 [-.008, +.004] | +.007 [+.001, +.013] | +.026 [+.013, +.040] |
+| 0.6B seed mean minus positive_sft | +.026 [+.019, +.033] | -.053 [-.059, -.044] | -.060 [-.071, -.048] | -.389 [-.443, -.333] |
+| 0.6B seed mean minus full_sft seed mean | -.015 [-.020, -.010] | +.003 [-.001, +.008] | +.027 [+.020, +.034] | +.082 [+.061, +.101] |
+
+The same learner at both sizes, 1.7B minus 0.6B seed 0, paired by question (`P:pairs.<pair>.splits.<split>.overall`):
+
+| learner | v3_banking77_test_full | test_indomain | test_unseen_intents |
+|---|---|---|---|
+| zero-shot | -.003 [-.014, +.008] | -.004 [-.008, -.000] | +.006 [-.002, +.013] |
+| positive_sft | +.008 [-.002, +.016] | -.007 [-.012, -.003] | +.013 [+.006, +.020] |
+| direct_brier | +.020 [+.011, +.028] | -.018 [-.023, -.013] | -.007 [-.014, +.000] |
+| full_sft | +.006 [-.002, +.013] | +.011 [+.006, +.016] | -.005 [-.013, +.001] |
+
+Forgetting at 1.7B, minus its own zero-shot (test_indomain .952, test_unseen_intents .897; `L:forgetting.<split>.minus_zero_shot`):
+
+| learner | test_indomain accuracy | test_indomain ECE | test_unseen_intents accuracy | test_unseen_intents ECE |
+|---|---|---|---|---|
+| positive_sft | -.011 [-.014, -.008] | +.021 | +.027 [+.021, +.033] | -.012 |
+| direct_brier | -.040 [-.045, -.036] | +.006 [+.002, +.010] | +.012 [+.004, +.020] | -.028 |
+| full_sft | -.038 [-.042, -.033] | +.025 [+.021, +.029] | +.011 [+.003, +.019] | -.014 |
+
+Coverage at .80 / .90 / .95 on v3_banking77_test_full, accuracy of the kept answers in brackets (`L:coverage`, `S:coverage`): 1.7B direct_brier .897 (.981) / .844 (.985) / .793 (.989) against .868 (.974) / .809 (.983) / .743 (.986) at 0.6B seed 0; 1.7B full_sft .940 (.978) / .907 (.986) / .868 (.990) against .947 (.973) / .918 (.979) / .888 (.982); the 1.7B temperature learner keeps .026 at .95 against .189 at 0.6B. The predicted-`other` rate is .067 for zero-shot and 0 for direct_brier and full_sft (`L:other`).
+
+**Selection.** Selected steps 100 (positive_sft), 250 (full_sft) and 400 (direct_brier) (`runs/v3_17b_<arm>_n5000_s0/train_summary.json:best_step`). At 1.7B positive_sft's selected adapter beats its start on the criterion (-.322 against -.358), which no positive_sft run did at 0.6B; after its best step the criterion falls to -.539 by step 1407, while direct_brier's flattens near -.165 and full_sft's keeps falling to -.249.
+
+**The prediction, reported as stated.**
+- *The ordering holds,* with direct_brier within .4 points of full_sft (-.004 [-.010, +.002], interval covering 0, one seed) and ahead of positive_sft by 3.6 points. ECE is level between direct_brier and full_sft (-.002); full_sft keeps a small lead on Brier and NLL.
+- *Every gap smaller: fails in part.* The gap to full_sft shrinks (-.015 for the 0.6B seed means, -.004 at 1.7B), and the gap over positive_sft grows (+.026 to +.036).
+- *The premise failed.* On v3_banking77_test_full the 1.7B zero-shot start is level with 0.6B's (.848 against .851, -.003 [-.014, +.008]) and less calibrated (ECE .089 against .063); .852 is the test_banking77 figure. What changes with size is how much each learner gains: direct_brier at 1.7B is +.020 [+.011, +.028] above its 0.6B seed 0 run and above all three 0.6B seeds, while full_sft (+.006) and positive_sft (+.008) gain amounts with intervals covering 0. The larger model helps the outcome-only learner most.
+
+**Forgetting at both sizes.** direct_brier keeps in-domain calibration: its in-domain ECE moves by +.006 at 1.7B against +.025 for full_sft, as at 0.6B (within .010, against .015 to .043; section 5). Its in-domain accuracy cost is like full_sft's: -.040 against -.038 at 1.7B, and seed ranges of -.027 to -.043 against -.036 to -.052 at 0.6B. Its gain on the unseen intents is smaller at 1.7B (+.012 against +.020 to +.026 at 0.6B).
+
+Everything at 1.7B is one training seed on one log. The direct_brier and full_sft comparison and the forgetting figures rest on that one seed; direct_brier's gain from the larger model is the firmest result, with its interval above 0 and the 1.7B value above every 0.6B seed.
