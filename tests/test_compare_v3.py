@@ -249,3 +249,62 @@ def test_direct_log_seeds_get_a_mean_range_and_a_paired_difference_from_direct_b
     # Adding the seed runs changes no earlier entry of the seeds block.
     for key in ("seed_0", "seed_1", "seed_2", "training_seeds", "training_seed_mean_minus_positive_sft", "full_sft", "training_seed_mean_minus_full_sft_seed_mean"):
         assert after["seeds"][key] == before["seeds"][key], key
+
+
+EMOTIONS = ("anger", "fear", "joy", "love", "sadness", "surprise")
+EMOTION_SPLITS = {"v3_emotion_test_full": 60, "test_emotion": 20, "test_indomain": 30, "test_unseen_intents": 30}
+
+
+def emotion_results(sharpness: float, seed: int):
+    """Synthetic emotion results: a six-way choice per record and, on the emotion splits, an expresses_emotion noul after it."""
+    rng = np.random.default_rng(seed)
+    out = []
+    for split, n in EMOTION_SPLITS.items():
+        for i in range(n):
+            gold = i % 6
+            logits = rng.normal(0, 1, 6)
+            logits[gold] += sharpness
+            p = np.exp(logits) / np.exp(logits).sum()
+            record = f"emotion-test_emotion-{i:06d}" if split in ("v3_emotion_test_full", "test_emotion") and i < 20 else f"{split}-{i}"
+            out.append(QuestionResult(record, "label", "choice", tuple(float(x) for x in p), gold, EMOTIONS, split=split))
+            if split in ("v3_emotion_test_full", "test_emotion"):  # a noul the comparison must leave out: always wrong here
+                out.append(QuestionResult(record, "expresses_emotion", "noul", (0.01, 0.99), 0, ("true", "false"), split=split, kind="expresses_emotion"))
+    return out
+
+
+def test_the_emotion_comparison_reads_its_own_runs_and_scores_the_choice_question_only(runs, tmp_path):
+    runs_dir, _ = runs  # the Banking77 runs sit in the same directory and must not be read
+    emotion_hashes = {f"{s}.jsonl": f"{i}" * 64 for i, s in enumerate(EMOTION_SPLITS)}
+    write_run(runs_dir, "v3_emotion_06b_zeroshot", emotion_results(1.0, 0), emotion_hashes)
+    for k, arm in enumerate(("positive_sft", "full_sft", "direct_brier")):
+        for n in (500, 2000, 5000):
+            write_run(runs_dir, f"v3_emotion_06b_{arm}_n{n}_s0", emotion_results(1.5 + n / 2000 + k, 100 + k), emotion_hashes)
+    for s in (1, 2):
+        write_run(runs_dir, f"v3_emotion_06b_direct_brier_n5000_s{s}", emotion_results(4.6, 110 + s), emotion_hashes)
+    write_run(runs_dir, "v3_emotion_06b_direct_log_n5000_s0", emotion_results(4.4, 120), emotion_hashes)
+    temp = runs_dir / "v3_emotion_06b_temp_n5000"
+    temp.mkdir()
+    (temp / "calibration.json").write_text(json.dumps({"temperature": 1.4}))
+    (runs_dir / "b2_gpt-4.1-mini" / "metrics.json").write_text(json.dumps({"splits": {
+        "test_banking77": {"overall": {"accuracy_all": 0.918, "ece": 0.035, "n": 500}, "choice": {"accuracy_all": 0.918, "ece": 0.035, "n": 500}},
+        "test_emotion": {"overall": {"accuracy_all": 0.656, "ece": 0.242, "n": 1000}, "choice": {"accuracy_all": 0.598, "ece": 0.283, "n": 500}}}}))
+    subset = tmp_path / "emotion_subset.json"
+    subset.write_text(json.dumps({"splits": {"test_emotion": [f"emotion-test_emotion-{i:06d}" for i in range(0, 20, 2)]}, "sub_splits": {}}))
+    out = tmp_path / "stage_emotion.json"
+    assert compare_v3.main(["--domain", "emotion", "--runs-dir", str(runs_dir), "--subset", str(subset), "--resamples", "50", "--out", str(out)]) == 0
+    m = json.loads(out.read_text())
+    assert m["domain"] == "emotion" and m["split"] == "v3_emotion_test_full"
+    assert all(Path(s["dir"]).name.startswith("v3_emotion_06b_") for s in m["sources"].values() if "dir" in s)
+    assert m["missing"] == [] and m["n_curve"]["5000"]["temperature"] and m["seeds"]["training_seeds"]["accuracy"]["n_seeds"] == 3
+    assert m["n_curve"]["5000"]["direct_log"] and "direct_log_n2000_s0" in m["missing_off_policy"]
+    # Only the choice question counts: 60 questions on the full test, and the always-wrong noul does not pull accuracy down.
+    zero = m["n_curve"]["500"]["zero_shot"]
+    choice = [r for r in emotion_results(1.0, 0) if r.split == "v3_emotion_test_full" and r.question_id == "label"]
+    assert zero["n"] == 60 and zero["accuracy"] == pytest.approx(sum(r.correct for r in choice) / 60)
+    assert m["other"] is None and "no other option" in m["other_note"]
+    assert m["b2_reference"]["b2"] == {"accuracy_all": 0.598, "ece": 0.283, "n": 500} and m["b2_reference"]["runs"]["zero_shot"]["n"] == 10
+    assert set(m["forgetting"]["test_indomain"]["minus_zero_shot"]) >= {"direct_brier_n5000_s0", "direct_log_n5000_s0"}
+    # The Banking77 comparison of the same directory is untouched by the emotion runs.
+    banking = compare_v3.compare(runs_dir, "06b", 30, subset_path=runs[1])
+    assert banking["domain"] == "banking77" and all(not Path(s["dir"]).name.startswith("v3_emotion") for s in banking["sources"].values() if "dir" in s)
+    assert banking["b2_reference"]["b2"]["accuracy_all"] == 0.918

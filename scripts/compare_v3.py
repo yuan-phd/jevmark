@@ -51,6 +51,15 @@ every run, so differences are paired), and writes runs/v3_stage_<size>/metrics.j
 - b2_reference: gpt-4.1-mini on the 500-record subset of test_banking77 next to
   every run on the same records.
 
+--domain emotion (phase 4) reads the emotion log domain's runs instead,
+v3_emotion_<size>_zeroshot, v3_emotion_<size>_temp_n<N> and v3_emotion_<size>_<arm>_...,
+on v3_emotion_test_full, and writes runs/v3_stage_emotion_<size>/metrics.json. Every
+table is the same, except that there is no other option on emotion, so the
+predicted-other analysis does not apply (other is null), and the B2 reference is
+gpt-4.1-mini's choice question on the 500-record subset of test_emotion. On both
+domains only the choice question is scored: the emotion full test also asks
+test_emotion's expresses_emotion noul, which no learner was trained on.
+
 Every run must hold exactly the same questions as the zero-shot run on each split,
 and the data hashes of the splits must agree across runs; otherwise it stops.
 Adapted learners' Banking77 numbers are never mixed into the v1 or v2
@@ -75,7 +84,7 @@ import numpy as np
 
 from jevmark.baselines.subset import SUBSET_PATH, load_subset, subset_ids
 from jevmark.calibration import scale_results
-from jevmark.data.build import V3_TEST_FULL
+from jevmark.data.build import V3_DOMAINS
 from jevmark.metrics import N_BINS, NLL_FLOOR, QuestionResult, gold_dependent, read_results
 from jevmark.provenance import git_state
 
@@ -91,18 +100,19 @@ COVERAGE_THRESHOLDS = (0.8, 0.9, 0.95)
 METRICS = ("accuracy", "ece", "brier", "nll")
 OTHER = "other"
 B2_RUN = "b2_gpt-4.1-mini"
-RUN_PATTERN = re.compile(r"^v3_(?P<size>06b|17b)_(?P<arm>positive_sft|full_sft|direct_brier|direct_log|outcome_minus_p_log|ips_log|ips_positive)_n(?P<n>\d+)_s(?P<seed>\d+)(?P<noisy>_noisy)?(?:_log(?P<log>\d+))?$")
+CHOICE_QUESTION = "label"  # the one question a v3 learner answers, and the only one scored here
+RUN_PATTERN = re.compile(r"^v3_(?:(?P<domain>emotion)_)?(?P<size>06b|17b)_(?P<arm>positive_sft|full_sft|direct_brier|direct_log|outcome_minus_p_log|ips_log|ips_positive)_n(?P<n>\d+)_s(?P<seed>\d+)(?P<noisy>_noisy)?(?:_log(?P<log>\d+))?$")
 
 
 # Runs
 
 
-def discover(runs_dir: Path, size: str) -> dict[tuple[str, int, int, bool, int], Path]:
-    """(arm, N, seed, noisy, log seed) -> run directory, for every learner run with results."""
+def discover(runs_dir: Path, size: str, domain: str = "banking77") -> dict[tuple[str, int, int, bool, int], Path]:
+    """(arm, N, seed, noisy, log seed) -> run directory, for every learner run of the domain with results."""
     found = {}
-    for path in sorted(runs_dir.glob(f"v3_{size}_*")):
+    for path in sorted(runs_dir.glob(f"v3_{V3_DOMAINS[domain]['infix']}{size}_*")):
         m = RUN_PATTERN.match(path.name)
-        if m and m["size"] == size and (path / "results.jsonl.gz").is_file():
+        if m and m["size"] == size and (m["domain"] or "banking77") == domain and (path / "results.jsonl.gz").is_file():
             found[(m["arm"], int(m["n"]), int(m["seed"]), bool(m["noisy"]), int(m["log"] or 0))] = path
     return found
 
@@ -112,6 +122,13 @@ def by_split(results: Sequence[QuestionResult]) -> dict[str, list[QuestionResult
     for r in gold_dependent(results):
         out.setdefault(r.split, []).append(r)
     return out
+
+
+def domain_scored(splits: dict[str, list[QuestionResult]], domain: str) -> dict[str, list[QuestionResult]]:
+    """The domain's own test splits (its full test and the subset split) keep only the choice question; the forgetting
+    splits keep every gold-dependent question, as in phase 3. On Banking77 the choice is the only question there anyway."""
+    own = (V3_DOMAINS[domain]["test_full"], V3_DOMAINS[domain]["subset_split"])
+    return {split: [r for r in rs if r.question_id == CHOICE_QUESTION] if split in own else rs for split, rs in splits.items()}
 
 
 def aligned(reference: Sequence[QuestionResult], other: Sequence[QuestionResult], name: str) -> list[QuestionResult]:
@@ -255,14 +272,16 @@ def learner_name(arm: str, n: int, seed: int = 0, noisy: bool = False, log: int 
     return f"{arm}_n{n}_s{seed}" + ("_noisy" if noisy else "") + (f"_log{log}" if log else "")
 
 
-def compare(runs_dir: Path, size: str, resamples: int, subset_path: Path = SUBSET_PATH) -> dict[str, Any]:
-    zero_dir = runs_dir / f"v3_{size}_zeroshot"
+def compare(runs_dir: Path, size: str, resamples: int, subset_path: Path = SUBSET_PATH, domain: str = "banking77") -> dict[str, Any]:
+    spec = V3_DOMAINS[domain]
+    prefix, main_split, subset_split = f"v3_{spec['infix']}{size}", spec["test_full"], spec["subset_split"]
+    zero_dir = runs_dir / f"{prefix}_zeroshot"
     if not (zero_dir / "results.jsonl.gz").is_file():
         raise SystemExit(f"{zero_dir}: no results.jsonl.gz; evaluate sft_{size} on the v3 splits first (evaluate.py --ckpt runs/sft_{size} --run-name v3_{size}_zeroshot)")
     zero_all = read_results(zero_dir / "results.jsonl.gz")
     zero_metrics = json.loads((zero_dir / "metrics.json").read_text())
-    zero = by_split(zero_all)
-    for needed in (V3_TEST_FULL, *FORGETTING_SPLITS):
+    zero = domain_scored(by_split(zero_all), domain)
+    for needed in (main_split, *FORGETTING_SPLITS):
         if needed not in zero:
             raise SystemExit(f"{zero_dir} has no {needed} results")
 
@@ -272,21 +291,21 @@ def compare(runs_dir: Path, size: str, resamples: int, subset_path: Path = SUBSE
 
     temperatures = {}
     for n in NS:
-        temp_dir = runs_dir / f"v3_{size}_temp_n{n}"
+        temp_dir = runs_dir / f"{prefix}_temp_n{n}"
         if (temp_dir / "calibration.json").is_file():
             t = float(json.loads((temp_dir / "calibration.json").read_text())["temperature"])
             temperatures[n] = t
-            per_run[f"temperature_n{n}"] = by_split(scale_results(zero_all, t))
+            per_run[f"temperature_n{n}"] = domain_scored(by_split(scale_results(zero_all, t)), domain)
             sources[f"temperature_n{n}"] = {"dir": shown(temp_dir), "temperature": t}
 
-    runs = discover(runs_dir, size)
+    runs = discover(runs_dir, size, domain)
     for (arm, n, seed, noisy, log), path in runs.items():
         name = learner_name(arm, n, seed, noisy, log)
         metrics = json.loads((path / "metrics.json").read_text())
         for file, digest in metrics.get("data_files_sha256", {}).items():
             if file in data_hashes and data_hashes[file] != digest:
                 raise SystemExit(f"{path}: {file} has sha256 {digest}, the zero-shot run read {data_hashes[file]}")
-        per_run[name] = by_split(read_results(path / "results.jsonl.gz"))
+        per_run[name] = domain_scored(by_split(read_results(path / "results.jsonl.gz")), domain)
         sources[name] = {"dir": shown(path), "git": metrics.get("git"), "results_sha256": sha256(path / "results.jsonl.gz"), "v3": metrics.get("v3")}
 
     rlcd_temperatures = {}
@@ -296,18 +315,18 @@ def compare(runs_dir: Path, size: str, resamples: int, subset_path: Path = SUBSE
             t = float(json.loads((temp_dir / "calibration.json").read_text())["temperature"])
             name = learner_name(TEMP_ON_RLCD, n, seed)
             rlcd_temperatures[name] = t
-            per_run[name] = by_split(scale_results(read_results(path / "results.jsonl.gz"), t))
+            per_run[name] = domain_scored(by_split(scale_results(read_results(path / "results.jsonl.gz"), t)), domain)
             sources[name] = {"dir": shown(temp_dir), "temperature": t, "source_run": shown(path)}
 
     splits = {}
-    for split in (V3_TEST_FULL, *FORGETTING_SPLITS):
+    for split in (main_split, *FORGETTING_SPLITS):
         reference = zero[split]
         members = {name: aligned(reference, results[split], name) if name != "zero_shot" else reference for name, results in per_run.items() if split in results}
         missing = [name for name, results in per_run.items() if split not in results]
         if missing:
             raise SystemExit(f"{', '.join(missing)}: no {split} results")
         splits[split] = Split(split, members, resamples)
-    main = splits[V3_TEST_FULL]
+    main = splits[main_split]
     present = set(main.results)
 
     def column(n: int, learner: str) -> str | None:
@@ -384,27 +403,29 @@ def compare(runs_dir: Path, size: str, resamples: int, subset_path: Path = SUBSE
         s = splits[split]
         forgetting[split] = {"zero_shot": s.point("zero_shot"), "minus_zero_shot": {name: {m: s.delta(name, "zero_shot")[m] for m in ("accuracy", "ece")} for name in s.results if name != "zero_shot"}}
 
-    phase3 = [name for name in main.results if not name.startswith(tuple(f"{arm}_n" for arm in OFF_POLICY_ARMS))]
-    never_other = [i for i in range(len(main.results["zero_shot"])) if not any(main.results[name][i].labels[main.results[name][i].prediction] == OTHER for name in phase3)]
-    other = {name: {"predicted_other_rate": predicted_other_rate(rs), "accuracy_where_no_run_predicted_other": sum(rs[i].correct for i in never_other) / len(never_other) if never_other else None} for name, rs in main.results.items()}
-    other["n_questions_where_no_run_predicted_other"] = len(never_other)
+    if domain != "banking77":
+        other, other_note = None, f"{domain} has no other option: other is never among the options, so the predicted-other analysis does not apply"
+    else:
+        other, other_note = predicted_other(main), None
 
     b2_reference: dict[str, Any] = {}
     b2_path = runs_dir / B2_RUN / "metrics.json"
     if b2_path.is_file():
-        b2 = json.loads(b2_path.read_text())["splits"]["test_banking77"]["overall"]
-        ids = set(subset_ids(load_subset(subset_path), "test_banking77"))
-        b2_reference = {"subset": "data/baseline_subset.json, test_banking77, 500 records", "b2": {"accuracy_all": b2["accuracy_all"], "ece": b2["ece"], "n": b2["n"]}, "runs": {}}
+        b2_split = json.loads(b2_path.read_text())["splits"][subset_split]
+        b2 = b2_split.get("choice", b2_split["overall"])  # the choice question; on Banking77 the same numbers as overall
+        ids = set(subset_ids(load_subset(subset_path), subset_split))
+        b2_reference = {"subset": f"data/baseline_subset.json, {subset_split}, 500 records", "b2": {"accuracy_all": b2["accuracy_all"], "ece": b2["ece"], "n": b2["n"]}, "runs": {}}
         for name, results in per_run.items():
-            on_subset = [r for r in results.get("test_banking77", []) if r.record_id in ids]
+            on_subset = [r for r in results.get(subset_split, []) if r.record_id in ids]
             if on_subset:
                 a = arrays(on_subset)
                 b2_reference["runs"][name] = {"n": len(on_subset), **{m: float(v[0]) for m, v in values(a, np.ones((1, len(on_subset)))).items()}}
 
     return {
         "decision": 56,
+        "domain": domain,
         "size": size,
-        "split": V3_TEST_FULL,
+        "split": main_split,
         "git": git_state(),
         "created": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         "script_sha256": sha256(Path(__file__)),
@@ -419,11 +440,21 @@ def compare(runs_dir: Path, size: str, resamples: int, subset_path: Path = SUBSE
         "noisy": noisy,
         "forgetting": forgetting,
         "other": other,
+        **({"other_note": other_note} if other_note else {}),
         "coverage": {name: coverage(rs) for name, rs in main.results.items()},
         "b2_reference": b2_reference,
         "missing": sorted({learner_name(a, n) for a in ARMS for n in NS} - present),
         "missing_off_policy": sorted({learner_name(a, n) for a in OFF_POLICY_ARMS for n in OFF_POLICY_NS} - present),
     }
+
+
+def predicted_other(main: "Split") -> dict[str, Any]:
+    """Each run's predicted-other rate, and its accuracy where no phase 3 run predicted other (the off-policy runs do not change that set)."""
+    phase3 = [name for name in main.results if not name.startswith(tuple(f"{arm}_n" for arm in OFF_POLICY_ARMS))]
+    never_other = [i for i in range(len(main.results["zero_shot"])) if not any(main.results[name][i].labels[main.results[name][i].prediction] == OTHER for name in phase3)]
+    other = {name: {"predicted_other_rate": predicted_other_rate(rs), "accuracy_where_no_run_predicted_other": sum(rs[i].correct for i in never_other) / len(never_other) if never_other else None} for name, rs in main.results.items()}
+    other["n_questions_where_no_run_predicted_other"] = len(never_other)
+    return other
 
 
 def fmt(block: Mapping[str, Any] | None, metric: str) -> str:
@@ -484,14 +515,15 @@ def print_tables(result: Mapping[str, Any]) -> None:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--size", default="06b")
+    parser.add_argument("--domain", choices=sorted(V3_DOMAINS), default="banking77", help="the log domain: banking77 (phase 3) or emotion")
     parser.add_argument("--runs-dir", default=str(REPO / "runs"))
     parser.add_argument("--subset", default=str(SUBSET_PATH))
     parser.add_argument("--resamples", type=int, default=1000)
-    parser.add_argument("--out", default=None, help="default: runs/v3_stage_<size>/metrics.json")
+    parser.add_argument("--out", default=None, help="default: runs/v3_stage_<size>/metrics.json, runs/v3_stage_emotion_<size>/metrics.json for emotion")
     args = parser.parse_args(argv)
     runs_dir = Path(args.runs_dir)
-    result = compare(runs_dir, args.size, args.resamples, Path(args.subset))
-    out = Path(args.out) if args.out else runs_dir / f"v3_stage_{args.size}" / "metrics.json"
+    result = compare(runs_dir, args.size, args.resamples, Path(args.subset), args.domain)
+    out = Path(args.out) if args.out else runs_dir / f"v3_stage_{V3_DOMAINS[args.domain]['infix']}{args.size}" / "metrics.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2) + "\n")
     print_tables(result)

@@ -3,6 +3,7 @@
     python scripts/collect_log.py --ckpt runs/sft_06b --seed 0 --device cuda
     python scripts/collect_log.py --ckpt runs/sft_06b --seed 1 --device cuda   # logging variance only
     python scripts/collect_log.py --ckpt runs/sft_17b --seed 0 --device cuda   # the 1.7B log, runs/v3_log_17b_s0
+    python scripts/collect_log.py --ckpt runs/sft_06b --seed 0 --domain emotion --device cuda   # runs/v3_log_emotion_s0
 
 The checkpoint (the logging policy, sft_06b in v3) reads every record of
 data/v3_banking77_train.jsonl once, in a fixed order shuffled by
@@ -21,6 +22,10 @@ directory (gitignored, keep a copy: every learner trains on it) and metrics.json
 outcome and flipped-outcome rates, predicted-other and chosen-other rates, the data
 file's sha256 (refused if it differs from configs/v3_data.yaml), the log's sha256,
 the commit and precision. An existing log is never overwritten.
+
+--domain emotion (phase 4) reads data/v3_emotion_train.jsonl, the `emotion` block of
+configs/v3_data.yaml, instead, and puts "emotion" after "v3_log" in the run name
+(runs/v3_log_emotion_s<seed>); everything else is the same.
 """
 
 from __future__ import annotations
@@ -39,7 +44,8 @@ from pathlib import Path
 import torch
 
 from jevmark.config import load_config
-from jevmark.data.unseen import OTHER_LABEL, V3_TRAIN
+from jevmark.data.build import V3_DOMAINS
+from jevmark.data.unseen import OTHER_LABEL
 from jevmark.encode import Encoded, encode
 from jevmark.feedback import EPSILON, FLIP_RATE, file_sha256, interactions, write_log
 from jevmark.model import JevMark
@@ -68,10 +74,11 @@ def first_batch_check(jev: JevMark, batch: Sequence[Encoded]) -> bool:
     return True
 
 
-def log_run_name(checkpoint: Path, seed: int, limit: int | None = None) -> str:
-    """v3_log_s<seed> for the 0.6B policy (the phase 3 name), v3_log_<size>_s<seed> for another size named in the checkpoint."""
+def log_run_name(checkpoint: Path, seed: int, limit: int | None = None, domain: str = "banking77") -> str:
+    """v3_log_s<seed> for the 0.6B policy on Banking77 (the phase 3 name), with _<size> for another size named in the checkpoint
+    and _emotion before it for the emotion domain: v3_log_17b_s0, v3_log_emotion_s0."""
     size = re.search(r"(06b|17b)", checkpoint.name)
-    prefix = "v3_log" if size is None or size.group(1) == "06b" else f"v3_log_{size.group(1)}"
+    prefix = "v3_log" + ("_emotion" if domain == "emotion" else "") + ("" if size is None or size.group(1) == "06b" else f"_{size.group(1)}")
     return f"{prefix}_s{seed}" + (f"_limit{limit}" if limit else "")
 
 
@@ -83,6 +90,7 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--order-seed", type=int, default=0, help="seeds the message order, the same for every log seed")
     parser.add_argument("--epsilon", type=float, default=EPSILON)
     parser.add_argument("--flip-rate", type=float, default=FLIP_RATE)
+    parser.add_argument("--domain", choices=sorted(V3_DOMAINS), default="banking77", help="the log domain: banking77 (phase 3) or emotion")
     parser.add_argument("--limit", type=int, default=None, help="only the first N messages of the order, for smoke runs; writes the log run name plus _limit<N>")
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--device", default=None, help="cpu, cuda or cuda:N; default cuda when available")
@@ -99,14 +107,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     started = time.perf_counter()
     git = git_state()  # before any output exists (decision 35)
-    run_name = log_run_name(Path(args.ckpt), args.seed, args.limit)
+    run_name = log_run_name(Path(args.ckpt), args.seed, args.limit, args.domain)
     out_dir = Path(args.runs_dir) / run_name
     if (out_dir / "log.jsonl").exists():
         log(f"{out_dir / 'log.jsonl'} exists; a log is collected once and never overwritten")
         return 1
 
     v3 = load_config(args.v3_config)
-    name = v3["files"]["train"]
+    name = (v3["files"] if args.domain == "banking77" else v3[args.domain]["files"])["train"]
     data_path = Path(args.data_dir) / name
     digest = file_sha256(data_path)
     expected = (v3.get("sha256") or {}).get(name)
@@ -167,7 +175,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "wall_clock_seconds": time.perf_counter() - started,
     }
     (out_dir / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n")
-    log(f"{V3_TRAIN}: accuracy {metrics['accuracy']:.4f}, outcome rate {metrics['outcome_rate']:.4f}, flipped {metrics['flipped_outcome_rate']:.4f}, "
+    log(f"{V3_DOMAINS[args.domain]['train']}: accuracy {metrics['accuracy']:.4f}, outcome rate {metrics['outcome_rate']:.4f}, flipped {metrics['flipped_outcome_rate']:.4f}, "
         f"predicted other {metrics['predicted_other_rate']:.4f}, chosen other {metrics['chosen_other_rate']:.4f}")
     log(f"wrote {out_dir}/log.jsonl (sha256 {log_sha}) and metrics.json")
     return 0

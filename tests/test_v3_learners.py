@@ -257,6 +257,12 @@ def test_calibrate_fit_log_writes_the_temperature_run(setup, tmp_path):
     assert metrics["calibration"]["log_sha256"] == file_sha256(setup.log_path) and set(metrics["splits"]) == {unseen.V3_TEST_FULL}
     with pytest.raises(SystemExit):
         calibrate.main([str(source), "--fit-log", str(setup.log_path)])
+    emotion = tmp_path / "v3_emotion_06b_zeroshot"  # an emotion zero-shot run names its temperature runs after its domain
+    emotion.mkdir()
+    for name in ("results.jsonl.gz", "metrics.json", "config.yaml"):
+        (emotion / name).write_bytes((source / name).read_bytes())
+    assert calibrate.main([str(emotion), "--fit-log", str(setup.log_path), "--n", str(N)]) == 0
+    assert json.loads((tmp_path / f"v3_emotion_06b_temp_n{N}" / "calibration.json").read_text())["temperature"] == pytest.approx(expected)
 
 
 def test_a_temperature_on_a_trained_learner_uses_its_own_probabilities_on_the_log_prefix(setup, tmp_path):
@@ -552,6 +558,32 @@ def test_the_1_7b_config_differs_from_0_6b_only_in_backbone_size_start_and_check
     assert large["v3.init"] == "runs/sft_17b" and large["training.gradient_checkpointing"] is True
     for key in ("backbone.id", "backbone.revision", "tokenizer_reference.id", "tokenizer_reference.revision", "lora.r", "lora.alpha", "lora.target_modules", "max_tokens"):
         assert large[key] == sft[key], key
+
+
+def test_the_emotion_config_differs_from_banking77_only_in_domain_and_data_file():
+    def flat(d, prefix=""):
+        out = {}
+        for k, v in d.items():
+            out.update(flat(v, f"{prefix}{k}.") if isinstance(v, dict) else {f"{prefix}{k}": v})
+        return out
+
+    banking, emotion = flat(load_config(REPO / "configs" / "v3_06b.yaml")), flat(load_config(REPO / "configs" / "v3_emotion_06b.yaml"))
+    assert {k for k in banking.keys() | emotion.keys() if banking.get(k) != emotion.get(k)} == {"domain", "training.data_file"}
+    assert emotion["domain"] == "emotion" and emotion["training.data_file"] == load_config(REPO / "configs" / "v3_data.yaml")["emotion"]["files"]["train"]
+    base = {"size": "06b", "arm": "direct_brier", "seed": 0}
+    assert rl.log_run_name({**base, "domain": "emotion"}, 5000, None, 0) == "v3_emotion_06b_direct_brier_n5000_s0"
+    assert rl.log_run_name({**base, "domain": "emotion", "arm": "direct_log", "seed": 2}, 5000, None, 0) == "v3_emotion_06b_direct_log_n5000_s2"
+    assert rl.log_run_name(base, 5000, None, 0) == rl.log_run_name({**base, "domain": "banking77"}, 5000, None, 0) == "v3_06b_direct_brier_n5000_s0"
+
+
+def test_a_log_drawn_from_another_data_file_is_refused(setup, tmp_path):
+    logs = tmp_path / "logs" / "v3_log_emotion_s0"
+    logs.mkdir(parents=True)
+    digest = write_log(logs / "log.jsonl", setup.log)
+    (logs / "metrics.json").write_text(json.dumps({"sampling": {"seed": 0}, "data_files_sha256": {"v3_emotion_train.jsonl": setup.data_sha}, "log_sha256": digest}))
+    with pytest.raises(SystemExit, match="use the config of the log's domain"):
+        train(setup, tmp_path / "runs", "arm=direct_brier", "--limit-steps", "1", log_path=logs / "log.jsonl")
+    assert not (tmp_path / "runs" / f"v3_06b_direct_brier_n{N}_s0" / "train_summary.json").exists()
 
 
 def test_a_log_drawn_by_another_adapter_is_refused(setup, tmp_path):

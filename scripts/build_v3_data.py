@@ -24,6 +24,13 @@ within 4 standard deviations of uniform; about 20 percent of states are JSON; no
 log-domain text is in the excluded set or repeats; the full test uses every
 Banking77 test message once; and a file whose sha256 is recorded in the config
 matches it. The leak probes run on the two files afterwards (make data-v3).
+
+Phase 4 builds the emotion pair the same way and with the same checks, from the
+`emotion` block of the config: data/v3_emotion_train.jsonl (every emotion train
+message kept by the same duplicate rules, the choice question only) and
+data/v3_emotion_test_full.jsonl (test_emotion verbatim, rebuilt in memory and
+compared byte for byte first, then the other 1000 emotion test messages with
+test_emotion's noul). Its questions have all six labels and never an `other` option.
 """
 
 from __future__ import annotations
@@ -44,7 +51,7 @@ from jevmark.config import load_config
 from jevmark.data import dedup, unseen
 from jevmark.data.assemble import build_all
 from jevmark.data.build import SPLITS, gold_positions, position_deviations, state_text
-from jevmark.data.sources import BANKING77
+from jevmark.data.sources import BANKING77, EMOTION
 from jevmark.baselines.subset import SUBSET_PATH, load_subset
 from jevmark.encode import encode, letter_token_ids
 from jevmark.schema import Request
@@ -72,8 +79,8 @@ def v13_hashes(data_dir: Path, recorded: Mapping[str, str]) -> dict[str, dict[st
     return out
 
 
-def check_records(name: str, records: Sequence[Mapping[str, Any]], tokenizer: Any, max_tokens: int, n_options: int, failures: list[str]) -> dict[str, Any]:
-    lengths, ks, other_gold, missing_gold = [], Counter(), 0, 0
+def check_records(name: str, records: Sequence[Mapping[str, Any]], tokenizer: Any, max_tokens: int, n_options: int, failures: list[str], other_option: bool = True) -> dict[str, Any]:
+    lengths, ks, other_gold, missing_gold, with_other = [], Counter(), 0, 0, 0
     for record in records:
         lengths.append(len(encode(Request.from_dict({"state": record["state"], "questions": record["questions"]}), tokenizer, max_tokens).input_ids))
         question = record["questions"][unseen.QUESTION_ID]
@@ -81,10 +88,13 @@ def check_records(name: str, records: Sequence[Mapping[str, Any]], tokenizer: An
         ks[len(question["criteria"])] += 1
         other_gold += gold == unseen.OTHER_LABEL
         missing_gold += gold not in question["criteria"]
+        with_other += unseen.OTHER_LABEL in question["criteria"]
     deviations = position_deviations(gold_positions(records))
     json_share = sum(isinstance(r["state"], dict) for r in records) / len(records)
     if set(ks) != {n_options}:
         failures.append(f"{name}: option counts {dict(ks)}, expected {n_options} everywhere")
+    if with_other != (len(records) if other_option else 0):
+        failures.append(f"{name}: an other option in {with_other} of {len(records)} records, expected {'every' if other_option else 'none'}")
     if other_gold or missing_gold:
         failures.append(f"{name}: gold is other in {other_gold} records and missing from the options in {missing_gold}")
     worst = max(deviations.values(), default=0.0)
@@ -144,6 +154,32 @@ def main(argv: Sequence[str] | None = None) -> int:
     if any(t in excluded for t in train_texts) or len(set(train_texts)) != len(train_texts):
         failures.append("a log-domain text is excluded or repeats")
 
+    # The emotion pair (phase 4): test_emotion rebuilt in memory must equal its file, as test_banking77 above.
+    emotion = v3["emotion"]
+    rebuilt_emotion = build_all(config, ["test_emotion"])
+    emotion_on_disk = (data_dir / "test_emotion.jsonl").read_bytes()
+    if serialise(rebuilt_emotion.splits["test_emotion"]) != emotion_on_disk:
+        failures.append("test_emotion rebuilt in memory differs from data/test_emotion.jsonl")
+    test_emotion = [json.loads(line) for line in emotion_on_disk.decode("utf-8").splitlines()]
+    emotion_train, emotion_dropped = unseen.build_v3_emotion_train(config, excluded)
+    emotion_full = unseen.build_v3_emotion_test_full(config, test_emotion)
+    n_emotions = len(unseen.emotion_labels()[0])
+    reports["emotion_train"] = check_records(unseen.V3_EMOTION_TRAIN, emotion_train, tokenizer, max_tokens, n_emotions, failures, other_option=False)
+    reports["emotion_test_full"] = check_records(unseen.V3_EMOTION_TEST_FULL, emotion_full, tokenizer, max_tokens, n_emotions, failures, other_option=False)
+    if serialise(emotion_full[: len(test_emotion)]) != emotion_on_disk:
+        failures.append("the full emotion test does not start with test_emotion verbatim")
+    total_emotion = len(load_dataset(EMOTION.id, EMOTION.config, revision=EMOTION.revision, split="test"))
+    if sorted(r["meta"]["source_index"] for r in emotion_full) != list(range(total_emotion)):
+        failures.append(f"the full emotion test does not use each of the {total_emotion} emotion test messages exactly once")
+    if any(list(r["questions"]) != [unseen.QUESTION_ID] for r in emotion_train):
+        failures.append("an emotion log-domain record asks more than the choice question")
+    emotion_texts = [dedup.normalise(state_text(r)) for r in emotion_train]
+    if any(t in excluded for t in emotion_texts) or len(set(emotion_texts)) != len(emotion_texts):
+        failures.append("an emotion log-domain text is excluded or repeats")
+    ids = Counter(r["id"] for r in [*train, *test_full, *emotion_train, *emotion_full])
+    if any(n > 1 for n in ids.values()):
+        failures.append(f"record ids repeat across the four v3 files: {[i for i, n in ids.items() if n > 1][:3]}")
+
     reasons = Counter(d["reason"] for d in dropped)
     banking_matches = sum(d["reason"] == "test_text" and dedup.normalise(d["text"]) in banking_test for d in dropped)
     print(f"== v3 log domain ({unseen.V3_TRAIN})")
@@ -153,6 +189,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         if d["reason"] == "test_text" and dedup.normalise(d["text"]) not in banking_test:
             print(f"  dropped, matches another test source: train index {d['index']}: {d['text']!r}")
     print(f"\n== full Banking77 test ({unseen.V3_TEST_FULL}): {len(test_banking77)} test_banking77 records verbatim + {len(test_full) - len(test_banking77)} new = {len(test_full)}")
+    emotion_reasons = Counter(d["reason"] for d in emotion_dropped)
+    print(f"\n== emotion log domain ({unseen.V3_EMOTION_TRAIN}): emotion train messages {len(emotion_train) + len(emotion_dropped)}; "
+          f"dropped {len(emotion_dropped)}: {emotion_reasons['test_text']} matching a test text, {emotion_reasons['repeat']} later copies of a repeated text; kept {len(emotion_train)}")
+    print(f"== full emotion test ({unseen.V3_EMOTION_TEST_FULL}): {len(test_emotion)} test_emotion records verbatim + {len(emotion_full) - len(test_emotion)} new = {len(emotion_full)}")
     print("\n== checks per file")
     for name, report in reports.items():
         print(f"{name:14} records {report['records']:5}  options {report['options']}  json states {report['json_share']:.1%}  "
@@ -161,7 +201,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     after = v13_hashes(data_dir, recorded)
     if not all(v["unchanged"] for v in after.values()):
         failures.append("v1.3 files changed during the build")
-    new_files = {v3["files"]["train"]: serialise(train), v3["files"]["test_full"]: serialise(test_full)}
+    new_files = {v3["files"]["train"]: serialise(train), v3["files"]["test_full"]: serialise(test_full),
+                 emotion["files"]["train"]: serialise(emotion_train), emotion["files"]["test_full"]: serialise(emotion_full)}
     new_hashes = {name: hashlib.sha256(raw).hexdigest() for name, raw in new_files.items()}
     expected = v3.get("sha256") or {}
     for name, digest in new_hashes.items():
@@ -186,6 +227,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "files": {name: {"sha256": new_hashes[name], "records": len(raw.splitlines())} for name, raw in new_files.items()},
         "log_domain": {"source_rows": len(train) + len(dropped), "kept": len(train), "dropped": reasons, "dropped_banking77_test_matches": banking_matches, "dropped_rows": dropped},
         "test_full": {"test_banking77_records": len(test_banking77), "new_records": len(test_full) - len(test_banking77)},
+        "emotion_log_domain": {"source_rows": len(emotion_train) + len(emotion_dropped), "kept": len(emotion_train), "dropped": emotion_reasons, "dropped_rows": emotion_dropped},
+        "emotion_test_full": {"test_emotion_records": len(test_emotion), "new_records": len(emotion_full) - len(test_emotion)},
         "checks": reports,
         "v1_3_files": after,
     }

@@ -330,7 +330,7 @@ def test_v3_notebook_parameters_and_session_plans_match_kaggle_md_and_train_rlcd
     for name in ("REPO", "COMMIT", "SESSION", "ADAPTER_DATASET", "LOG_DATASET", "LOG_SHA256", "SMOKE_STEPS", "MAX_HOURS"):
         assert re.search(rf"^{name} = ", params, re.M), name
     plan_for = v3_plan()
-    plans = {session: plan_for(session) for session in ("A", "B", "C", "D", "E", "F1", "F2", "F3", "K", "I", "J")}
+    plans = {session: plan_for(session) for session in ("A", "B", "C", "D", "E", "F1", "F2", "F3", "K", "I", "J", "G", "H")}
     names = {session: [run_name_of(*run) for run in plan] for session, (plan, run_name_of) in plans.items()}
     assert names["A"] == [f"v3_06b_{arm}_n{n}_s0" for arm in ("full_sft", "positive_sft") for n in (500, 2000, 5000)]
     assert names["B"] == ["v3_06b_direct_brier_n500_s0", "v3_06b_direct_brier_n2000_s0", "v3_06b_direct_brier_n5000_s0", "v3_06b_direct_brier_n5000_s1"]
@@ -342,6 +342,9 @@ def test_v3_notebook_parameters_and_session_plans_match_kaggle_md_and_train_rlcd
     assert names["F3"] == ["v3_06b_direct_log_n5000_s1", "v3_06b_direct_log_n5000_s2"]  # direct_log training seeds
     assert names["K"] == [f"v3_06b_{arm}_n5000_s0_noisy_flip{f}" for f in ("0.1", "0.3") for arm in ("direct_brier", "positive_sft")]  # the noise-rate sweep
     assert names["I"] == ["v3_17b_positive_sft_n5000_s0"] and names["J"] == ["v3_17b_full_sft_n5000_s0", "v3_17b_direct_brier_n5000_s0"]  # 1.7B
+    assert names["G"] == [f"v3_emotion_06b_{arm}_n{n}_s0" for arm in ("full_sft", "positive_sft") for n in (500, 2000, 5000)]  # emotion
+    assert names["H"] == [f"v3_emotion_06b_direct_brier_n{n}_s0" for n in (500, 2000, 5000)] + ["v3_emotion_06b_direct_brier_n5000_s1", "v3_emotion_06b_direct_brier_n5000_s2", "v3_emotion_06b_direct_log_n5000_s0"]
+    assert not set(names["G"] + names["H"]) & {n for session, ns in names.items() if session not in "GH" for n in ns}
     all_names = [n for session in "ABC" for n in names[session]]
     assert len(all_names) == len(set(all_names)) == 14  # the 14 trained runs of V3_DESIGN section 8
     assert not (set(names["D"]) | set(names["E"])) & set(all_names)
@@ -354,15 +357,16 @@ def test_v3_notebook_parameters_and_session_plans_match_kaggle_md_and_train_rlcd
     spec.loader.exec_module(rl)
     for session, (plan, run_name_of) in plans.items():
         size = "17b" if session in ("I", "J") else "06b"
+        domain = {"domain": "emotion"} if session in ("G", "H") else {}
         for arm, n, seed, noisy, log, flip in plan:
             assert arm in rl.LOG_ARMS and not (noisy and arm == "full_sft") and (noisy != "soft" or arm == "direct_brier")
             assert flip is None or noisy  # a sibling log is only for noisy runs; train_rlcd.py refuses a clean one
-            assert run_name_of(arm, n, seed, noisy, log, flip) == rl.log_run_name({"size": size, "arm": arm, "seed": seed}, n, noisy, log, rl.FLIP_RATE if flip is None else flip)
+            assert run_name_of(arm, n, seed, noisy, log, flip) == rl.log_run_name({"size": size, "arm": arm, "seed": seed, **domain}, n, noisy, log, rl.FLIP_RATE if flip is None else flip)
     kaggle_md = (REPO / "docs" / "KAGGLE.md").read_text()
     section = kaggle_md[kaggle_md.index("## 12. v3") :]
-    for session in ("A", "B", "C", "D", "E", "F1", "F2", "F3", "K", "I", "J"):
+    for session in ("A", "B", "C", "D", "E", "F1", "F2", "F3", "K", "I", "J", "G", "H"):
         assert f'SESSION = "{session}"' in section, session
-    assert 'assert SESSION in ("A", "B", "C", "D", "E", "F1", "F2", "F3", "K", "I", "J")' in cells[1]
+    assert 'assert SESSION in ("A", "B", "C", "D", "E", "F1", "F2", "F3", "K", "I", "J", "G", "H")' in cells[1]
     assert "jevmark-v3-logs" in section and "LOG_SHA256" in section
 
 
@@ -374,7 +378,7 @@ def test_v3_notebook_session_a_evaluates_zero_shot_and_collects_both_logs_before
         joined.index("!python scripts/build_v3_data.py"),
         joined.index('target = WORK / "runs" / SFT / "adapter"'),
         joined.index("evaluate.py --ckpt runs/{SFT} --run-name {ZERO_RUN} --device cuda"),
-        joined.index("collect_log.py --ckpt runs/{SFT} --seed {k} --device cuda"),
+        joined.index("collect_log.py --ckpt runs/{SFT} --seed {k} --domain {DOMAIN} --device cuda"),
         joined.index("run_name={SMOKE_RUN} {NOISY_FLAG} --limit-steps {SMOKE_STEPS}"),
         joined.index("--log runs/{log_dir}/log.jsonl --n {n} --init runs/{SFT} arm={arm} seed={seed} {noisy_flag} --max-hours {MAX_HOURS}"),
         joined.index("!python scripts/evaluate.py --ckpt runs/{run_name} --device cuda"),
@@ -383,7 +387,7 @@ def test_v3_notebook_session_a_evaluates_zero_shot_and_collects_both_logs_before
     logs = next(c for c in cells if "!python scripts/collect_log.py" in c)
     assert "if COLLECTS:" in logs and 'LOG_SHA256[k] = m["log_sha256"]' in logs and 'LOG_SHA256_17B = m["log_sha256"]' in logs and "LOG DONE {log_dir_of(k)} seed" in logs
     clone = cells[1]
-    assert 'COLLECTS = SESSION in ("A", "I")' in clone and "*([ZERO_RUN, *(log_dir_of(k) for k in LOGS)] if COLLECTS else [])" in clone
+    assert 'COLLECTS = SESSION in ("A", "I", "G")' in clone and "*([ZERO_RUN, *(log_dir_of(k) for k in LOGS)] if COLLECTS else [])" in clone
     assert clone.index('run(["git", "checkout"') < clone.index("shutil.rmtree")
 
 
@@ -526,9 +530,9 @@ def test_v3_sessions_i_and_j_run_at_1_7b_on_the_1_7b_log():
     clone = code_cells("kaggle_v3.ipynb")[1]
     assert 'if SESSION == "J":' in clone and "LOG_SHA256_17B" in clone and re.search(r'^LOG_SHA256_17B = ""', code_cells("kaggle_v3.ipynb")[0], re.M)
     joined = "\n".join(code_cells("kaggle_v3.ipynb"))
-    assert joined.count("--config configs/v3_{SIZE}.yaml") == 2 and joined.count("--init runs/{SFT}") == 2 and "configs/v3_06b.yaml" not in joined
-    for size in ("06b", "17b"):
-        assert (REPO / "configs" / f"v3_{size}.yaml").is_file()
+    assert joined.count("--config configs/v3_{INFIX}{SIZE}.yaml") == 2 and joined.count("--init runs/{SFT}") == 2 and "configs/v3_06b.yaml" not in joined
+    for name in ("v3_06b", "v3_17b", "v3_emotion_06b"):
+        assert (REPO / "configs" / f"{name}.yaml").is_file()
     collect = importlib.util.spec_from_file_location("collect_log_for_notebook", REPO / "scripts" / "collect_log.py")
     module = importlib.util.module_from_spec(collect)
     collect.loader.exec_module(module)
@@ -536,3 +540,21 @@ def test_v3_sessions_i_and_j_run_at_1_7b_on_the_1_7b_log():
     for session, sft in (("A", "sft_06b"), ("I", "sft_17b")):
         assert module.log_run_name(Path("runs") / sft, 0) == log_dir_of(session)(0)
 
+
+def test_v3_sessions_g_and_h_run_on_the_emotion_log_domain():
+    for session in ("G", "H"):
+        domain, infix, main, splits, logs, log_dir_of, size = v3_plan(("DOMAIN", "INFIX", "MAIN_SPLIT", "EVAL_SPLITS", "sorted({plan[4] for plan in PLAN})", "log_dir_of", "SIZE"))(session)
+        assert domain == "emotion" and infix == "emotion_" and size == "06b" and logs == [0] and log_dir_of(0) == "v3_log_emotion_s0"
+        assert main == "v3_emotion_test_full"
+    from jevmark.data.build import V3_EMOTION_EVAL_SPLITS, V3_EVAL_SPLITS
+
+    assert v3_plan(("EVAL_SPLITS",))("G") == list(V3_EMOTION_EVAL_SPLITS) and v3_plan(("EVAL_SPLITS",))("B") == list(V3_EVAL_SPLITS)
+    assert v3_plan(("COLLECTS",))("G") is True and v3_plan(("COLLECTS",))("H") is False
+    assert v3_plan(("DOMAIN",))("A") == "banking77" and v3_plan(("log_dir_of",))("A")(0) == "v3_log_s0"  # the earlier sessions keep their names
+    cells = code_cells("kaggle_v3.ipynb")
+    assert re.search(r'^LOG_SHA256_EMOTION = ""', cells[0], re.M) and 'elif SESSION == "H":' in cells[1] and 'LOG_SHA256_EMOTION = m["log_sha256"]' in "\n".join(cells)
+    collect = importlib.util.spec_from_file_location("collect_log_for_emotion", REPO / "scripts" / "collect_log.py")
+    module = importlib.util.module_from_spec(collect)
+    collect.loader.exec_module(module)
+    assert module.log_run_name(Path("runs") / "sft_06b", 0, domain="emotion") == v3_plan(("log_dir_of",))("G")(0)
+    assert 'ZERO_RUN = f"v3_{INFIX}{SIZE}_zeroshot"' in cells[1]  # set after the plan block, so checked as text

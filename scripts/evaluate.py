@@ -50,7 +50,7 @@ import torch  # noqa: E402
 import yaml  # noqa: E402
 
 from jevmark.config import load_config  # noqa: E402
-from jevmark.data.build import SPLITS, V3_EVAL_SPLITS, V3_SPLITS, V3_TRAIN  # noqa: E402
+from jevmark.data.build import SPLITS, V3_EMOTION_EVAL_SPLITS, V3_EVAL_SPLITS, V3_SPLITS, V3_TRAIN  # noqa: E402
 from jevmark.data.negation import negate  # noqa: E402
 from jevmark.encode import Encoded, encode  # noqa: E402
 from jevmark.feedback import file_sha256, prefix, read_log  # noqa: E402
@@ -290,7 +290,7 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--ckpt", required=True, help="a run directory, or 'base' for the frozen backbone of --config")
     parser.add_argument("--config", default=None, help="config file; default configs/base.yaml for base, the run's config.yaml otherwise")
-    parser.add_argument("--splits", nargs="+", choices=[*SPLITS, *V3_SPLITS], default=None, help="default: the nine v1.3 splits, or for a v3 run (a config with a v3 section, or a run name starting v3_) v3_banking77_test_full, test_banking77, test_indomain and test_unseen_intents")
+    parser.add_argument("--splits", nargs="+", choices=[*SPLITS, *V3_SPLITS], default=None, help="default: the nine v1.3 splits, or for a v3 run (a config with a v3 section, or a run name starting v3_) v3_banking77_test_full, test_banking77, test_indomain and test_unseen_intents (for the emotion domain v3_emotion_test_full, test_emotion, test_indomain and test_unseen_intents)")
     parser.add_argument("--limit", type=int, default=None, help="a seeded, stratified sample of N records per split (sample_records), for smoke runs and the fast cycle")
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--device", default=None, help="cpu, cuda or cuda:N; default cuda when available")
@@ -325,7 +325,10 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
 
 
 def default_splits(config: dict[str, Any], run_name: str) -> list[str]:
-    """The nine v1.3 splits, or for a v3 run the v3 evaluation set (decision 56)."""
+    """The nine v1.3 splits, or for a v3 run its domain's v3 evaluation set: Banking77's (decision 56), or emotion's
+    for a config with domain: emotion or a run name starting v3_emotion_ (the zero-shot run of sft_06b on emotion)."""
+    if config.get("domain") == "emotion" or run_name.startswith("v3_emotion_"):
+        return list(V3_EMOTION_EVAL_SPLITS)
     return list(V3_EVAL_SPLITS) if "v3" in config or run_name.startswith("v3_") else list(SPLITS)
 
 

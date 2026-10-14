@@ -555,6 +555,16 @@ def test_a_v3_run_defaults_to_the_v3_evaluation_splits():
     assert evaluate.parse_args(["--ckpt", "base", "--splits", "v3_banking77_test_full", "v3_banking77_train"]).splits == ["v3_banking77_test_full", "v3_banking77_train"]
 
 
+def test_an_emotion_v3_run_defaults_to_the_emotion_evaluation_splits():
+    from jevmark.data.build import V3_EMOTION_EVAL_SPLITS
+
+    assert V3_EMOTION_EVAL_SPLITS == ("v3_emotion_test_full", "test_emotion", "test_indomain", "test_unseen_intents")
+    assert evaluate.default_splits({"domain": "emotion", "v3": {"n": 500}}, "anything") == list(V3_EMOTION_EVAL_SPLITS)
+    assert evaluate.default_splits({}, "v3_emotion_06b_zeroshot") == list(V3_EMOTION_EVAL_SPLITS)  # sft_06b's config has no domain
+    assert evaluate.default_splits({"domain": "banking77", "v3": {}}, "v3_06b_direct_brier_n5000_s0") == list(evaluate.V3_EVAL_SPLITS)
+    assert evaluate.parse_args(["--ckpt", "base", "--splits", "v3_emotion_test_full"]).splits == ["v3_emotion_test_full"]
+
+
 def test_evaluate_runs_a_v3_split_with_the_same_outputs(eval_inputs, tmp_path):
     from jevmark.data import unseen
     from jevmark.data.description_loader import load_descriptions

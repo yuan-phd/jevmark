@@ -199,10 +199,10 @@ def calibrate_from_log(run_dir: Path, log_path: Path, n: int, out_dir: Path | No
     if out_dir is None and probs_dir is not None:
         out_dir = run_dir.parent / f"{run_dir.name}_temp"
     if out_dir is None:
-        size = re.search(r"(06b|17b)", run_dir.name)
-        if size is None:
+        stem = re.search(r"(emotion_)?(06b|17b)", run_dir.name)
+        if stem is None:
             raise SystemExit(f"cannot tell the backbone size from {run_dir.name}; pass --out")
-        out_dir = run_dir.parent / f"v3_{size.group(1)}_temp_n{n}"
+        out_dir = run_dir.parent / f"v3_{stem.group(0)}_temp_n{n}"  # v3_06b_temp_n<N>, or v3_emotion_06b_temp_n<N> on emotion
     return write_scaled_run(run_dir, read_results(run_dir / "results.jsonl.gz"), source_metrics, t, calibration, out_dir, git)
 
 
@@ -210,7 +210,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("run_dir", help="a run directory holding results.jsonl.gz, metrics.json and config.yaml")
     parser.add_argument("--temperature", type=float, default=None, help="apply this temperature instead of fitting one on valid")
-    parser.add_argument("--out", default=None, help="output directory; default runs/<run>_temp next to the source (runs/v3_<size>_temp_n<N> with --fit-log)")
+    parser.add_argument("--out", default=None, help="output directory; default runs/<run>_temp next to the source (runs/v3_<size>_temp_n<N> with --fit-log, runs/v3_emotion_<size>_temp_n<N> for an emotion zero-shot run)")
     parser.add_argument("--fit-log", default=None, help="v3: fit T on the logged outcomes of this deployment-feedback log instead of on valid")
     parser.add_argument("--n", type=int, default=None, help="with --fit-log: the learner's N; T is fitted on the first 0.9 N interactions")
     parser.add_argument("--fit-probs", default=None, help="with --fit-log: a trained learner's evaluation on the log prefix (evaluate.py --log-prefix); its probabilities replace the logging policy's")

@@ -31,9 +31,20 @@ SPLITS = (
 # built next to the nine v1.3 files by scripts/build_v3_data.py.
 V3_TEST_FULL = "v3_banking77_test_full"
 V3_TRAIN = "v3_banking77_train"
-V3_SPLITS = (V3_TEST_FULL, V3_TRAIN)
+# The second log domain (phase 4): the emotion train split as the log domain and the full emotion test split,
+# built like test_emotion. No option is named other here, so the never-answer-other effect of Banking77 is absent.
+V3_EMOTION_TEST_FULL = "v3_emotion_test_full"
+V3_EMOTION_TRAIN = "v3_emotion_train"
+V3_SPLITS = (V3_TEST_FULL, V3_TRAIN, V3_EMOTION_TEST_FULL, V3_EMOTION_TRAIN)
 # What a v3 run is evaluated on by default: the full Banking77 test, test_banking77 inside it, and the forgetting check.
 V3_EVAL_SPLITS = (V3_TEST_FULL, "test_banking77", "test_indomain", "test_unseen_intents")
+V3_EMOTION_EVAL_SPLITS = (V3_EMOTION_TEST_FULL, "test_emotion", "test_indomain", "test_unseen_intents")
+# Per log domain: its log-domain split, its full test split and its default evaluation splits. A run's domain is
+# its config's v3 domain key (banking77 when absent); its run names carry "emotion_" after "v3_" for emotion.
+V3_DOMAINS = {
+    "banking77": {"train": V3_TRAIN, "test_full": V3_TEST_FULL, "subset_split": "test_banking77", "eval_splits": V3_EVAL_SPLITS, "infix": ""},
+    "emotion": {"train": V3_EMOTION_TRAIN, "test_full": V3_EMOTION_TEST_FULL, "subset_split": "test_emotion", "eval_splits": V3_EMOTION_EVAL_SPLITS, "infix": "emotion_"},
+}
 
 
 def split_rng(seed: int, name: str) -> random.Random:

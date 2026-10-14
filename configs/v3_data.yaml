@@ -7,9 +7,15 @@ out_dir: data
 files:
   train: v3_banking77_train.jsonl        # the log domain: Banking77 train after the duplicate rules
   test_full: v3_banking77_test_full.jsonl  # test_banking77 verbatim, then the other 2080 test messages
+emotion:                                 # phase 4: the second log domain, built like test_emotion
+  files:
+    train: v3_emotion_train.jsonl          # the log domain: emotion train after the duplicate rules, the choice only
+    test_full: v3_emotion_test_full.jsonl  # test_emotion verbatim, then the other 1000 test messages
 manifest: v3_manifest.json               # counts, every dropped train row with its reason, sha256 of every file
 # The sha256 of each file as first built. The build fails if a rebuild differs, and collect_log.py
 # refuses a log-domain file with another hash.
 sha256:
   v3_banking77_train.jsonl: 519de2cd69d87d3ac14b8a0ebdc6b2f34dd76397935f36544bfcc8f9255634bd
   v3_banking77_test_full.jsonl: d7428065a9585d01c7eb7d9b962606e9c6801d0ec89c3816c640a9d8e7fb8fbd
+  v3_emotion_train.jsonl: 979b850c13412c948edce6499bc15a8d1c12c4e4bae11232859f693752ba33da
+  v3_emotion_test_full.jsonl: e27736ed9f2d3b6c10385e9b7438ae0eed94b75da9bf4f29d47048eab15e0b22

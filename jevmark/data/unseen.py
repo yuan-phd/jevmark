@@ -13,6 +13,13 @@ and the full Banking77 test split, the 1000 test_banking77 records verbatim foll
 by the other 2080 test messages (v3_banking77_test_full). Both get the same share
 of JSON states as every v1.3 split. They are written by scripts/build_v3_data.py
 and never change the nine v1.3 files.
+
+Phase 4 adds the same pair for emotion, built as test_emotion is (all six labels,
+seeded option order, no other option): the log domain, every emotion train message
+left after dedup.dedupe, with the choice question only (v3_emotion_train), and the
+full emotion test split, the 1000 test_emotion records verbatim followed by the other
+1000 test messages, each with test_emotion's expresses_emotion noul after the choice
+(v3_emotion_test_full).
 """
 
 from __future__ import annotations
@@ -30,7 +37,7 @@ from jevmark.data.form import wrap_states
 from jevmark.data.sources import AG_NEWS, BANKING77, EMOTION, YELP, DatasetSource
 
 QUESTION_ID = "label"
-from jevmark.data.build import V3_TEST_FULL, V3_TRAIN  # noqa: E402  (re-exported for the v3 builders)
+from jevmark.data.build import V3_EMOTION_TEST_FULL, V3_EMOTION_TRAIN, V3_TEST_FULL, V3_TRAIN  # noqa: E402  (re-exported for the v3 builders)
 OTHER_LABEL = "other"
 OTHER_DESCRIPTION = "None of the listed options"
 
@@ -273,3 +280,88 @@ def build_v3_test_full(config: Mapping[str, Any], test_banking77: Sequence[dict[
     part = load_dataset(BANKING77.id, BANKING77.config, revision=BANKING77.revision, split="test")
     rows = [(i, text, names[label]) for i, (text, label) in enumerate(zip(part["text"], part[BANKING77.label_column]))]
     return full_test_records(test_banking77, rows, names, descriptions, config)
+
+
+# Phase 4: the emotion log domain and the full emotion test split
+
+
+def emotion_labels() -> tuple[list[str], dict[str, Any]]:
+    """Emotion's label names in dataset order and their descriptions, checked as build_split checks them."""
+    names = load_dataset(EMOTION.id, EMOTION.config, revision=EMOTION.revision, split="test").features[EMOTION.label_column].names
+    descriptions = load_descriptions(EMOTION.key)
+    if set(descriptions) != set(names) or OTHER_LABEL in names:
+        raise RuntimeError("emotion: descriptions do not cover exactly the dataset's labels, or a label is named other")
+    return names, descriptions
+
+
+def emotion_records(
+    split: str,
+    rows: Sequence[tuple[int, str, str]],
+    source_split: str,
+    names: Sequence[str],
+    descriptions: Mapping[str, Any],
+    config: Mapping[str, Any],
+    nouls: bool,
+) -> list[dict[str, Any]]:
+    """Records built as test_emotion's are, one per (source index, text, gold label) row, from the split's own seeded streams.
+
+    The choice lists every label in a seeded order from split_rng(seed, split); with nouls, the
+    expresses_emotion noul follows from the same stream and its phrasings from
+    split_rng(seed, f"{split}:phrasing"), as build_split gives test_emotion; JSON states come from
+    split_rng(seed, f"{split}:state_format") with the configured share, as form.apply gives every v1.3 split.
+    """
+    seed = int(config["seed"])
+    rng = split_rng(seed, split)
+    instructions = SETS["test_emotion"].instructions
+    records = [
+        {
+            "id": f"emotion-{split}-{number:06d}",
+            "source": EMOTION.id,
+            "split": split,
+            "state": text,
+            "questions": {QUESTION_ID: choice_question(instructions, [(label, descriptions[label].canonical) for label in names], rng)},
+            "gold": {QUESTION_ID: gold},
+            "meta": {"source_split": source_split, "source_index": index, "nouls": {}},
+        }
+        for number, (index, text, gold) in enumerate(rows)
+    ]
+    if nouls:
+        add_emotion_nouls(records, list(names), rng)
+        assign_phrasings(records, split_rng(seed, f"{split}:phrasing"))
+    wrap_states(records, float(config["state_format"]["p_json"]), split_rng(seed, f"{split}:state_format"))
+    return [make_record(r["id"], r["source"], r["split"], r["state"], r["questions"], r["gold"], r["meta"]) for r in records]
+
+
+def build_v3_emotion_train(config: Mapping[str, Any], excluded: frozenset[str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """The emotion log domain: every emotion train message kept by dedup.dedupe against `excluded`, in dataset order, and the dropped rows."""
+    names, descriptions = emotion_labels()
+    part = load_dataset(EMOTION.id, EMOTION.config, revision=EMOTION.revision, split="train")
+    texts, labels = part["text"], part[EMOTION.label_column]
+    kept, dropped = dedup.dedupe(texts, excluded)
+    for row in dropped:
+        row["text"] = texts[row["index"]]
+    rows = [(i, texts[i], names[labels[i]]) for i in kept]
+    return emotion_records(V3_EMOTION_TRAIN, rows, "train", names, descriptions, config, nouls=False), dropped
+
+
+def emotion_full_test_records(
+    test_emotion: Sequence[dict[str, Any]],
+    rows: Sequence[tuple[int, str, str]],
+    names: Sequence[str],
+    descriptions: Mapping[str, Any],
+    config: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """test_emotion's records verbatim, then a record with the noul for every row whose source index they do not use, from V3_EMOTION_TEST_FULL's own streams."""
+    used = {r["meta"]["source_index"] for r in test_emotion}
+    if len(used) != len(test_emotion):
+        raise RuntimeError("test_emotion uses a source index twice")
+    rest = [row for row in rows if row[0] not in used]
+    return [dict(r) for r in test_emotion] + emotion_records(V3_EMOTION_TEST_FULL, rest, "test", names, descriptions, config, nouls=True)
+
+
+def build_v3_emotion_test_full(config: Mapping[str, Any], test_emotion: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The full emotion test split: the given test_emotion records verbatim, then the other test messages in dataset order."""
+    names, descriptions = emotion_labels()
+    part = load_dataset(EMOTION.id, EMOTION.config, revision=EMOTION.revision, split="test")
+    rows = [(i, text, names[label]) for i, (text, label) in enumerate(zip(part["text"], part[EMOTION.label_column]))]
+    return emotion_full_test_records(test_emotion, rows, names, descriptions, config)

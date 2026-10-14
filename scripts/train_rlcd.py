@@ -138,8 +138,10 @@ either mode; a config without v3.noise reads as fixed when v3.noisy is true) and
 selection curve; a noisy run also records the log's flip rate (v3.flip_rate).
 Run names: v3_<size>_<arm>_n<N>_s<seed>, plus _noisy (fixed) or _noisy_soft (soft),
 plus _flip<rate> for a noisy run on a log whose flip rate is not 0.2 (a sibling log
-from derive_flip_log.py), plus _log<k> for a log drawn with seed k > 0. A clean run
-on a sibling log is refused: it would read nothing the source log does not hold.
+from derive_flip_log.py), plus _log<k> for a log drawn with seed k > 0; a config with
+domain: emotion (configs/v3_emotion_06b.yaml) names them v3_emotion_<size>_... A clean run
+on a sibling log is refused: it would read nothing the source log does not hold. A log
+whose metrics.json names its data files is refused unless training.data_file is one of them.
 --resume needs the same --log, --n and noise mode, which name the run. A log whose
 metrics.json names its logging policy's adapter is refused unless that adapter is the
 one the run starts from (--init), so a 1.7B learner never trains on the 0.6B log.
@@ -168,6 +170,7 @@ from peft import PeftModel
 from transformers import get_linear_schedule_with_warmup
 
 from jevmark.config import load_config
+from jevmark.data.build import V3_DOMAINS
 from jevmark.data.form import FORM_KINDS
 from jevmark.encode import Encoded, encode
 from jevmark.environment import NoisyEnvironment
@@ -518,7 +521,8 @@ def log_run_name(config: dict[str, Any], n: int, noise: str | bool | None, log_s
         return config["run_name"]
     noise = "fixed" if noise is True else (None if noise is False else noise)
     rate = f"_flip{flip_rate:g}" if noise and not math.isclose(flip_rate, FLIP_RATE) else ""
-    return f"v3_{config['size']}_{config['arm']}_n{n}_s{config['seed']}" + NOISE_SUFFIX[noise] + rate + (f"_log{log_seed}" if log_seed else "")
+    infix = V3_DOMAINS[config.get("domain") or "banking77"]["infix"]  # "emotion_" for the emotion log domain, "" for Banking77
+    return f"v3_{infix}{config['size']}_{config['arm']}_n{n}_s{config['seed']}" + NOISE_SUFFIX[noise] + rate + (f"_log{log_seed}" if log_seed else "")
 
 
 def log_examples(interactions: Sequence[Interaction], records: dict[str, dict[str, Any]], jev: JevMark, max_tokens: int, column: str, with_gold: bool, flip_rate: float = FLIP_RATE) -> list[LogExample]:
@@ -654,7 +658,10 @@ def main_log(args: argparse.Namespace, started: float) -> int:
     data_dir = Path(args.data_dir) if args.data_dir else REPO / train_cfg["data_dir"]
     data_path = data_dir / train_cfg["data_file"]
     data_sha = file_sha256(data_path)
-    logged_data_sha = json.loads((log_path.parent / "metrics.json").read_text()).get("data_files_sha256", {}).get(train_cfg["data_file"])
+    logged_files = json.loads((log_path.parent / "metrics.json").read_text()).get("data_files_sha256")
+    if logged_files is not None and train_cfg["data_file"] not in logged_files:
+        raise SystemExit(f"--log {log_path} was drawn from {', '.join(sorted(logged_files))}, but this config trains on {train_cfg['data_file']}; use the config of the log's domain")
+    logged_data_sha = (logged_files or {}).get(train_cfg["data_file"])
     if logged_data_sha and logged_data_sha != data_sha:
         raise SystemExit(f"{data_path} has sha256 {data_sha}, but the log was drawn from {logged_data_sha}")
     config["v3"]["data_sha256"] = data_sha

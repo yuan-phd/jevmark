@@ -28,7 +28,7 @@ data-build:
 # v1.3 files, which must exist (make data-build); then the leak probes on the two new files.
 data-v3:
 	$(PY) scripts/build_v3_data.py
-	$(PY) scripts/leak_probe.py --config $(DATA_CONFIG) --splits v3_banking77_train v3_banking77_test_full --out data/v3_leak_probe.json
+	$(PY) scripts/leak_probe.py --config $(DATA_CONFIG) --splits v3_banking77_train v3_banking77_test_full v3_emotion_train v3_emotion_test_full --out data/v3_leak_probe.json
 
 train-sft:
 	$(PY) scripts/train_sft.py --config $(CONFIG)

@@ -96,9 +96,53 @@ def test_full_test_keeps_the_given_records_verbatim_first_and_adds_every_unused_
     assert len({r["id"] for r in full}) == 30
 
 
+EMOTIONS = sorted(load_descriptions("emotion"))
+EMOTION_DESCRIPTIONS = load_descriptions("emotion")
+
+
+def emotion_rows(n, offset=0):
+    """Synthetic emotion rows: (source index, text, gold label)."""
+    return [(offset + i, f"i feel like message number {offset + i}", EMOTIONS[(offset + i) % len(EMOTIONS)]) for i in range(n)]
+
+
+def test_emotion_records_ask_every_label_and_never_other_like_test_emotion(tokenizer):
+    records = unseen.emotion_records(unseen.V3_EMOTION_TRAIN, emotion_rows(50), "train", EMOTIONS, EMOTION_DESCRIPTIONS, CONFIG, nouls=False)
+    assert len(records) == 50 and len({r["id"] for r in records}) == 50 and all(r["id"].startswith("emotion-v3_emotion_train-") for r in records)
+    assert sum(isinstance(r["state"], dict) for r in records) == 10  # the 20 percent JSON-state share
+    for record in records:
+        assert list(record["questions"]) == [unseen.QUESTION_ID]  # the log domain asks the choice only
+        question, gold = record["questions"][unseen.QUESTION_ID], record["gold"][unseen.QUESTION_ID]
+        assert question["type"] == "choice" and question["instructions"] == unseen.SETS["test_emotion"].instructions
+        assert sorted(question["criteria"]) == EMOTIONS and unseen.OTHER_LABEL not in question["criteria"] and gold in question["criteria"]
+        assert question["criteria"][gold] == EMOTION_DESCRIPTIONS[gold].canonical
+        assert record["source"] == "dair-ai/emotion" and record["meta"]["source_split"] == "train" and record["split"] == unseen.V3_EMOTION_TRAIN
+        assert len(encode(Request.from_dict({"state": record["state"], "questions": record["questions"]}), tokenizer, 1024).slot_positions) == 1
+    assert len({tuple(r["questions"][unseen.QUESTION_ID]["criteria"]) for r in records}) > 1  # the option order is shuffled per record
+    assert unseen.emotion_records(unseen.V3_EMOTION_TRAIN, emotion_rows(50), "train", EMOTIONS, EMOTION_DESCRIPTIONS, CONFIG, nouls=False) == records  # seeded
+    other_stream = unseen.emotion_records(unseen.V3_EMOTION_TEST_FULL, emotion_rows(50), "test", EMOTIONS, EMOTION_DESCRIPTIONS, CONFIG, nouls=False)
+    order = lambda rs: [list(r["questions"][unseen.QUESTION_ID]["criteria"]) for r in rs]  # dict equality ignores key order
+    assert order(other_stream) != order(records)  # each file has its own stream
+
+
+def test_emotion_full_test_keeps_test_emotion_verbatim_first_and_asks_the_noul_like_it():
+    given = unseen.emotion_records("test_emotion", [emotion_rows(40)[i] for i in range(0, 40, 2)], "test", EMOTIONS, EMOTION_DESCRIPTIONS, CONFIG, nouls=True)
+    full = unseen.emotion_full_test_records(given, emotion_rows(40), EMOTIONS, EMOTION_DESCRIPTIONS, CONFIG)
+    assert full[: len(given)] == given and len(full) == 40 and len({r["id"] for r in full}) == 40
+    assert sorted(r["meta"]["source_index"] for r in full) == list(range(40))
+    new = full[len(given) :]
+    assert all(r["split"] == unseen.V3_EMOTION_TEST_FULL for r in new) and sum(isinstance(r["state"], dict) for r in new) == 4  # 20 percent of 20
+    # Choice first, then the expresses_emotion noul, half of them asking the gold emotion, as in test_emotion.
+    assert all(list(r["questions"]) == [unseen.QUESTION_ID, "expresses_emotion"] for r in new)
+    asks_gold = [r["meta"]["nouls"]["expresses_emotion"]["asked_emotion"] == r["gold"][unseen.QUESTION_ID] for r in new]
+    assert sum(asks_gold) == len(new) // 2
+    for r, yes in zip(new, asks_gold):  # a negated phrasing flips the answer
+        assert (r["gold"]["expresses_emotion"] == "true") == (yes != r["meta"]["nouls"]["expresses_emotion"]["negated"])
+
+
 def test_the_v3_hashes_are_recorded_and_the_files_have_their_own_names():
     v3 = load_config(REPO / "configs" / "v3_data.yaml")
-    assert set(v3["sha256"]) == {v3["files"]["train"], v3["files"]["test_full"]}
+    assert set(v3["sha256"]) == {v3["files"]["train"], v3["files"]["test_full"], v3["emotion"]["files"]["train"], v3["emotion"]["files"]["test_full"]}
+    assert v3["emotion"]["files"] == {"train": "v3_emotion_train.jsonl", "test_full": "v3_emotion_test_full.jsonl"}
     assert all(isinstance(h, str) and len(h) == 64 for h in v3["sha256"].values())
     assert not {f"{s}.jsonl" for s in unseen.SETS} & set(v3["sha256"])  # never a v1.3 file name
 
@@ -241,6 +285,24 @@ def test_collect_log_names_a_log_by_its_policys_size():
     assert collect.log_run_name(Path("runs/sft_06b"), 0) == "v3_log_s0" and collect.log_run_name(Path("runs/sft_06b"), 1, 50) == "v3_log_s1_limit50"
     assert collect.log_run_name(Path("runs/sft_17b"), 0) == "v3_log_17b_s0" and collect.log_run_name(Path("runs/sft_17b"), 0, 50) == "v3_log_17b_s0_limit50"
     assert collect.log_run_name(Path("/tmp/tiny_policy"), 2) == "v3_log_s2"  # no size in the name: the phase 3 name
+    assert collect.log_run_name(Path("runs/sft_06b"), 0, domain="emotion") == "v3_log_emotion_s0"
+    assert collect.log_run_name(Path("runs/sft_17b"), 0, 50, "emotion") == "v3_log_emotion_17b_s0_limit50"
+
+
+def test_collect_log_on_the_emotion_domain_reads_its_own_file_and_names(tiny_logging_policy, tmp_path):
+    collect = load_script("collect_log")
+    root, run_dir, data_dir, _, _ = tiny_logging_policy
+    records = unseen.emotion_records(unseen.V3_EMOTION_TRAIN, emotion_rows(24), "train", EMOTIONS, EMOTION_DESCRIPTIONS, CONFIG, nouls=False)
+    (data_dir / "v3_emotion_train.jsonl").write_text("".join(json.dumps(r) + "\n" for r in records))
+    v3_config = root / "v3_both.yaml"
+    v3_config.write_text(yaml.safe_dump({"files": {"train": "v3_banking77_train.jsonl"}, "emotion": {"files": {"train": "v3_emotion_train.jsonl"}},
+                                         "sha256": {"v3_emotion_train.jsonl": file_sha256(data_dir / "v3_emotion_train.jsonl")}}))
+    argv = ["--ckpt", str(run_dir), "--seed", "0", "--domain", "emotion", "--data-dir", str(data_dir), "--runs-dir", str(tmp_path), "--device", "cpu", "--batch-size", "8", "--v3-config", str(v3_config)]
+    assert collect.main(argv) == 0 and not (tmp_path / "v3_log_s0").exists()
+    out = tmp_path / "v3_log_emotion_s0"
+    log, metrics = read_log(out / "log.jsonl"), json.loads((out / "metrics.json").read_text())
+    assert len(log) == 24 and all(len(i.labels) == 6 and unseen.OTHER_LABEL not in i.labels for i in log)
+    assert set(metrics["data_files_sha256"]) == {"v3_emotion_train.jsonl"} and metrics["chosen_other_rate"] == 0
 
 
 # Sibling logs at other flip rates: feedback.reflip and scripts/derive_flip_log.py (the noise-rate sweep)
