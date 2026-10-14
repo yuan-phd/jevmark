@@ -226,3 +226,26 @@ def test_the_1_7b_comparison_has_only_its_n_5000_runs_and_lists_the_rest_as_miss
     assert all(Path(source["dir"]).name.startswith("v3_17b_") for source in m["sources"].values())
     assert set(m["forgetting"]["test_indomain"]["minus_zero_shot"]) == {"positive_sft_n5000_s0", "full_sft_n5000_s0", "direct_brier_n5000_s0"}
 
+
+
+def test_direct_log_seeds_get_a_mean_range_and_a_paired_difference_from_direct_brier_seeds(runs):
+    runs_dir, subset = runs
+    before = compare_v3.compare(runs_dir, "06b", 30, subset)
+    assert before["seeds"]["direct_log"]["seed_0"] is None and "training_seeds" not in before["seeds"]["direct_log"]
+    assert before["seeds"]["direct_log_seed_mean_minus_direct_brier_seed_mean"] is None
+    for s in (0, 1, 2):
+        write_run(runs_dir, f"v3_06b_direct_log_n5000_s{s}", results(4.0 + s / 4, 80 + s))
+    after = compare_v3.compare(runs_dir, "06b", 30, subset)
+    block = after["seeds"]["direct_log"]
+    points = [block[f"seed_{s}"] for s in (0, 1, 2)]
+    for metric in compare_v3.METRICS:
+        values = [p[metric] for p in points]
+        assert block["training_seeds"][metric]["mean"] == pytest.approx(sum(values) / 3)
+        assert block["training_seeds"][metric]["range"] == [min(values), max(values)] and block["training_seeds"][metric]["n_seeds"] == 3
+    assert block["minus_seed_0"]["seed_2"]["accuracy"]["delta"] == pytest.approx(points[2]["accuracy"] - points[0]["accuracy"])
+    brier = after["seeds"]["training_seeds"]["accuracy"]["mean"]
+    d = after["seeds"]["direct_log_seed_mean_minus_direct_brier_seed_mean"]
+    assert d["accuracy"]["delta"] == pytest.approx(block["training_seeds"]["accuracy"]["mean"] - brier) and d["nll"]["ci"][0] <= d["nll"]["ci"][1]
+    # Adding the seed runs changes no earlier entry of the seeds block.
+    for key in ("seed_0", "seed_1", "seed_2", "training_seeds", "training_seed_mean_minus_positive_sft", "full_sft", "training_seed_mean_minus_full_sft_seed_mean"):
+        assert after["seeds"][key] == before["seeds"][key], key

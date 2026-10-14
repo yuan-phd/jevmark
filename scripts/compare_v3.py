@@ -36,7 +36,9 @@ every run, so differences are paired), and writes runs/v3_stage_<size>/metrics.j
   N 5000 for training seeds 0, 1 and 2 (mean and range, each seed minus seed 0) and
   direct_brier's seed mean minus full_sft's seed mean, paired the same way;
   direct_brier_temp for training seeds 0, 1 and 2 and its seed mean minus
-  direct_brier's seed mean;
+  direct_brier's seed mean; direct_log at N 5000 for training seeds 0, 1 and 2
+  (mean and range, each seed minus seed 0) and its seed mean minus
+  direct_brier's seed mean, paired the same way;
 - noisy: direct_brier and positive_sft at N 5000 with flipped outcomes, each one's
   change from its clean run, and the difference of those changes (prediction 4);
 - forgetting: every learner's accuracy and ECE on test_indomain and
@@ -359,6 +361,15 @@ def compare(runs_dir: Path, size: str, resamples: int, subset_path: Path = SUBSE
         with_temp["training_seeds"] = {m: {"mean": sum(p[m] for p in points) / len(points), "range": [min(p[m] for p in points), max(p[m] for p in points)], "n_seeds": len(points)} for m in METRICS}
     seeds[TEMP_ON_RLCD] = with_temp
     seeds["direct_brier_temp_seed_mean_minus_direct_brier_seed_mean"] = main.mean_minus_mean(temp_trained, trained_names) if temp_trained and trained_names else None
+    log_names = {f"seed_{s}": learner_name("direct_log", 5000, s) for s in (0, 1, 2)}
+    log_trained = [name for name in log_names.values() if name in present]
+    direct_log: dict[str, Any] = {key: (main.point(name) if name in present else None) for key, name in log_names.items()}
+    if log_trained:
+        points = [main.point(name) for name in log_trained]
+        direct_log["training_seeds"] = {m: {"mean": sum(p[m] for p in points) / len(points), "range": [min(p[m] for p in points), max(p[m] for p in points)], "n_seeds": len(points)} for m in METRICS}
+    direct_log["minus_seed_0"] = {key: main.delta(name, log_names["seed_0"]) for key, name in log_names.items() if key != "seed_0" and name in present and log_names["seed_0"] in present}
+    seeds["direct_log"] = direct_log
+    seeds["direct_log_seed_mean_minus_direct_brier_seed_mean"] = main.mean_minus_mean(log_trained, trained_names) if log_trained and trained_names else None
 
     noisy: dict[str, Any] = {}
     for arm in ("direct_brier", "positive_sft"):
@@ -456,6 +467,14 @@ def print_tables(result: Mapping[str, Any]) -> None:
             d = row["off_policy"][arm]
             cells = ["-" if d[key] is None else f"{d[key]['accuracy']['delta']:+.3f} [{d[key]['accuracy']['ci'][0]:+.3f}, {d[key]['accuracy']['ci'][1]:+.3f}]" for key in ("minus_direct_brier", "minus_positive_sft")]
             print(f"{n:6} {arm:20} {fmt(row[arm], 'accuracy'):>24} {fmt(row[arm], 'ece'):>24}   " + "   ".join(cells))
+    print("\n== training seeds at N 5000: mean [range] of accuracy, ECE, Brier, NLL")
+    for label, block in (("direct_brier", result["seeds"]), ("full_sft", result["seeds"]["full_sft"]), ("direct_log", result["seeds"]["direct_log"])):
+        if block.get("training_seeds"):
+            s = block["training_seeds"]
+            print(f"{label:14} n {s['accuracy']['n_seeds']}  " + "  ".join(f"{m} {s[m]['mean']:.3f} [{s[m]['range'][0]:.3f}, {s[m]['range'][1]:.3f}]" for m in METRICS))
+    d = result["seeds"]["direct_log_seed_mean_minus_direct_brier_seed_mean"]
+    if d:
+        print("direct_log seed mean minus direct_brier seed mean: " + "  ".join(f"{m} {d[m]['delta']:+.3f} [{d[m]['ci'][0]:+.3f}, {d[m]['ci'][1]:+.3f}]" for m in METRICS))
     if result["missing"]:
         print(f"\nmissing runs: {', '.join(result['missing'])}")
     if result["missing_off_policy"]:
