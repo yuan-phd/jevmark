@@ -158,6 +158,10 @@ The predictions for the sweep, stated before it ran:
 - **Noisier targets move the model less on the old domains:** direct_brier's in-domain accuracy minus zero-shot is -.026, -.014 and -.010 at 0.1, 0.2 and 0.3, against -.027 clean (`runs/v3_06b_direct_brier_n5000_s0_noisy{_flip0.1,,_flip0.3}/metrics.json:splits.test_indomain.overall.accuracy` minus zero-shot's .956, point differences).
 - **Coverage follows the channel:** the stored direct_brier probabilities keep .509 of answers at .80 at 0.1 and .002 at 0.3; inverted, .883 at .95 (accuracy of those kept .967) at 0.1 and .922 (.915) at 0.3 (`runs/v3_06b_direct_brier_n5000_s0_noisy_flip<f>_inverted/metrics.json:stored.coverage`, `:inverted.coverage`). The inversion clips gold to 0 on 124 and 251 questions (`:questions_gold_clipped_to_zero`), so the inverted NLL (1.2 and 2.3) is not a usable number.
 
+![Channel-scale ECE, accuracy and the collapse over flip rates 0 to 0.3](figures/v4_noise_sweep.png)
+
+`figures/v4_noise_sweep.png`: the sweep tables above over f in {0, 0.1, 0.2, 0.3}: channel-scale ECE of both learners against their mapped-clean references, accuracy with the paired loss from clean, and direct_brier's selected against its step-1407 accuracy with the selected step and the criterion growth (`N:clean`, `N:by_rate`, the channel-scale ECE checked against each `runs/<run>_inverted/metrics.json:stored_channel`).
+
 **Two diagnostics** (decision 59). V-a evaluates the clean run's final adapter (step 1407) as a control for the fixed-noise run's final adapter. V-b trains direct_brier on the expected flipped outcome, .8 for a correct logged action and .2 otherwise (`--noise soft`), the infinite-draw limit: it needs the clean outcome, an oracle input, so it is a diagnostic and not a learner. It selects on the stored flipped outcomes exactly as the fixed-noise run does, and its configuration is otherwise identical (run at commit 3d260cd; the log-mode code is otherwise unchanged from b5913ef). Six adapters of direct_brier at N 5000, seed 0, seed 0 log, on v3_banking77_test_full:
 
 | | clean, step 300 (selected) | clean, step 1407 | fixed noise, step 250 (selected) | fixed noise, step 1407 | soft target, step 350 (selected) | soft target, step 1407 |
@@ -376,6 +380,10 @@ Against positive_sft (`.minus_positive_sft`), every arm that keeps the negative 
 
 direct_log's seed mean minus direct_brier's, each draw averaging each group under the same record resample (`S:seeds.direct_log_seed_mean_minus_direct_brier_seed_mean`): accuracy +.002 [-.001, +.005], ECE -.003 [-.006, +.000], Brier -.005 [-.008, -.001], NLL -.020 [-.029, -.010]. direct_brier's three NLLs agree to within .0006 (.2737, .2742, .2737; `runs/v3_06b_direct_brier_n5000_s<k>/metrics.json:splits.v3_banking77_test_full.overall.nll`), although the three runs differ in accuracy and Brier; direct_log's spread over .036.
 
+![Accuracy and ECE per off-policy arm at N 2000 and 5000, with seed ranges at N 5000](figures/v4_offpolicy.png)
+
+`figures/v4_offpolicy.png`: the table above, every arm at N 2000 (open) and 5000 (filled) with its record-bootstrap interval, and the range over training seeds 0, 1 and 2 at N 5000 for direct_brier, direct_log and full_sft (`S:n_curve.<N>.<arm>`, `S:seeds`).
+
 **Forgetting, other and coverage.** In-domain accuracy minus zero-shot at N 5000 (`S:forgetting.test_indomain.minus_zero_shot`): positive_sft -.008, ips_positive -.009, outcome_minus_p_log -.026, direct_brier -.027, ips_log -.036, direct_log -.038 [-.043, -.034] (seeds 1 and 2: -.046, -.043), full_sft -.052. At N 2000 the log-score arms cost about what direct_brier does, -.018 and -.021 against -.017. Every arm gains on the unseen intents, by about +.02 to +.035 (`S:forgetting.test_unseen_intents.minus_zero_shot`). The predicted-`other` rate is 0 to .001 for every new arm except ips_positive (.010 and .007; `S:other`). Coverage at .95 (`S:coverage`): direct_log .492 and .762 at N 2000 and 5000, direct_brier .649 and .743, ips_log .547 and .729, outcome_minus_p_log .701 and .739, with 98.4 to 99.5 percent accuracy among those kept.
 
 **Selection.** At N 2000 direct_log and ips_log peaked at step 50, the first candidate, against step 150 for direct_brier and 200 for outcome_minus_p_log; at N 5000 they selected steps 250, 250 and 300 against direct_brier's 300 (`runs/<run>/train_summary.json:best_step`). The log score overfits sooner on a small log, and the 50-step grid may cost it accuracy at N 2000 (section 9). ips_positive at N 5000 selected step 200 with a criterion below its starting adapter's (-.376 against -.300, `:best_criterion`, `:init_select.criterion`), positive_sft's pattern of section 1.
@@ -440,6 +448,10 @@ Forgetting at 1.7B, minus its own zero-shot (test_indomain .952, test_unseen_int
 | full_sft | -.038 [-.042, -.033] | +.025 [+.021, +.029] | +.011 [+.003, +.019] | -.014 |
 
 Coverage at .80 / .90 / .95 on v3_banking77_test_full, accuracy of the kept answers in brackets (`L:coverage`, `S:coverage`): 1.7B direct_brier .897 (.981) / .844 (.985) / .793 (.989) against .868 (.974) / .809 (.983) / .743 (.986) at 0.6B seed 0; 1.7B full_sft .940 (.978) / .907 (.986) / .868 (.990) against .947 (.973) / .918 (.979) / .888 (.982); the 1.7B temperature learner keeps .026 at .95 against .189 at 0.6B. The predicted-`other` rate is .067 for zero-shot and 0 for direct_brier and full_sft (`L:other`).
+
+![0.6B against 1.7B at N 5000: accuracy, ECE and in-domain forgetting](figures/v4_scale.png)
+
+`figures/v4_scale.png`: the 1.7B table above against 0.6B for every learner: accuracy, ECE and in-domain accuracy minus zero-shot, with the range over training seeds where a size has more than one (0.6B direct_brier and full_sft); 1.7B is one seed (`S:n_curve.5000`, `S:seeds`, `S:forgetting`, `L:n_curve.5000`, `L:forgetting`).
 
 **Selection.** Selected steps 100 (positive_sft), 250 (full_sft) and 400 (direct_brier) (`runs/v3_17b_<arm>_n5000_s0/train_summary.json:best_step`). At 1.7B positive_sft's selected adapter beats its start on the criterion (-.322 against -.358), which no positive_sft run did at 0.6B; after its best step the criterion falls to -.539 by step 1407, while direct_brier's flattens near -.165 and full_sft's keeps falling to -.249.
 

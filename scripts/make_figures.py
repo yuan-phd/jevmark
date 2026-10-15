@@ -19,8 +19,20 @@ never results.jsonl.gz or replies.jsonl, so every figure rebuilds from git. Writ
 - v3_coverage.png: coverage against accuracy at N 5000 on v3_banking77_test_full.
 - v3_noise.png: the noisy diagnostics on the channel scale against the mapped-clean reference,
   and their accuracy.
+- v4_offpolicy.png: accuracy and ECE per off-policy arm at N 2000 and 5000 on
+  v3_banking77_test_full, with the training-seed ranges at N 5000 (runs/v3_stage_06b).
+- v4_noise_sweep.png: over flip rates 0, 0.1, 0.2 and 0.3, channel-scale ECE against the
+  mapped-clean reference, accuracy with the paired loss from clean, and direct_brier's collapse
+  from the selected to the final step (runs/v3_noise_sweep_06b and the inverted files).
+- v4_scale.png: 0.6B against 1.7B at N 5000: accuracy, ECE and in-domain forgetting
+  (runs/v3_stage_06b, runs/v3_stage_17b).
 
 Each figure carries a caption line naming its metrics files.
+
+Pending, not drawn yet (PENDING below): the emotion panel of the N-curve waits for the
+emotion direct_brier and direct_log runs and runs/v3_stage_emotion_06b/metrics.json; the
+1.7B seed ranges in v4_scale.png wait for direct_brier's seeds 1 and 2 at 1.7B, and
+appear without a code change once runs/v3_stage_17b/metrics.json holds them.
 """
 
 from __future__ import annotations
@@ -366,8 +378,183 @@ def v3_noise(runs: Path, out: Path, written: list[Path]) -> None:
     save(fig, out, "v3_noise.png", written)
 
 
-FIGURES = (v1_full_splits, v1_subset, v2_cascade, v2_reliability, v2_arm_ece, v3_n_curve, v3_coverage, v3_noise)
-EXPECTED = ("v1_full_splits.png", "v1_subset.png", "v2_cascade.png", "v2_reliability.png", "v2_arm_ece.png", "v3_n_curve.png", "v3_coverage.png", "v3_noise.png")
+# phase 4
+
+
+OFF_POLICY = [("positive_sft", "positive_sft"), ("ips_positive", "ips_positive"), ("outcome_minus_p_log", "outcome_minus_p_log"), ("direct_brier", "direct_brier"),
+              ("ips_log", "ips_log"), ("direct_log", "direct_log"), ("full_sft", "full_sft")]
+
+
+def v4_colors() -> dict[str, str]:
+    """The v3 learners keep their v3 colours; the off-policy arms take the unused slots, direct_log the one of direct_brier + temperature, absent here."""
+    return {**v3_colors(), "ips_positive": SERIES[5], "outcome_minus_p_log": SERIES[6], "ips_log": SERIES[7], "direct_log": SERIES[4]}
+
+
+def seed_points(seed_block: dict[str, Any] | None, metric: str) -> tuple[float, list[float], int] | None:
+    """Mean, range and number of training seeds of one learner from a compare_v3 seeds block, or None if the block is absent."""
+    if not seed_block or seed_block.get(metric) is None:
+        return None
+    m = seed_block[metric]
+    return m["mean"], m["range"], m["n_seeds"]
+
+
+def v4_offpolicy(runs: Path, out: Path, written: list[Path]) -> None:
+    stage = load(runs / "v3_stage_06b" / "metrics.json")
+    curve, seeds = stage["n_curve"], stage["seeds"]
+    seed_blocks = {"direct_brier": seeds["training_seeds"], "direct_log": seeds["direct_log"]["training_seeds"], "full_sft": seeds["full_sft"]["training_seeds"]}
+    colors = v4_colors()
+    fig, axes = plt.subplots(2, 1, figsize=(10, 6.4), sharex=True)
+    xs = range(len(OFF_POLICY))
+    for ax, metric, label in ((axes[0], "accuracy", "accuracy"), (axes[1], "ece", "ECE (top-1, 15 bins)")):
+        for i, (key, _) in enumerate(OFF_POLICY):
+            for n, dx, filled in ((2000, -0.22, False), (5000, 0.0, True)):
+                p = curve[str(n)][key]
+                ax.errorbar(i + dx, p[metric], yerr=[[p[metric] - p[f"{metric}_ci"][0]], [p[f"{metric}_ci"][1] - p[metric]]], color=colors[key], marker="o",
+                            markersize=7, markerfacecolor=colors[key] if filled else SURFACE, markeredgewidth=1.6, capsize=2, elinewidth=0.9, linestyle="none")
+            sp = seed_points(seed_blocks.get(key), metric)
+            if sp is not None:
+                ax.vlines(i + 0.22, *sp[1], color=colors[key], linewidth=5, alpha=0.6)
+        ax.set_ylabel(label)
+        ax.grid(axis="x", visible=False)
+    axes[1].set_xticks(list(xs), [name for _, name in OFF_POLICY], fontsize=8)
+    axes[0].plot([], [], marker="o", markersize=7, markerfacecolor=SURFACE, markeredgecolor=INK_2, color=INK_2, linestyle="none", label="N 2000, seed 0")
+    axes[0].plot([], [], marker="o", markersize=7, color=INK_2, linestyle="none", label="N 5000, seed 0")
+    axes[0].plot([], [], color=INK_2, linewidth=5, alpha=0.6, label="N 5000, range over training seeds 0, 1, 2")
+    axes[0].legend(loc="lower right", ncol=3)
+    fig.suptitle("Off-policy baselines on the Banking77 log: no arm beats direct_brier on accuracy; weighting adds nothing", x=0.01, ha="left", fontsize=10)
+    fig.tight_layout(rect=(0, 0.06, 1, 0.96))
+    caption(fig, "Source: runs/v3_stage_06b/metrics.json: n_curve.<N>.<arm> (whiskers: 95% record bootstrap), seeds.training_seeds (direct_brier), "
+                 "seeds.direct_log.training_seeds and seeds.full_sft.training_seeds (thick bars). v3_banking77_test_full, 3080 records, 0.6B.")
+    save(fig, out, "v4_offpolicy.png", written)
+
+
+FLIPS = ["0.1", "0.2", "0.3"]
+
+
+def v4_noise_sweep(runs: Path, out: Path, written: list[Path]) -> None:
+    sweep = load(runs / "v3_noise_sweep_06b" / "metrics.json")
+    clean, rates, zero = sweep["clean"], sweep["by_rate"], sweep["zero_shot"]["accuracy"]
+    for f in FLIPS:  # the channel numbers come from the inverted files; check the sweep copied them
+        for arm in ("direct_brier", "positive_sft"):
+            channel = rates[f][arm]["channel"]
+            stored = load(runs / Path(channel["source"]).relative_to("runs"))["stored_channel"]
+            if abs(stored["ece"] - channel["channel_scale"]["channel_ece"]) > 1e-12:
+                raise SystemExit(f"{channel['source']}: stored_channel.ece differs from the sweep's channel_ece at f {f}")
+    colors = v3_colors()
+    xs = [0.0, *(float(f) for f in FLIPS)]
+    arms = (("direct_brier", "direct_brier"), ("positive_sft", "positive_sft"))
+    fig, axes = plt.subplots(1, 3, figsize=(12, 4.2))
+    ax = axes[0]
+    for k, (arm, name) in enumerate(arms):
+        points = [(clean[arm]["ece"], clean[arm]["ece_ci"])] + [(rates[f][arm]["channel"]["channel_scale"]["channel_ece"], rates[f][arm]["channel"]["channel_scale"]["channel_ece_ci"]) for f in FLIPS]
+        refs = [clean[arm]["ece"]] + [rates[f][arm]["channel"]["channel_scale"]["reference_ece"] for f in FLIPS]
+        ax.errorbar(xs, [v for v, _ in points], yerr=[[v - c[0] for v, c in points], [c[1] - v for v, c in points]], color=colors[arm], marker=MARKERS[k],
+                    capsize=2, elinewidth=0.8, label=name)
+        ax.plot(xs, refs, color=colors[arm], linestyle="--", linewidth=1.1, alpha=0.8, label=f"{name}, mapped-clean reference")
+    ax.set_xticks(xs, ["0\n(clean)", *FLIPS])
+    ax.set_xlabel("flip rate f")
+    ax.set_ylabel("channel-scale ECE\n(top-1 against f + (1 - 2f) x correct)")
+    ax.set_title("calibration to the channel", loc="left")
+    ax.legend(loc="upper left", fontsize=7)
+    ax = axes[1]
+    for k, (arm, name) in enumerate(arms):
+        blocks = [clean[arm]] + [rates[f][arm] for f in FLIPS]
+        ys = [b["accuracy"] for b in blocks]
+        ax.errorbar(xs, ys, yerr=[[y - b["accuracy_ci"][0] for y, b in zip(ys, blocks)], [b["accuracy_ci"][1] - y for y, b in zip(ys, blocks)]], color=colors[arm],
+                    marker=MARKERS[k], capsize=2, elinewidth=0.8, label=name)
+        for x, b in zip(xs[1:], blocks[1:]):
+            d = b["minus_clean"]["accuracy"]
+            ax.annotate(f"{d['delta']:+.3f}\n[{d['ci'][0]:+.3f}, {d['ci'][1]:+.3f}]", (x, b["accuracy"]), textcoords="offset points", xytext=(6, 6 if arm == "direct_brier" else -24),
+                        fontsize=6, color=INK_2)
+    ax.axhline(zero, color=REFERENCE, linestyle="--", linewidth=1.1, label=f"zero-shot {zero:.3f}")
+    ax.set_xticks(xs, ["0\n(clean)", *FLIPS])
+    ax.set_xlabel("flip rate f")
+    ax.set_ylabel("accuracy (labels: paired loss from clean)")
+    ax.set_title("accuracy", loc="left")
+    ax.legend(loc="lower left", fontsize=7)
+    ax = axes[2]
+    blocks = [clean["direct_brier"]] + [rates[f]["direct_brier"] for f in FLIPS]
+    for k, (label, get, line) in enumerate((("selected step", lambda b: b, "-"), ("final step 1407", lambda b: b["last"], ":"))):
+        ys = [get(b)["accuracy"] for b in blocks]
+        ax.errorbar(xs, ys, yerr=[[y - get(b)["accuracy_ci"][0] for y, b in zip(ys, blocks)], [get(b)["accuracy_ci"][1] - y for y, b in zip(ys, blocks)]],
+                    color=colors["direct_brier"], marker=MARKERS[k], markerfacecolor=colors["direct_brier"] if k == 0 else SURFACE, linestyle=line, capsize=2,
+                    elinewidth=0.8, label=f"direct_brier, {label}")
+    ax.axhline(zero, color=REFERENCE, linestyle="--", linewidth=1.1, label=f"zero-shot {zero:.3f}")
+    ax.set_xticks(xs, [f"{'0 (clean)' if x == 0 else x}\nstep {b['selection']['best_step']}\ngrowth {b['selection']['growth']:.3f}" for x, b in zip(xs, blocks)], fontsize=7)
+    ax.set_xlabel("flip rate f, selected step, criterion growth")
+    ax.set_ylabel("accuracy")
+    ax.set_ylim(0.7, 0.97)
+    ax.set_title("the collapse: selected against final step", loc="left")
+    ax.legend(loc="lower left", fontsize=7)
+    fig.suptitle("Noise-rate sweep, N 5000, seed 0: calibrated to the channel at every f; the collapse grows with f", x=0.01, ha="left", fontsize=10)
+    fig.tight_layout(rect=(0, 0.08, 1, 0.95))
+    caption(fig, "Source: runs/v3_noise_sweep_06b/metrics.json: clean.<arm>, by_rate.<f>.<arm> (accuracy, minus_clean, channel.channel_scale, selection, last); "
+                 "channel-scale ECE checked against runs/<run>_inverted/metrics.json:stored_channel. At f 0 the channel scale is ordinary ECE and the reference is the clean run "
+                 "itself. Whiskers: 95% record bootstrap. Growth: the selection criterion's excess over its floor -H(f) at step 1407 minus at the selected step.")
+    save(fig, out, "v4_noise_sweep.png", written)
+
+
+SCALE = [("zero_shot", "zero-shot"), ("temperature", "temperature"), ("positive_sft", "positive_sft"), ("direct_brier", "direct_brier"), ("full_sft", "full_sft")]
+
+
+def scale_values(stage: dict[str, Any], key: str, metric: str) -> tuple[float, list[float] | None]:
+    """A learner's value at N 5000: the training-seed mean and range where the stage file has more than one seed, else seed 0 and no range."""
+    blocks = {"direct_brier": stage["seeds"]["training_seeds"], "full_sft": stage["seeds"]["full_sft"]["training_seeds"]}
+    sp = seed_points(blocks.get(key), metric)
+    if sp is not None and sp[2] > 1:
+        return sp[0], sp[1]
+    return stage["n_curve"]["5000"][key][metric], None
+
+
+def forgetting_values(stage: dict[str, Any], key: str) -> tuple[float, list[float] | None]:
+    """In-domain accuracy minus zero-shot at N 5000: the mean and range over whatever training seeds the stage file holds."""
+    if key == "zero_shot":
+        return 0.0, None
+    table = stage["forgetting"]["test_indomain"]["minus_zero_shot"]
+    if key == "temperature":
+        return table["temperature_n5000"]["accuracy"]["delta"], None
+    deltas = [table[f"{key}_n5000_s{k}"]["accuracy"]["delta"] for k in range(3) if f"{key}_n5000_s{k}" in table]
+    return sum(deltas) / len(deltas), ([min(deltas), max(deltas)] if len(deltas) > 1 else None)
+
+
+def v4_scale(runs: Path, out: Path, written: list[Path]) -> None:
+    stages = {"0.6B": load(runs / "v3_stage_06b" / "metrics.json"), "1.7B": load(runs / "v3_stage_17b" / "metrics.json")}
+    colors = v3_colors()
+    fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+    panels = ((axes[0], "accuracy", "accuracy"), (axes[1], "ece", "ECE (top-1, 15 bins)"), (axes[2], None, "in-domain accuracy minus zero-shot"))
+    for ax, metric, label in panels:
+        for i, (key, _) in enumerate(SCALE):
+            for size, dx, marker, filled in (("0.6B", -0.15, "o", False), ("1.7B", 0.15, "D", True)):
+                value, rng = forgetting_values(stages[size], key) if metric is None else scale_values(stages[size], key, metric)
+                if rng is not None:
+                    ax.vlines(i + dx, *rng, color=colors[key], linewidth=5, alpha=0.45)
+                ax.plot(i + dx, value, marker=marker, markersize=7, color=colors[key], markerfacecolor=colors[key] if filled else SURFACE, markeredgewidth=1.6, linestyle="none")
+        if metric is None:
+            ax.axhline(0, color=REFERENCE, linewidth=1)
+        ax.set_xticks(range(len(SCALE)), [name for _, name in SCALE], fontsize=7.5, rotation=20)
+        ax.grid(axis="x", visible=False)
+        ax.set_title(label, loc="left")
+    axes[0].plot([], [], marker="o", markersize=7, markerfacecolor=SURFACE, markeredgecolor=INK_2, linestyle="none", label="0.6B")
+    axes[0].plot([], [], marker="D", markersize=7, color=INK_2, linestyle="none", label="1.7B")
+    axes[0].plot([], [], color=INK_2, linewidth=5, alpha=0.45, label="range over training seeds")
+    axes[0].legend(loc="upper left")
+    fig.suptitle("Scale, Banking77 at N 5000: the ordering holds at 1.7B, direct_brier close to full_sft", x=0.01, ha="left", fontsize=10)
+    fig.tight_layout(rect=(0, 0.09, 1, 0.95))
+    caption(fig, "Source: runs/v3_stage_06b/metrics.json and runs/v3_stage_17b/metrics.json: n_curve.5000.<learner>, seeds.training_seeds and seeds.full_sft.training_seeds "
+                 "(0.6B direct_brier and full_sft: mean of training seeds 0, 1, 2 with their range; everything else seed 0), forgetting.test_indomain.minus_zero_shot. "
+                 "1.7B: one training seed; its seed ranges appear when the stage file holds more. v3_banking77_test_full and test_indomain.")
+    save(fig, out, "v4_scale.png", written)
+
+
+FIGURES = (v1_full_splits, v1_subset, v2_cascade, v2_reliability, v2_arm_ece, v3_n_curve, v3_coverage, v3_noise, v4_offpolicy, v4_noise_sweep, v4_scale)
+EXPECTED = ("v1_full_splits.png", "v1_subset.png", "v2_cascade.png", "v2_reliability.png", "v2_arm_ece.png", "v3_n_curve.png", "v3_coverage.png", "v3_noise.png",
+            "v4_offpolicy.png", "v4_noise_sweep.png", "v4_scale.png")
+# Figures waiting for runs, not drawn: the file each would read and what it waits for.
+PENDING = {
+    "v4_emotion_n_curve.png": ("runs/v3_stage_emotion_06b/metrics.json", "the emotion N-curve panel: needs the emotion direct_brier runs at N 500, 2000 and 5000 "
+                               "(seeds 1 and 2 at N 5000) and direct_log at N 5000, then compare_v3.py --domain emotion"),
+    "v4_scale.png, 1.7B seed ranges": ("runs/v3_stage_17b/metrics.json", "direct_brier seeds 1 and 2 at 1.7B; drawn by v4_scale without a code change once present"),
+}
 
 
 def main(argv: Sequence[str] | None = None) -> int:
