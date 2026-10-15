@@ -1,0 +1,56 @@
+run_name: v3_emotion_06b_positive_sft_n5000_s0
+domain: emotion
+size: 06b
+arm: positive_sft
+seed: 0
+backbone:
+  id: Qwen/Qwen3-0.6B-Base
+  revision: da87bfb608c14b7cf20ba1ce41287e8de496c0cd
+tokenizer_reference:
+  id: Qwen/Qwen3-0.6B-Base
+  revision: da87bfb608c14b7cf20ba1ce41287e8de496c0cd
+max_tokens: 2048
+precision:
+  autocast: fp16
+  fp32_fallback: true
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  mlp: false
+calibration:
+  temperature: 1.0
+training:
+  data_dir: data
+  data_file: v3_emotion_train.jsonl
+  max_tokens: 1024
+  lr: 5.0e-05
+  weight_decay: 0.0
+  warmup_steps: 20
+  effective_batch: 32
+  micro_batch: 8
+  grad_clip: 1.0
+  eval_every: 50
+  gradient_checkpointing: false
+v3:
+  init: runs/sft_06b
+  train_share: 0.9
+  epochs: 10
+  min_steps: 200
+  beta: 0.0
+  init_adapter_sha256: 5d2681f3ba7a72cd4c0f1413e89c5e21c7bb96cee8645fa2a498516d67568809
+  log: runs/v3_log_emotion_s0/log.jsonl
+  log_sha256: 2e04b69ecd14815aecee6a65095b83fc6c62388125d770b759a3c6f731b98953
+  log_seed: 0
+  n: 5000
+  noisy: false
+  noise: null
+  data_sha256: 979b850c13412c948edce6499bc15a8d1c12c4e4bae11232859f693752ba33da
+  n_train: 4500
+  n_select: 500
+  steps: 1407
