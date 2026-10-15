@@ -486,7 +486,9 @@ def v4_noise_sweep(runs: Path, out: Path, written: list[Path]) -> None:
     ax.set_ylim(0.7, 0.97)
     ax.set_title("the collapse: selected against final step", loc="left")
     ax.legend(loc="lower left", fontsize=7)
-    fig.suptitle("Noise-rate sweep, N 5000, seed 0: calibrated to the channel at every f; the collapse grows with f", x=0.01, ha="left", fontsize=10)
+    excess = ", ".join(f"{rates[f]['direct_brier']['channel']['channel_scale']['channel_ece_minus_reference']:.3f}".replace("0.", ".", 1) for f in FLIPS)
+    fig.suptitle(f"Noise-rate sweep, N 5000, seed 0: direct_brier sits near the channel line, its excess over the mapped-clean reference growing with f "
+                 f"({excess}), and the collapse grows with f", x=0.01, ha="left", fontsize=10, wrap=True)
     fig.tight_layout(rect=(0, 0.08, 1, 0.95))
     caption(fig, "Source: runs/v3_noise_sweep_06b/metrics.json: clean.<arm>, by_rate.<f>.<arm> (accuracy, minus_clean, channel.channel_scale, selection, last); "
                  "channel-scale ECE checked against runs/<run>_inverted/metrics.json:stored_channel. At f 0 the channel scale is ordinary ECE and the reference is the clean run "
