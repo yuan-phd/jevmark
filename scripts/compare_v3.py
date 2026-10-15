@@ -21,8 +21,9 @@ No model is loaded. It reads, under --runs-dir:
 
 On v3_banking77_test_full it reports accuracy, ECE, Brier and NLL, and the
 risk-coverage summaries AURC and coverage at error budgets 0.05, 0.10 and 0.20
-(jevmark.metrics.risk_coverage: questions ranked by the response confidence field,
-the same one the coverage table thresholds), with 95 percent bootstrap intervals by
+(jevmark.metrics.risk_coverage: questions ranked by the top-1 probability, and under
+aurc_entropy and coverage_at_<eps>_entropy by the response confidence field, the one
+the coverage table thresholds), with 95 percent bootstrap intervals by
 record (resamples of the split's records, the same draws for every run, so
 differences are paired), and writes runs/v3_stage_<size>/metrics.json:
 
@@ -103,7 +104,8 @@ LEARNERS = ("zero_shot", "temperature", *ARMS, TEMP_ON_RLCD)
 FORGETTING_SPLITS = ("test_indomain", "test_unseen_intents")
 COVERAGE_THRESHOLDS = (0.8, 0.9, 0.95)
 BASE_METRICS = ("accuracy", "ece", "brier", "nll")
-RISK_METRICS = ("aurc", *(f"coverage_at_{eps:.2f}" for eps in RISK_BUDGETS))  # ranked by the response confidence field
+RISK_RANKINGS = {"": "top1", "_entropy": "confidence"}  # key suffix -> the arrays entry ranked by: top-1 probability (primary), the confidence field
+RISK_METRICS = tuple(m + suffix for suffix in RISK_RANKINGS for m in ("aurc", *(f"coverage_at_{eps:.2f}" for eps in RISK_BUDGETS)))
 METRICS = (*BASE_METRICS, *RISK_METRICS)
 OTHER = "other"
 B2_RUN = "b2_gpt-4.1-mini"
@@ -188,10 +190,11 @@ def values(a: Mapping[str, np.ndarray], weights: np.ndarray, metrics: Sequence[s
         "brier": weights @ a["brier"] / total,
         "nll": weights @ a["nll"] / total,
     }
-    if any(m in RISK_METRICS for m in metrics):
-        area, coverage = risk_coverage(a["confidence"], a["correct"], weights)
-        out["aurc"] = area
-        out.update({f"coverage_at_{eps:.2f}": coverage[:, j] for j, eps in enumerate(RISK_BUDGETS)})
+    for suffix, ranked_by in RISK_RANKINGS.items():
+        if any(m in RISK_METRICS and m.endswith(suffix) for m in metrics):
+            area, coverage = risk_coverage(a[ranked_by], a["correct"], weights)
+            out["aurc" + suffix] = area
+            out.update({f"coverage_at_{eps:.2f}{suffix}": coverage[:, j] for j, eps in enumerate(RISK_BUDGETS)})
     return {m: out[m] for m in metrics}
 
 

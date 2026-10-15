@@ -118,9 +118,12 @@ def test_risk_coverage_columns_match_the_metrics_module_and_stay_off_the_forgett
     result = compare_v3.compare(runs_dir, "06b", 50, subset)
     rs = compare_v3.by_split(compare_v3.read_results(runs_dir / "v3_06b_direct_brier_n5000_s0" / "results.jsonl.gz"))[V3_TEST_FULL]
     point = result["n_curve"]["5000"]["direct_brier"]
-    assert point["aurc"] == pytest.approx(aurc(rs))
-    for eps, block in coverage_at_risk(rs).items():
-        assert point[f"coverage_at_{eps}"] == pytest.approx(block["coverage"])
+    assert point["aurc"] == pytest.approx(aurc(rs)) and point["aurc_entropy"] == pytest.approx(aurc(rs, by="entropy"))
+    zero = result["n_curve"]["5000"]["zero_shot"]
+    assert zero["aurc"] != zero["aurc_entropy"]  # the weak synthetic run ranks differently by top-1 and by entropy
+    for by, suffix in (("top1", ""), ("entropy", "_entropy")):
+        for eps, block in coverage_at_risk(rs, by=by).items():
+            assert point[f"coverage_at_{eps}{suffix}"] == pytest.approx(block["coverage"])
     assert set(result["n_curve"]["5000"]["direct_brier_minus_positive_sft"]) == set(compare_v3.METRICS)
     for split in ("test_indomain", "test_unseen_intents"):
         assert "aurc" not in result["forgetting"][split]["zero_shot"] and "accuracy" in result["forgetting"][split]["zero_shot"]

@@ -12,7 +12,8 @@ since the map is increasing in p.
 
 Writes runs/<run>_inverted/metrics.json with the stored and the inverted metrics on
 the split (accuracy, ECE, Brier, NLL with bootstrap intervals by record, coverage at
-0.80, 0.90 and 0.95, AURC and coverage at error budgets 0.05, 0.10 and 0.20), the ECE of the inverted top-1 probability alone (no clipping of
+0.80, 0.90 and 0.95, AURC and coverage at error budgets 0.05, 0.10 and 0.20 ranked
+by top-1 probability, and under *_entropy by the confidence field), the ECE of the inverted top-1 probability alone (no clipping of
 the other options, no renormalisation: the direct test of calibration to the channel,
 since renormalising after clipping moves the mass of clipped options onto the rest),
 the number of questions whose gold probability clipped to 0
@@ -44,7 +45,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from jevmark.data.build import V3_TEST_FULL  # noqa: E402
-from jevmark.metrics import QuestionResult, aurc, bootstrap_intervals, coverage_at_risk, coverage_curve, ece, read_results, summarize  # noqa: E402
+from jevmark.metrics import QuestionResult, bootstrap_intervals, coverage_curve, ece, read_results, risk_coverage_block, summarize  # noqa: E402
 from jevmark.provenance import git_state  # noqa: E402
 
 COVERAGE_AT = (0.80, 0.90, 0.95)
@@ -107,9 +108,7 @@ def block(results: Sequence[QuestionResult]) -> dict[str, Any]:
     return {k: s[k] for k in ("n", "accuracy", "accuracy_ci", "ece", "ece_ci", "brier", "nll")} | {
         "mean_top1": sum(r.top1 for r in results) / len(results),
         "coverage": curve,
-        "aurc": aurc(results),
-        "coverage_at_risk": coverage_at_risk(results),
-    }
+    } | risk_coverage_block(results)
 
 
 def run(source: Path, flip: float, split: str, clean: Path | None, out: Path) -> dict[str, Any]:

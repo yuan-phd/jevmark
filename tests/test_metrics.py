@@ -147,18 +147,25 @@ def test_risk_coverage_averages_over_the_order_of_ties_and_takes_counts_as_weigh
         risk_coverage(conf, correct, [[0.5, 1, 1]])
 
 
-def test_aurc_and_coverage_at_risk_rank_by_the_confidence_field():
-    # Choice confidence is normalised entropy, not top-1: [0.6, 0.2, 0.2] is more certain than [0.65, 0.35, 0.0] by top-1
-    # but less by entropy, so the order differs from the top-1 order.
-    results = [choice([0.65, 0.35, 0.0], 1), choice([0.6, 0.2, 0.2], 0), choice([0.98, 0.01, 0.01], 0)]
-    assert results[0].confidence > results[1].confidence
-    assert aurc(results) == pytest.approx((0 + 1 / 2 + 1 / 3) / 3)
-    at = coverage_at_risk(results)
-    assert at["0.05"] == {"coverage": pytest.approx(1 / 3), "n": 1, "accuracy": 1.0, "threshold": pytest.approx(results[2].confidence)}
+def test_aurc_and_coverage_at_risk_rank_by_top1_and_by_the_confidence_field_under_entropy_keys():
+    # [0.55, 0.225, 0.225] beats [0.5, 0.5, 0.0] on top-1 (.55 against .5) but not on normalised entropy (.09 against .37).
+    wrong, right = choice([0.5, 0.5, 0.0], 1), choice([0.55, 0.225, 0.225], 0)
+    results = [wrong, right, choice([0.98, 0.01, 0.01], 0)]
+    assert right.top1 > wrong.top1 and right.confidence < wrong.confidence
+    # Top-1 order: right, right, wrong -> risks 0, 0, 1/3. Entropy order: right, wrong, right -> 0, 1/2, 1/3.
+    assert aurc(results) == pytest.approx((0 + 0 + 1 / 3) / 3)
+    assert aurc(results, by="entropy") == pytest.approx((0 + 1 / 2 + 1 / 3) / 3)
+    assert coverage_at_risk(results)["0.05"] == {"coverage": pytest.approx(2 / 3), "n": 2, "accuracy": 1.0, "threshold": pytest.approx(0.55)}
+    assert coverage_at_risk(results, by="entropy")["0.05"] == {"coverage": pytest.approx(1 / 3), "n": 1, "accuracy": 1.0, "threshold": pytest.approx(results[2].confidence)}
     assert coverage_at_risk([choice([0.4, 0.6], 0)])["0.20"] == {"coverage": 0.0, "n": 0, "accuracy": None, "threshold": None}
-    metrics = split_metrics(results + [noul(0.9, True)])
-    assert metrics["choice"]["aurc"] == pytest.approx(aurc(results)) and set(metrics["choice"]["coverage_at_risk"]) == {"0.05", "0.10", "0.20"}
-    assert "aurc" in metrics["noul"] and "aurc" not in metrics["overall"]  # per type only, as coverage
+    with pytest.raises(ValueError, match="ranking"):
+        aurc(results, by="margin")
+    metrics = split_metrics(results + [noul(0.9, True), noul(0.3, True)])
+    choice_block = metrics["choice"]
+    assert choice_block["aurc"] == pytest.approx(aurc(results)) and choice_block["aurc_entropy"] == pytest.approx(aurc(results, by="entropy"))
+    assert set(choice_block["coverage_at_risk"]) == set(choice_block["coverage_at_risk_entropy"]) == {"0.05", "0.10", "0.20"}
+    assert metrics["noul"]["aurc"] == metrics["noul"]["aurc_entropy"]  # for noul the confidence field is the top-1 probability
+    assert "aurc" not in metrics["overall"]  # per type only, as coverage
 
 
 def test_letter_bias_by_hand():

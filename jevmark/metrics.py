@@ -7,12 +7,15 @@ Two confidence quantities are used on purpose, and every report states this once
 - Coverage curves use the response confidence field: 1 - H(p) / ln(K) for choice
   and score (the same normalised_confidence the API returns), and max(p, 1 - p)
   for noul, which has no confidence field (decision 18).
-- The risk-coverage summaries rank questions by the same confidence field: AURC,
-  the area under the selective-risk curve (risk = error rate of the questions kept),
-  and coverage at an error budget eps, the largest share a confidence threshold can
-  keep with selective risk at most eps (eps 0.05, 0.10 and 0.20). Questions tied
-  in confidence enter together at a threshold; AURC takes the expectation over
-  their order, so it does not depend on how ties are broken.
+- The risk-coverage summaries rank questions by the top-1 probability (softmax
+  response, the convention of Geifman and El-Yaniv 2017): AURC, the area under the
+  selective-risk curve (risk = error rate of the questions kept), and coverage at an
+  error budget eps, the largest share a threshold can keep with selective risk at
+  most eps (eps 0.05, 0.10 and 0.20). The same summaries ranked by the response
+  confidence field are kept under the secondary keys aurc_entropy and
+  coverage_at_risk_entropy (for noul the two rankings coincide). Questions tied in
+  the ranking quantity enter together at a threshold; AURC takes the expectation
+  over their order, so it does not depend on how ties are broken.
 
 A noul distribution is (P(true), P(false)); its prediction is true when
 P(true) >= 0.5. Choice and score predictions are the argmax, first index on ties.
@@ -279,22 +282,36 @@ def risk_coverage(
     return aurc, coverage
 
 
-def aurc(results: Sequence[QuestionResult]) -> float:
-    """Area under the risk-coverage curve, questions ranked by the confidence field (risk_coverage)."""
-    return float(risk_coverage([r.confidence for r in results], [r.correct for r in results])[0][0])
+RANKINGS = ("top1", "entropy")  # top1: the top-1 probability (primary); entropy: the response confidence field
 
 
-def coverage_at_risk(results: Sequence[QuestionResult], budgets: Sequence[float] = RISK_BUDGETS) -> dict[str, dict[str, Any]]:
-    """For each error budget: the largest share a confidence threshold keeps with error rate at most the budget, the
-    number kept, their accuracy and the threshold (the lowest confidence kept; None and coverage 0 when none qualifies)."""
-    conf = [r.confidence for r in results]
-    coverage = risk_coverage(conf, [r.correct for r in results], budgets=budgets)[1][0]
-    ranked = sorted(results, key=lambda r: -r.confidence)
+def _ranking(r: QuestionResult, by: str) -> float:
+    if by not in RANKINGS:
+        raise ValueError(f"unknown ranking {by!r}; expected one of {RANKINGS}")
+    return r.top1 if by == "top1" else r.confidence
+
+
+def aurc(results: Sequence[QuestionResult], by: str = "top1") -> float:
+    """Area under the risk-coverage curve (risk_coverage), questions ranked by the top-1 probability or, with by="entropy", the confidence field."""
+    return float(risk_coverage([_ranking(r, by) for r in results], [r.correct for r in results])[0][0])
+
+
+def coverage_at_risk(results: Sequence[QuestionResult], budgets: Sequence[float] = RISK_BUDGETS, by: str = "top1") -> dict[str, dict[str, Any]]:
+    """For each error budget: the largest share a threshold on the ranking quantity keeps with error rate at most the budget,
+    the number kept, their accuracy and the threshold (the lowest value kept; None and coverage 0 when none qualifies)."""
+    coverage = risk_coverage([_ranking(r, by) for r in results], [r.correct for r in results], budgets=budgets)[1][0]
+    ranked = sorted(results, key=lambda r: -_ranking(r, by))
     out = {}
     for eps, share in zip(budgets, coverage):
         kept = ranked[: round(share * len(results))]
-        out[f"{eps:.2f}"] = {"coverage": float(share), "n": len(kept), "accuracy": _mean([float(r.correct) for r in kept]), "threshold": kept[-1].confidence if kept else None}
+        out[f"{eps:.2f}"] = {"coverage": float(share), "n": len(kept), "accuracy": _mean([float(r.correct) for r in kept]), "threshold": _ranking(kept[-1], by) if kept else None}
     return out
+
+
+def risk_coverage_block(results: Sequence[QuestionResult]) -> dict[str, Any]:
+    """aurc and coverage_at_risk ranked by top-1 probability, and the same ranked by the confidence field under *_entropy."""
+    return {"aurc": aurc(results), "coverage_at_risk": coverage_at_risk(results),
+            "aurc_entropy": aurc(results, by="entropy"), "coverage_at_risk_entropy": coverage_at_risk(results, by="entropy")}
 
 
 def _gold_stats(members: Sequence[QuestionResult]) -> dict[str, Any]:
@@ -495,8 +512,7 @@ def summarize(results: Sequence[QuestionResult], with_coverage: bool) -> dict[st
     _with_ci(summary, results)
     if with_coverage:
         summary["coverage"] = coverage_curve(results)
-        summary["aurc"] = aurc(results)
-        summary["coverage_at_risk"] = coverage_at_risk(results)
+        summary.update(risk_coverage_block(results))
     return summary
 
 
