@@ -22,7 +22,7 @@ Accuracy improves as a consequence of this, not as the objective. Pushing a righ
 
 **What a weight does in practice** (RESULTS_v3 section 11, `S:n_curve.<N>.off_policy`):
 - The log score weighted by min(1 / q, 5) (ips_log) about equals the unweighted log score (direct_log): .906 against .907 accuracy at N 2000 and .930 against .933 at N 5000.
-- Weighting positive-only SFT the same way (ips_positive) leaves it equal to positive-only SFT: +.002 [-.001, +.005] and +.000 [-.003, +.004] in accuracy.
+- Weighting positive-only SFT the same way (ips_positive) leaves it equal to positive-only SFT: +.002 [-.001, +.005] and +.000 [-.003, +.004] in accuracy (`S:n_curve.<N>.off_policy.ips_positive.minus_positive_sft.accuracy`).
 - A correct logged action is usually the policy's own top choice. Its weight is then near one constant, which an adaptive optimiser largely removes (`runs/v3_06b_ips_positive_n5000_s0/train_summary.json:ips`).
 
 ## 3. Why a proper score is not a REINFORCE reward
@@ -45,7 +45,7 @@ Sample a group of actions and form REINFORCE advantages against the group mean.
 Under (i), the update raises the probability of rarely chosen wrong options and lowers gold's. **Why:** the score grades p_a as a forecast of r_a, and a low probability on a wrong option is always a good forecast. ∎
 
 **Measured** (RESULTS_v2 section 2):
-- On full labels this reward degraded the model: test_yelp accuracy fell from .505 to .044, and validation NLL rose from .219 to .872 (`runs/rlcd_06b_brier_s0/metrics.json`, `training_log.jsonl`).
+- On full labels this reward degraded the model: test_yelp accuracy fell from .505 to .044, and validation NLL rose from .219 to .872 (`runs/sft_06b/metrics.json:splits.test_yelp.overall.accuracy`, `runs/rlcd_06b_brier_s0/metrics.json:splits.test_yelp.overall.accuracy`; `runs/rlcd_06b_brier_s0/train_summary.json:init_valid.nll`, `runs/rlcd_06b_brier_s0/training_log.jsonl`, the step 500 validation row).
 - A simulation of the sampler lowered the gold logit in 24.0 percent of questions and raised it in 1.8 percent (`runs/advantage_simulation_06b/metrics.json:rewards`).
 
 CAPS avoids this by differentiating the score through p_a instead of using it as a reward.
@@ -55,7 +55,7 @@ CAPS avoids this by differentiating the score through p_a instead of using it as
 The learner trains on the first 0.9 N interactions of the log. It keeps the checkpoint with the highest mean Bernoulli log-likelihood of the logged outcomes under p(logged action) on the last 0.1 N, which is the log score of the objective on held-out interactions. Gold is never read (RESULTS_v3 section 1).
 
 **Necessary under noisy feedback** (RESULTS_v3 section 4):
-- With outcomes flipped at rate 0.2, the selected checkpoint scores .907. Trained to the end of the budget, the same run falls to .813, below the zero-shot .851, while the clean run keeps .933 (`runs/v3_06b_direct_brier_n5000_s0_noisy{,_last}/metrics.json:splits.v3_banking77_test_full.overall.accuracy`).
+- With outcomes flipped at rate 0.2, the selected checkpoint scores .907. Trained to the end of the budget, the same run falls to .813, below the zero-shot .851, while the clean run keeps .933 (`runs/v3_06b_direct_brier_n5000_s0_noisy/metrics.json`, `runs/v3_06b_direct_brier_n5000_s0_noisy_last/metrics.json`, `runs/v3_06b_zeroshot/metrics.json` and `runs/v3_06b_direct_brier_n5000_s0_last/metrics.json`, each at `splits.v3_banking77_test_full.overall.accuracy`).
 - At flip rate 0.3 the final checkpoint reaches .734 (`N:by_rate.0.3.direct_brier.last.accuracy`).
 - The learner memorises the single fixed flip draw of each interaction when it passes over the log many times. The feedback-only criterion stopped it before that, every time.
 
@@ -82,7 +82,7 @@ Both are strictly proper and the gradient has the same form. As measured on Bank
 - **N 5000, three training seeds:** the log score is slightly better on Brier and NLL and level on accuracy. Seed mean minus Brier's: Brier -.005 [-.008, -.001], NLL -.020 [-.029, -.010], accuracy +.002 [-.001, +.005] (`S:seeds.direct_log_seed_mean_minus_direct_brier_seed_mean`).
 - **N 2000, one seed:** the log score is worse. Accuracy -.010 [-.016, -.004], Brier +.014, NLL +.020 (`S:n_curve.2000.off_policy.direct_log.minus_direct_brier`).
 - **Forgetting:** the log score costs more in-domain accuracy at N 5000, -.038 to -.046 against -.027 to -.043 (`S:forgetting.test_indomain.minus_zero_shot`).
-- **Seed spread:** the log score's NLL spreads over .036 across seeds (`S:seeds.direct_log`); the three Brier runs agree to within .0006, .2737, .2742 and .2737 (`runs/v3_06b_direct_brier_n5000_s<k>/metrics.json:splits.v3_banking77_test_full.overall.nll`).
+- **Seed spread:** the log score's NLL spreads over .036 across seeds, .239 to .275 (`S:seeds.direct_log.training_seeds.nll.range`); the three Brier runs agree to within .0006, .2737, .2742 and .2737 (`runs/v3_06b_direct_brier_n5000_s<k>/metrics.json:splits.v3_banking77_test_full.overall.nll`).
 
 Brier is the default. The log score is the alternative when Brier and NLL on the target domain matter more than in-domain retention and stability across seeds.
 
