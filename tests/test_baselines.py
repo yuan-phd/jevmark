@@ -324,6 +324,25 @@ def test_recompute_restricts_to_the_subset(tmp_path):
     assert not (run_dir / "metrics.json").exists()
 
 
+def test_recompute_rebuilds_a_temperature_scaled_run_from_its_source(tmp_path):
+    from jevmark.calibration import scale_results
+    from jevmark.metrics import reports_by_split
+
+    results = [QuestionResult(rid, "intent", "choice", (0.7, 0.2, 0.1), g, ("a", "b", "c"), split="test_indomain") for rid, g in (("a", 0), ("b", 1), ("c", 0))]
+    source, scaled = tmp_path / "source", tmp_path / "source_temp"
+    source.mkdir()
+    scaled.mkdir()
+    write_results(source / "results.jsonl.gz", results)
+    (scaled / "calibration.json").write_text(json.dumps({"temperature": 1.7}))
+    (scaled / "metrics.json").write_text(json.dumps({"run_name": "source_temp", "source": {"run": str(source)}, "temperature": 1.7}))
+    assert recompute_script.main([str(scaled)]) == 0
+    metrics = json.loads((scaled / "metrics.json").read_text())
+    assert metrics["splits"] == json.loads(json.dumps(reports_by_split(scale_results(results, 1.7))))
+    assert metrics["temperature"] == 1.7 and "scaled by temperature 1.7" in metrics["recomputed"]["from"]
+    with pytest.raises(SystemExit, match="no results"):
+        recompute_script.main([str(tmp_path)])
+
+
 # B1 on the tiny model
 
 

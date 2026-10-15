@@ -6,7 +6,9 @@ import pytest
 
 from jevmark.metrics import (
     QuestionResult,
+    aurc,
     brier,
+    coverage_at_risk,
     coverage_curve,
     ece,
     letter_bias,
@@ -15,6 +17,7 @@ from jevmark.metrics import (
     mean_absolute_error,
     nll,
     reliability,
+    risk_coverage,
     split_metrics,
     symmetry,
     timing_summary,
@@ -119,6 +122,43 @@ def test_coverage_curve_by_hand():
     assert curve[0.6] == {"threshold": 0.6, "coverage": pytest.approx(2 / 3), "n": 2, "accuracy": 0.5}
     assert curve[0.75] == {"threshold": 0.75, "coverage": pytest.approx(1 / 3), "n": 1, "accuracy": 1.0}
     assert curve[0.95] == {"threshold": 0.95, "coverage": 0.0, "n": 0, "accuracy": None}
+
+
+def test_risk_coverage_by_hand():
+    # Ranked 0.9 (right), 0.8 (right), 0.7 (wrong), 0.6 (right), 0.5 (wrong): risks 0, 0, 1/3, 1/4, 2/5.
+    area, coverage = risk_coverage([0.6, 0.9, 0.5, 0.8, 0.7], [True, True, False, True, False])
+    assert area[0] == pytest.approx((0 + 0 + 1 / 3 + 1 / 4 + 2 / 5) / 5)
+    assert coverage[0].tolist() == pytest.approx([0.4, 0.4, 0.4])  # 1/4 and 1/3 exceed even the 0.20 budget
+    _, coverage = risk_coverage([0.9, 0.8, 0.7, 0.6, 0.5], [True, True, True, True, False], budgets=(0.0, 0.2))
+    assert coverage[0].tolist() == pytest.approx([0.8, 1.0])
+    assert risk_coverage([0.9], [False])[1][0].tolist() == [0.0, 0.0, 0.0]  # no threshold qualifies
+
+
+def test_risk_coverage_averages_over_the_order_of_ties_and_takes_counts_as_weights():
+    # Two tied questions, one wrong: orders (right, wrong) give (0 + 1/2) / 2, (wrong, right) give (1 + 1/2) / 2.
+    area, coverage = risk_coverage([0.7, 0.7], [True, False])
+    assert area[0] == pytest.approx(0.5 * (0.25 + 0.75)) and coverage[0].tolist() == [0.0, 0.0, 0.0]
+    # A weight of 2 is the question drawn twice, and a weight of 0 drops it; one row per weight vector.
+    conf, correct = [0.9, 0.6, 0.3], [False, True, True]
+    area, coverage = risk_coverage(conf, correct, [[1, 2, 0], [1, 1, 1]])
+    assert area[0] == pytest.approx(risk_coverage([0.9, 0.6, 0.6], [False, True, True])[0][0])
+    assert area[1] == pytest.approx(risk_coverage(conf, correct)[0][0])
+    with pytest.raises(ValueError, match="integer"):
+        risk_coverage(conf, correct, [[0.5, 1, 1]])
+
+
+def test_aurc_and_coverage_at_risk_rank_by_the_confidence_field():
+    # Choice confidence is normalised entropy, not top-1: [0.6, 0.2, 0.2] is more certain than [0.65, 0.35, 0.0] by top-1
+    # but less by entropy, so the order differs from the top-1 order.
+    results = [choice([0.65, 0.35, 0.0], 1), choice([0.6, 0.2, 0.2], 0), choice([0.98, 0.01, 0.01], 0)]
+    assert results[0].confidence > results[1].confidence
+    assert aurc(results) == pytest.approx((0 + 1 / 2 + 1 / 3) / 3)
+    at = coverage_at_risk(results)
+    assert at["0.05"] == {"coverage": pytest.approx(1 / 3), "n": 1, "accuracy": 1.0, "threshold": pytest.approx(results[2].confidence)}
+    assert coverage_at_risk([choice([0.4, 0.6], 0)])["0.20"] == {"coverage": 0.0, "n": 0, "accuracy": None, "threshold": None}
+    metrics = split_metrics(results + [noul(0.9, True)])
+    assert metrics["choice"]["aurc"] == pytest.approx(aurc(results)) and set(metrics["choice"]["coverage_at_risk"]) == {"0.05", "0.10", "0.20"}
+    assert "aurc" in metrics["noul"] and "aurc" not in metrics["overall"]  # per type only, as coverage
 
 
 def test_letter_bias_by_hand():

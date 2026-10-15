@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from jevmark.data.build import V3_TEST_FULL
-from jevmark.metrics import QuestionResult, write_results
+from jevmark.metrics import QuestionResult, aurc, coverage_at_risk, write_results
 
 REPO = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("compare_v3", REPO / "scripts" / "compare_v3.py")
@@ -111,6 +111,19 @@ def test_compare_writes_every_table(runs):
     assert result["seeds"]["direct_brier_temp_seed_mean_minus_direct_brier_seed_mean"]["accuracy"]["delta"] == pytest.approx(0.0, abs=1e-12)
     assert "direct_brier_temp_n5000_s0" in result["coverage"]
     assert result["b2_reference"]["b2"]["accuracy_all"] == 0.918 and result["b2_reference"]["runs"]["zero_shot"]["n"] == 10
+
+
+def test_risk_coverage_columns_match_the_metrics_module_and_stay_off_the_forgetting_splits(runs):
+    runs_dir, subset = runs
+    result = compare_v3.compare(runs_dir, "06b", 50, subset)
+    rs = compare_v3.by_split(compare_v3.read_results(runs_dir / "v3_06b_direct_brier_n5000_s0" / "results.jsonl.gz"))[V3_TEST_FULL]
+    point = result["n_curve"]["5000"]["direct_brier"]
+    assert point["aurc"] == pytest.approx(aurc(rs))
+    for eps, block in coverage_at_risk(rs).items():
+        assert point[f"coverage_at_{eps}"] == pytest.approx(block["coverage"])
+    assert set(result["n_curve"]["5000"]["direct_brier_minus_positive_sft"]) == set(compare_v3.METRICS)
+    for split in ("test_indomain", "test_unseen_intents"):
+        assert "aurc" not in result["forgetting"][split]["zero_shot"] and "accuracy" in result["forgetting"][split]["zero_shot"]
 
 
 def test_paired_difference_of_a_run_with_itself_is_zero(runs):

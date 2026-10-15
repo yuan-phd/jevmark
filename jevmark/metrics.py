@@ -7,6 +7,12 @@ Two confidence quantities are used on purpose, and every report states this once
 - Coverage curves use the response confidence field: 1 - H(p) / ln(K) for choice
   and score (the same normalised_confidence the API returns), and max(p, 1 - p)
   for noul, which has no confidence field (decision 18).
+- The risk-coverage summaries rank questions by the same confidence field: AURC,
+  the area under the selective-risk curve (risk = error rate of the questions kept),
+  and coverage at an error budget eps, the largest share a confidence threshold can
+  keep with selective risk at most eps (eps 0.05, 0.10 and 0.20). Questions tied
+  in confidence enter together at a threshold; AURC takes the expectation over
+  their order, so it does not depend on how ties are broken.
 
 A noul distribution is (P(true), P(false)); its prediction is true when
 P(true) >= 0.5. Choice and score predictions are the argmax, first index on ties.
@@ -46,6 +52,8 @@ QUESTION_TYPES = ("noul", "choice", "score")
 BOOTSTRAP_RESAMPLES = 1000
 BOOTSTRAP_SEED = 0
 BOOTSTRAP_CHUNK = 100
+RISK_BUDGETS = (0.05, 0.10, 0.20)
+RISK_TOLERANCE = 1e-12
 
 
 @dataclass(frozen=True)
@@ -232,6 +240,61 @@ def coverage_curve(results: Sequence[QuestionResult], thresholds: Sequence[float
         kept = [r for r in results if r.confidence >= t - 1e-12]
         rows.append({"threshold": t, "coverage": len(kept) / len(results), "n": len(kept), "accuracy": _mean([float(r.correct) for r in kept])})
     return rows
+
+
+def risk_coverage(
+    confidences: Sequence[float] | np.ndarray, correct: Sequence[bool] | np.ndarray, weights: np.ndarray | None = None, budgets: Sequence[float] = RISK_BUDGETS
+) -> tuple[np.ndarray, np.ndarray]:
+    """AURC and coverage at each error budget, for each row of integer question weights (one row of ones when None).
+
+    Questions are ranked by confidence, highest first. AURC is the mean over the
+    ranked positions i = 1..N of the error rate of the first i questions; within a
+    group of tied confidences the expected error count at each position is used, so
+    the result is the mean over every order of the ties. Coverage at budget eps is
+    the largest share kept by a threshold (a whole tie group at a time) whose kept
+    questions have error rate at most eps; 0 when no threshold qualifies. Weights are
+    counts (a bootstrap resample's draws of each question), so the harmonic sums
+    below are exact. Returns arrays of shape (rows,) and (rows, len(budgets)).
+    """
+    conf = np.asarray(confidences, dtype=np.float64)
+    errors = 1.0 - np.asarray(correct, dtype=np.float64)
+    w = np.ones((1, len(conf))) if weights is None else np.atleast_2d(np.asarray(weights, dtype=np.float64))
+    if not np.array_equal(w, np.round(w)) or (w < 0).any():
+        raise ValueError("risk_coverage weights must be non-negative integer counts")
+    order = np.argsort(-conf, kind="stable")
+    ranked = conf[order]
+    starts = np.flatnonzero(np.r_[True, ranked[1:] != ranked[:-1]])
+    group_w = np.add.reduceat(w[:, order], starts, axis=1)
+    group_e = np.add.reduceat(w[:, order] * errors[order], starts, axis=1)
+    kept_w, kept_e = np.cumsum(group_w, axis=1), np.cumsum(group_e, axis=1)
+    before_w, before_e = kept_w - group_w, kept_e - group_e
+    total = kept_w[:, -1]
+    harmonic = np.concatenate([[0.0], np.cumsum(1.0 / np.arange(1, int(total.max()) + 1))])
+    rate = np.divide(group_e, group_w, out=np.zeros_like(group_e), where=group_w > 0)
+    # Within a group: sum over j = 1..W of (E_before + j rate) / (W_before + j) = W rate + (E_before - rate W_before)(H(W_before + W) - H(W_before)).
+    area = group_w * rate + (before_e - rate * before_w) * (harmonic[kept_w.astype(np.int64)] - harmonic[before_w.astype(np.int64)])
+    aurc = area.sum(axis=1) / total
+    risk = np.divide(kept_e, kept_w, out=np.full_like(kept_e, np.inf), where=kept_w > 0)
+    coverage = np.stack([np.where(risk <= eps + RISK_TOLERANCE, kept_w, 0.0).max(axis=1) / total for eps in budgets], axis=1)
+    return aurc, coverage
+
+
+def aurc(results: Sequence[QuestionResult]) -> float:
+    """Area under the risk-coverage curve, questions ranked by the confidence field (risk_coverage)."""
+    return float(risk_coverage([r.confidence for r in results], [r.correct for r in results])[0][0])
+
+
+def coverage_at_risk(results: Sequence[QuestionResult], budgets: Sequence[float] = RISK_BUDGETS) -> dict[str, dict[str, Any]]:
+    """For each error budget: the largest share a confidence threshold keeps with error rate at most the budget, the
+    number kept, their accuracy and the threshold (the lowest confidence kept; None and coverage 0 when none qualifies)."""
+    conf = [r.confidence for r in results]
+    coverage = risk_coverage(conf, [r.correct for r in results], budgets=budgets)[1][0]
+    ranked = sorted(results, key=lambda r: -r.confidence)
+    out = {}
+    for eps, share in zip(budgets, coverage):
+        kept = ranked[: round(share * len(results))]
+        out[f"{eps:.2f}"] = {"coverage": float(share), "n": len(kept), "accuracy": _mean([float(r.correct) for r in kept]), "threshold": kept[-1].confidence if kept else None}
+    return out
 
 
 def _gold_stats(members: Sequence[QuestionResult]) -> dict[str, Any]:
@@ -432,6 +495,8 @@ def summarize(results: Sequence[QuestionResult], with_coverage: bool) -> dict[st
     _with_ci(summary, results)
     if with_coverage:
         summary["coverage"] = coverage_curve(results)
+        summary["aurc"] = aurc(results)
+        summary["coverage_at_risk"] = coverage_at_risk(results)
     return summary
 
 

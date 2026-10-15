@@ -9,6 +9,11 @@ per question (git, precision, latency, batching precision, data file hashes) are
 kept from the existing metrics.json when there is one. Use this after adding a
 metric to metrics.py, so old runs gain it without another GPU session.
 
+A temperature-scaled run (scripts/calibrate.py: calibration.json, no results file
+of its own) is rebuilt from its source run's results.jsonl.gz, named in its
+metrics.json, scaled by the temperature its calibration.json holds; nothing is
+refitted.
+
 --subset [PATH] restricts the questions to the records of the fixed baseline
 subset (default data/baseline_subset.json, task 1.8), 500 per split, or with --sub
 to its 200-record sub-subset, so a jevmark run is compared with the baselines on
@@ -26,7 +31,10 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from jevmark.baselines.subset import SUBSET_PATH, load_subset, subset_ids
+from jevmark.calibration import scale_results
 from jevmark.metrics import QuestionResult, read_results, reports_by_split
+
+REPO = Path(__file__).resolve().parents[1]
 
 
 def restrict_to_subset(results: Sequence[QuestionResult], subset: dict, sub: bool = False) -> list[QuestionResult]:
@@ -35,15 +43,28 @@ def restrict_to_subset(results: Sequence[QuestionResult], subset: dict, sub: boo
     return [r for r in results if (r.split, r.record_id) in wanted]
 
 
+def scaled_source(run_dir: Path, metrics: dict) -> tuple[list[QuestionResult], str]:
+    """A temperature-scaled run's results: its source run's, scaled by the temperature in its calibration.json."""
+    t = float(json.loads((run_dir / "calibration.json").read_text())["temperature"])
+    source = Path(metrics["source"]["run"])
+    source = source if source.is_absolute() else REPO / source
+    return scale_results(read_results(source / "results.jsonl.gz"), t), f"{metrics['source']['run']}/results.jsonl.gz scaled by temperature {t}"
+
+
 def recompute(run_dir: Path, subset: dict | None = None, sub: bool = False) -> dict:
-    results = read_results(run_dir / "results.jsonl.gz")
-    if subset is not None:
-        results = restrict_to_subset(results, subset, sub)
     existing_path = run_dir / "metrics.json"
     metrics = json.loads(existing_path.read_text()) if existing_path.is_file() else {"run_name": run_dir.name}
+    if (run_dir / "results.jsonl.gz").is_file():
+        results, origin = read_results(run_dir / "results.jsonl.gz"), "results.jsonl.gz"
+    elif (run_dir / "calibration.json").is_file() and "source" in metrics:
+        results, origin = scaled_source(run_dir, metrics)
+    else:
+        raise SystemExit(f"{run_dir}: no results.jsonl.gz, and not a temperature-scaled run with a source")
+    if subset is not None:
+        results = restrict_to_subset(results, subset, sub)
     metrics["splits"] = reports_by_split(results)
     metrics["recomputed"] = {
-        "from": "results.jsonl.gz",
+        "from": origin,
         "questions": len(results),
         "at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
     }

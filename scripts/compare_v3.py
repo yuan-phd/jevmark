@@ -19,9 +19,12 @@ No model is loaded. It reads, under --runs-dir:
 - b2_gpt-4.1-mini/metrics.json for the B2 reference on the 500-record baseline
   subset of test_banking77 (data/baseline_subset.json).
 
-On v3_banking77_test_full it reports accuracy, ECE, Brier and NLL with 95 percent
-bootstrap intervals by record (resamples of the split's records, the same draws for
-every run, so differences are paired), and writes runs/v3_stage_<size>/metrics.json:
+On v3_banking77_test_full it reports accuracy, ECE, Brier and NLL, and the
+risk-coverage summaries AURC and coverage at error budgets 0.05, 0.10 and 0.20
+(jevmark.metrics.risk_coverage: questions ranked by the response confidence field,
+the same one the coverage table thresholds), with 95 percent bootstrap intervals by
+record (resamples of the split's records, the same draws for every run, so
+differences are paired), and writes runs/v3_stage_<size>/metrics.json:
 
 - n_curve: rows N 500, 2000, 5000; columns zero_shot, temperature, positive_sft,
   full_sft, direct_brier and direct_brier_temp (seed 0, the seed 0 log, clean
@@ -42,7 +45,9 @@ every run, so differences are paired), and writes runs/v3_stage_<size>/metrics.j
 - noisy: direct_brier and positive_sft at N 5000 with flipped outcomes, each one's
   change from its clean run, and the difference of those changes (prediction 4);
 - forgetting: every learner's accuracy and ECE on test_indomain and
-  test_unseen_intents minus the zero-shot run's, paired;
+  test_unseen_intents minus the zero-shot run's, paired (accuracy, ECE, Brier and
+  NLL only there: those splits mix question types whose confidences differ, so no
+  risk-coverage summary is pooled over them);
 - other: each run's predicted-other rate (other is never gold in these questions)
   and its accuracy on the questions where no phase 3 run predicted other (the
   off-policy runs are scored on that same set and do not change it, so the phase 3
@@ -85,7 +90,7 @@ import numpy as np
 from jevmark.baselines.subset import SUBSET_PATH, load_subset, subset_ids
 from jevmark.calibration import scale_results
 from jevmark.data.build import V3_DOMAINS
-from jevmark.metrics import N_BINS, NLL_FLOOR, QuestionResult, gold_dependent, read_results
+from jevmark.metrics import N_BINS, NLL_FLOOR, RISK_BUDGETS, QuestionResult, gold_dependent, read_results, risk_coverage
 from jevmark.provenance import git_state
 
 REPO = Path(__file__).resolve().parents[1]
@@ -97,7 +102,9 @@ TEMP_ON_RLCD = "direct_brier_temp"
 LEARNERS = ("zero_shot", "temperature", *ARMS, TEMP_ON_RLCD)
 FORGETTING_SPLITS = ("test_indomain", "test_unseen_intents")
 COVERAGE_THRESHOLDS = (0.8, 0.9, 0.95)
-METRICS = ("accuracy", "ece", "brier", "nll")
+BASE_METRICS = ("accuracy", "ece", "brier", "nll")
+RISK_METRICS = ("aurc", *(f"coverage_at_{eps:.2f}" for eps in RISK_BUDGETS))  # ranked by the response confidence field
+METRICS = (*BASE_METRICS, *RISK_METRICS)
 OTHER = "other"
 B2_RUN = "b2_gpt-4.1-mini"
 CHOICE_QUESTION = "label"  # the one question a v3 learner answers, and the only one scored here
@@ -156,6 +163,7 @@ def arrays(results: Sequence[QuestionResult]) -> dict[str, np.ndarray]:
     return {
         "correct": np.array([float(r.correct) for r in results]),
         "top1": np.array([r.top1 for r in results]),
+        "confidence": np.array([r.confidence for r in results]),
         "brier": np.array([sum((p - (k == r.gold)) ** 2 for k, p in enumerate(r.probs)) for r in results]),
         "nll": np.array([-math.log(max(r.probs[r.gold], NLL_FLOOR)) for r in results]),
     }
@@ -172,14 +180,19 @@ def weighted_ece(conf: np.ndarray, correct: np.ndarray, weights: np.ndarray) -> 
     return total / weights.sum(axis=1)
 
 
-def values(a: Mapping[str, np.ndarray], weights: np.ndarray) -> dict[str, np.ndarray]:
+def values(a: Mapping[str, np.ndarray], weights: np.ndarray, metrics: Sequence[str] = METRICS) -> dict[str, np.ndarray]:
     total = weights.sum(axis=1)
-    return {
+    out = {
         "accuracy": weights @ a["correct"] / total,
         "ece": weighted_ece(a["top1"], a["correct"], weights),
         "brier": weights @ a["brier"] / total,
         "nll": weights @ a["nll"] / total,
     }
+    if any(m in RISK_METRICS for m in metrics):
+        area, coverage = risk_coverage(a["confidence"], a["correct"], weights)
+        out["aurc"] = area
+        out.update({f"coverage_at_{eps:.2f}": coverage[:, j] for j, eps in enumerate(RISK_BUDGETS)})
+    return {m: out[m] for m in metrics}
 
 
 def record_weights(results: Sequence[QuestionResult], resamples: int, seed_text: str, chunk: int = 100) -> Iterator[np.ndarray]:
@@ -200,22 +213,23 @@ def interval(draws: np.ndarray) -> list[float]:
 class Split:
     """Every run's results on one split, aligned to the zero-shot run, with the same bootstrap draws for every run."""
 
-    def __init__(self, split: str, runs: Mapping[str, Sequence[QuestionResult]], resamples: int):
+    def __init__(self, split: str, runs: Mapping[str, Sequence[QuestionResult]], resamples: int, metrics: Sequence[str] = METRICS):
         self.split = split
+        self.metrics = tuple(metrics)
         self.results = dict(runs)
         self.arrays = {name: arrays(rs) for name, rs in runs.items()}
         reference = next(iter(runs.values()))
-        draws: dict[str, dict[str, list[np.ndarray]]] = {name: {m: [] for m in METRICS} for name in runs}
+        draws: dict[str, dict[str, list[np.ndarray]]] = {name: {m: [] for m in self.metrics} for name in runs}
         for weights in record_weights(reference, resamples, f"v3:{split}"):
             for name, a in self.arrays.items():
-                for metric, value in values(a, weights).items():
+                for metric, value in values(a, weights, self.metrics).items():
                     draws[name][metric].append(value)
         self.draws = {name: {m: np.concatenate(v) for m, v in d.items()} for name, d in draws.items()}
 
     def point(self, name: str) -> dict[str, Any]:
         a = self.arrays[name]
         out: dict[str, Any] = {"n": len(a["correct"])}
-        for metric, value in values(a, np.ones((1, len(a["correct"])))).items():
+        for metric, value in values(a, np.ones((1, len(a["correct"]))), self.metrics).items():
             out[metric] = float(value[0])
             out[f"{metric}_ci"] = interval(self.draws[name][metric])
         return out
@@ -223,12 +237,12 @@ class Split:
     def delta(self, first: str, second: str) -> dict[str, Any]:
         """first minus second, point and paired interval, for every metric."""
         p, q = self.point(first), self.point(second)
-        return {metric: {"delta": p[metric] - q[metric], "ci": interval(self.draws[first][metric] - self.draws[second][metric])} for metric in METRICS}
+        return {metric: {"delta": p[metric] - q[metric], "ci": interval(self.draws[first][metric] - self.draws[second][metric])} for metric in self.metrics}
 
     def mean_delta(self, names: Sequence[str], second: str) -> dict[str, Any]:
         """The mean of names minus second, paired: each draw averages the runs' differences under the same record resample (decision 53)."""
         out = {}
-        for metric in METRICS:
+        for metric in self.metrics:
             draws = np.mean([self.draws[name][metric] for name in names], axis=0) - self.draws[second][metric]
             point = sum(self.point(name)[metric] for name in names) / len(names) - self.point(second)[metric]
             out[metric] = {"delta": point, "ci": interval(draws)}
@@ -237,7 +251,7 @@ class Split:
     def mean_minus_mean(self, first: Sequence[str], second: Sequence[str]) -> dict[str, Any]:
         """The mean of first minus the mean of second, paired: each draw averages each group under the same record resample."""
         out = {}
-        for metric in METRICS:
+        for metric in self.metrics:
             draws = np.mean([self.draws[name][metric] for name in first], axis=0) - np.mean([self.draws[name][metric] for name in second], axis=0)
             point = sum(self.point(name)[metric] for name in first) / len(first) - sum(self.point(name)[metric] for name in second) / len(second)
             out[metric] = {"delta": point, "ci": interval(draws)}
@@ -246,7 +260,7 @@ class Split:
     def delta_of_deltas(self, a: str, a_ref: str, b: str, b_ref: str) -> dict[str, Any]:
         """(a - a_ref) - (b - b_ref), paired."""
         out = {}
-        for metric in METRICS:
+        for metric in self.metrics:
             draws = (self.draws[a][metric] - self.draws[a_ref][metric]) - (self.draws[b][metric] - self.draws[b_ref][metric])
             point = (self.point(a)[metric] - self.point(a_ref)[metric]) - (self.point(b)[metric] - self.point(b_ref)[metric])
             out[metric] = {"delta": point, "ci": interval(draws)}
@@ -325,7 +339,7 @@ def compare(runs_dir: Path, size: str, resamples: int, subset_path: Path = SUBSE
         missing = [name for name, results in per_run.items() if split not in results]
         if missing:
             raise SystemExit(f"{', '.join(missing)}: no {split} results")
-        splits[split] = Split(split, members, resamples)
+        splits[split] = Split(split, members, resamples, METRICS if split == main_split else BASE_METRICS)
     main = splits[main_split]
     present = set(main.results)
 
