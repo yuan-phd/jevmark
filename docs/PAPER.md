@@ -45,7 +45,9 @@ These methods target the value of a new policy. CAPS targets calibration of p on
 
 **Calibration and temperature scaling.** Modern networks are overconfident, and a single temperature fitted on held-out data is a strong post-hoc fix [Guo et al. 2017; Platt 1999]. We measure ECE with equal-width bins [Naeini, Cooper and Hauskrecht 2015]. Temperature changes no prediction, so it is the cheap baseline any training method must beat.
 
-**Proper scoring rules.** The Brier score [Brier 1950] and the log score are strictly proper: their expectation is minimised by the true probability [Gneiting and Raftery 2007]. Recent work uses proper scores as rewards for an LLM's verbalized confidence [Damani et al. 2025, verify]. Our negative result concerns a different use: a proper score as the REINFORCE reward of the chosen action.
+**Proper scoring rules.** The Brier score [Brier 1950] and the log score are strictly proper: their expectation is minimised by the true probability [Gneiting and Raftery 2007]. Recent work uses proper scores as rewards for an LLM's verbalized confidence [Damani et al. 2025]. Our negative result concerns a different use: a proper score as the REINFORCE reward of the chosen action.
+
+**Proper scores of a verbalized confidence against proper scores of the policy.** Damani et al. [2025] train a language model to emit a confidence as part of its output and reward it with a proper score of that confidence against the answer's correctness. There the confidence is itself an action: the policy chooses which number to state, and the policy gradient optimises the expected score of the stated forecast correctly. Our proposition (Section 3) concerns a different object: a proper score of the policy's own sampling probability p_a, detached and used as the reward of the sampled action a. There the forecast and the sampled action are the same object, so a low probability on a wrong action earns a high reward and the gradient raises it. The two results are compatible, and the proposition does not contradict their theorem: it applies only when the scored probability is the policy's probability of the action being rewarded, not a separate stated confidence.
 
 **Policy optimisation for language models.**
 - REINFORCE [Williams 1992].
@@ -56,7 +58,7 @@ The group-mean baseline is the one under which our proposition holds.
 
 **Training on positive outcomes only.** Fine-tuning on a model's own successful outputs is filtered behaviour cloning [Zelikman et al. 2022]. Our positive_sft baseline is that procedure on logged decisions.
 
-**Verbalized confidence.** LLMs can state confidence in words or tokens [Lin, Hilton and Evans 2022; Kadavath et al. 2022; Tian et al. 2023; Xiong et al. 2024, verify]. Our model never generates text; its confidence is the distribution over the options it read.
+**Verbalized confidence.** LLMs can state confidence in words or tokens [Lin, Hilton and Evans 2022; Kadavath et al. 2022; Tian et al. 2023; Xiong et al. 2024]. Our model never generates text; its confidence is the distribution over the options it read.
 
 **Selective prediction and cascades.** Answering only above a confidence threshold trades coverage for accuracy [Chow 1970; El-Yaniv and Wiener 2010; Geifman and El-Yaniv 2017]. Cascades route uncertain queries to a larger model [Viola and Jones 2001; Chen, Zaharia and Zou 2023]. We report coverage at fixed thresholds because that is how a caller uses the probabilities.
 
@@ -96,7 +98,7 @@ Form REINFORCE advantages against the mean of a sampled group.
 - Both rewards decrease in p_w and equal R(g) at p_w = 1 - p_g. Hence R(w) >= R(g), and the smallest sampled p_w gives the group maximum.
 - At K = 2, p_w = 1 - p_g exactly, so R(w) = R(g). ∎
 
-The score grades p_a as a forecast of r_a, and a low probability on a wrong option is always a good forecast. CAPS uses the same score as a loss on p_a, not as a reward on a.
+The score grades p_a as a forecast of r_a, and a low probability on a wrong option is always a good forecast. CAPS uses the same score as a loss on p_a, not as a reward on a. This does not contradict the proper-score rewards of Damani et al. [2025], which score a confidence the model states as a separate action, not the probability with which it sampled the action being rewarded (Section 2).
 
 **Selection.** Train on the first 0.9 N interactions. Keep the checkpoint, from a 50-step grid, with the highest mean Bernoulli log-likelihood of the logged outcomes under p(logged action) on the last 0.1 N. No gold label is read (RESULTS_v3 section 1). Under noisy feedback this is what prevents collapse (Section 5.3).
 
@@ -117,7 +119,7 @@ In tables, CAPS with the Brier score is the run name direct_brier, and with the 
 ### 5.1 Setup
 
 **Model and data.**
-- Qwen3-0.6B-Base and 1.7B-Base with LoRA (r 16, alpha 32, attention projections) [Hu et al. 2022; Qwen Team 2025, verify]. Answers are read from the letter logits at each question's answer slot in one forward pass.
+- Qwen3-0.6B-Base and 1.7B-Base with LoRA (r 16, alpha 32, attention projections) [Hu et al. 2022; Qwen Team 2025]. Answers are read from the letter logits at each question's answer slot in one forward pass.
 - Supervised training uses CLINC150 intents [Larson et al. 2019] and SST-5 sentiment [Socher et al. 2013]. Options are sampled per record, with negated yes-or-no phrasings.
 - Evaluation covers 20 held-out intents and four schemas never trained on: AG News, Yelp [Zhang, Zhao and LeCun 2015], emotion [Saravia et al. 2018] and Banking77 [Casanueva et al. 2020] (RESULTS_v1 section 1).
 
@@ -243,8 +245,6 @@ The larger model helps the outcome-only learner most. The 1.7B seed ranges are [
 
 ## References
 
-Citations marked [verify] were not checked and need confirming before submission.
-
 - Arpit, D., et al. (2017). A closer look at memorization in deep networks. ICML.
 - Beygelzimer, A., and Langford, J. (2009). The offset tree for learning with partial labels. KDD.
 - Bottou, L., et al. (2013). Counterfactual reasoning and learning systems: the example of computational advertising. JMLR 14.
@@ -253,7 +253,7 @@ Citations marked [verify] were not checked and need confirming before submission
 - Chen, L., Zaharia, M., and Zou, J. (2023). FrugalGPT: how to use large language models while reducing cost and improving performance. arXiv:2305.05176.
 - Chow, C. K. (1970). On optimum recognition error and reject tradeoff. IEEE Transactions on Information Theory 16.
 - Christiano, P., et al. (2017). Deep reinforcement learning from human preferences. NeurIPS.
-- Damani, M., et al. (2025). Beyond binary rewards: training language models to reason about their uncertainty. arXiv:2507.16806. [verify]
+- Damani, M., et al. (2025). Beyond binary rewards: training language models to reason about their uncertainty. ICLR 2026. arXiv:2507.16806.
 - Dudík, M., Langford, J., and Li, L. (2011). Doubly robust policy evaluation and learning. ICML.
 - Efron, B. (1979). Bootstrap methods: another look at the jackknife. Annals of Statistics 7.
 - El-Yaniv, R., and Wiener, Y. (2010). On the foundations of noise-free selective classification. JMLR 11.
@@ -273,7 +273,7 @@ Citations marked [verify] were not checked and need confirming before submission
 - Ouyang, L., et al. (2022). Training language models to follow instructions with human feedback. NeurIPS.
 - Patrini, G., et al. (2017). Making deep neural networks robust to label noise: a loss correction approach. CVPR.
 - Platt, J. (1999). Probabilistic outputs for support vector machines and comparisons to regularized likelihood methods. Advances in Large Margin Classifiers, MIT Press.
-- Qwen Team (2025). Qwen3 technical report. arXiv:2505.09388. [verify]
+- Qwen Team (2025). Qwen3 technical report. arXiv:2505.09388.
 - Saravia, E., Liu, H.-C. T., Huang, Y.-H., Wu, J., and Chen, Y.-S. (2018). CARER: contextualized affect representations for emotion recognition. EMNLP.
 - Schulman, J., et al. (2017). Proximal policy optimization algorithms. arXiv:1707.06347.
 - Shao, Z., et al. (2024). DeepSeekMath: pushing the limits of mathematical reasoning in open language models. arXiv:2402.03300.
@@ -284,7 +284,7 @@ Citations marked [verify] were not checked and need confirming before submission
 - Tian, K., et al. (2023). Just ask for calibration: strategies for eliciting calibrated confidence scores from language models fine-tuned with human feedback. EMNLP. arXiv:2305.14975.
 - Viola, P., and Jones, M. (2001). Rapid object detection using a boosted cascade of simple features. CVPR.
 - Williams, R. J. (1992). Simple statistical gradient-following algorithms for connectionist reinforcement learning. Machine Learning 8.
-- Xiong, M., et al. (2024). Can LLMs express their uncertainty? An empirical evaluation of confidence elicitation in LLMs. ICLR. arXiv:2306.13063. [verify]
+- Xiong, M., et al. (2024). Can LLMs express their uncertainty? An empirical evaluation of confidence elicitation in LLMs. ICLR. arXiv:2306.13063.
 - Zelikman, E., Wu, Y., Mu, J., and Goodman, N. D. (2022). STaR: bootstrapping reasoning with reasoning. NeurIPS.
 - Zhang, C., Bengio, S., Hardt, M., Recht, B., and Vinyals, O. (2017). Understanding deep learning requires rethinking generalization. ICLR.
 - Zhang, X., Zhao, J., and LeCun, Y. (2015). Character-level convolutional networks for text classification. NeurIPS.
