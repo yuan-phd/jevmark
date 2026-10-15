@@ -51,8 +51,29 @@
         "accuracy": 0.9534883720930233
       }
     },
-    "aurc": 0.04903029073790047,
+    "aurc": 0.048666705993265696,
     "coverage_at_risk": {
+      "0.05": {
+        "coverage": 0.7227272727272728,
+        "n": 2226,
+        "accuracy": 0.9501347708894878,
+        "threshold": 0.9311127662658691
+      },
+      "0.10": {
+        "coverage": 0.9308441558441558,
+        "n": 2867,
+        "accuracy": 0.9002441576560865,
+        "threshold": 0.7066941261291504
+      },
+      "0.20": {
+        "coverage": 1.0,
+        "n": 3080,
+        "accuracy": 0.8662337662337662,
+        "threshold": 0.23556925356388092
+      }
+    },
+    "aurc_entropy": 0.04903029073790047,
+    "coverage_at_risk_entropy": {
       "0.05": {
         "coverage": 0.7262987012987013,
         "n": 2237,
@@ -105,8 +126,29 @@
         "accuracy": 0.889419795221843
       }
     },
-    "aurc": 0.11015582834768087,
+    "aurc": 0.11015199394177315,
     "coverage_at_risk": {
+      "0.05": {
+        "coverage": 0.0,
+        "n": 0,
+        "accuracy": null,
+        "threshold": null
+      },
+      "0.10": {
+        "coverage": 0.0,
+        "n": 0,
+        "accuracy": null,
+        "threshold": null
+      },
+      "0.20": {
+        "coverage": 1.0,
+        "n": 3080,
+        "accuracy": 0.8662337662337662,
+        "threshold": 0.4078620719589045
+      }
+    },
+    "aurc_entropy": 0.11015582834768087,
+    "coverage_at_risk_entropy": {
       "0.05": {
         "coverage": 0.0,
         "n": 0,
@@ -189,8 +231,29 @@
       "mean_confidence": 0.7901292157192513,
       "mean_channel_outcome": 0.7431168831168762
     },
-    "aurc": 0.020180768666565645,
+    "aurc": 0.020177560036205563,
     "coverage_at_risk": {
+      "0.05": {
+        "coverage": 0.8876623376623377,
+        "n": 2734,
+        "accuracy": 0.950256035113387,
+        "threshold": 0.9946945309638977
+      },
+      "0.10": {
+        "coverage": 1.0,
+        "n": 3080,
+        "accuracy": 0.9051948051948052,
+        "threshold": 0.2828938066959381
+      },
+      "0.20": {
+        "coverage": 1.0,
+        "n": 3080,
+        "accuracy": 0.9051948051948052,
+        "threshold": 0.2828938066959381
+      }
+    },
+    "aurc_entropy": 0.020180768666565645,
+    "coverage_at_risk_entropy": {
       "0.05": {
         "coverage": 0.8905844155844156,
         "n": 2743,
@@ -214,14 +277,23 @@
   "risk_coverage_added": {
     "keys": [
       "aurc",
-      "coverage_at_risk"
+      "aurc_entropy",
+      "coverage_at_risk",
+      "coverage_at_risk_entropy"
     ],
     "by": "scripts/invert_noisy.py with its recorded flip, split and clean run",
     "git": {
-      "commit": "85e2d16214a46d3c95474169d039183a38c0e99c",
+      "commit": "91ffed6c16ff6ed20d81c83ab04a79d5c0263fbf",
       "dirty": false
     },
-    "at": "2026-10-15T14:55:44+00:00",
-    "note": "every value present before was kept as written; recomputing them from results.jsonl.gz agreed to within 1e-14 relative (summation order), and only aurc and coverage_at_risk were added"
+    "at": "2026-10-15T18:52:32+00:00",
+    "first_added": {
+      "git": {
+        "commit": "85e2d16214a46d3c95474169d039183a38c0e99c",
+        "dirty": false
+      },
+      "at": "2026-10-15T14:55:44+00:00"
+    },
+    "note": "every value present before the risk-coverage keys was kept as written (recomputing them agreed to within 1e-14 relative, summation order); aurc and coverage_at_risk rank by top-1 probability; aurc_entropy and coverage_at_risk_entropy, ranked by the response confidence field, are the values first added under aurc and coverage_at_risk, moved unchanged"
   }
 }
