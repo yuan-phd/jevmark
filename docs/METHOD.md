@@ -16,6 +16,8 @@ CAPS minimises the expected proper score of the chosen action's probability unde
 
 S is a strictly proper score for a binary event. The default is the Brier score, S(p, r) = (r - p)^2; the alternative is the log score, S(p, r) = -(r log p + (1 - r) log(1 - p)). On a log, the empirical mean over interactions estimates L directly, with no weights. The gradient is pathwise, through p_a: for the Brier score it is -2 (r - p_a) dp_a / dtheta. A right action is pushed up and a wrong one down, in proportion to how badly p_a forecast r.
 
+Accuracy improves as a consequence of this, not as the objective. Pushing a right logged action up and a wrong one down moves the argmax towards the right option, but the loss asks only for calibrated forecasts of r. A negative on an option other than the policy's top choice exists only because the logging policy is random. It samples from p rather than taking its argmax, and in the experiments it also mixes in a uniform draw with weight epsilon 0.1. So the information the log carries about those options depends on how much the logging policy explores. Options it never takes carry none (section 6).
+
 **Why no propensity weight.** L is defined under q, so the log's own mean already estimates it, and there is nothing to correct. An importance weight 1 / q(a) would change the target to a uniform average over options, but the aim is not the value of some other policy. The aim is that p(a | x) be a calibrated forecast of r for the actions the deployed policy actually takes. For each (x, a) with q(a | x) > 0, the minimiser of the inner term is p(a | x) = P(r = 1 | x, a) whatever q is. The propensity changes only how the finite model trades errors between actions, and the trade the objective makes is the one under deployment.
 
 **What a weight does in practice** (RESULTS_v3 section 11, `S:n_curve.<N>.off_policy`):
@@ -80,7 +82,7 @@ Both are strictly proper and the gradient has the same form. As measured on Bank
 - **N 5000, three training seeds:** the log score is slightly better on Brier and NLL and level on accuracy. Seed mean minus Brier's: Brier -.005 [-.008, -.001], NLL -.020 [-.029, -.010], accuracy +.002 [-.001, +.005] (`S:seeds.direct_log_seed_mean_minus_direct_brier_seed_mean`).
 - **N 2000, one seed:** the log score is worse. Accuracy -.010 [-.016, -.004], Brier +.014, NLL +.020 (`S:n_curve.2000.off_policy.direct_log.minus_direct_brier`).
 - **Forgetting:** the log score costs more in-domain accuracy at N 5000, -.038 to -.046 against -.027 to -.043 (`S:forgetting.test_indomain.minus_zero_shot`).
-- **Seed spread:** the log score's NLL spreads over .036 across seeds; the Brier runs agree to within .0005 (`S:seeds.direct_log`).
+- **Seed spread:** the log score's NLL spreads over .036 across seeds (`S:seeds.direct_log`); the three Brier runs agree to within .0006, .2737, .2742 and .2737 (`runs/v3_06b_direct_brier_n5000_s<k>/metrics.json:splits.v3_banking77_test_full.overall.nll`).
 
 Brier is the default. The log score is the alternative when Brier and NLL on the target domain matter more than in-domain retention and stability across seeds.
 
