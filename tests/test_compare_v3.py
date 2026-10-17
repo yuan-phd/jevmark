@@ -244,6 +244,38 @@ def test_the_1_7b_comparison_has_only_its_n_5000_runs_and_lists_the_rest_as_miss
 
 
 
+def test_the_1_7b_direct_brier_seeds_get_a_mean_range_and_paired_seed_mean_deltas_against_single_seed_learners(tmp_path):
+    runs_dir = tmp_path / "runs"
+    write_run(runs_dir, "v3_17b_zeroshot", results(1.5, 0))
+    for k, arm in enumerate(("positive_sft", "full_sft", "direct_brier")):
+        write_run(runs_dir, f"v3_17b_{arm}_n5000_s0", results(2.5 + k, 60 + k))
+    subset = tmp_path / "subset.json"
+    subset.write_text(json.dumps({"splits": {"test_banking77": []}, "sub_splits": {}}))
+    before = compare_v3.compare(runs_dir, "17b", 40, subset)
+    assert before["seeds"]["training_seeds"]["accuracy"]["n_seeds"] == 1 and before["seeds"]["minus_seed_0"] == {}
+    for seed in (1, 2):  # session L
+        write_run(runs_dir, f"v3_17b_direct_brier_n5000_s{seed}", results(4.5 + 0.3 * seed, 80 + seed))
+    after = compare_v3.compare(runs_dir, "17b", 40, subset)
+    seeds = after["seeds"]
+    points = [seeds[f"seed_{k}"] for k in (0, 1, 2)]
+    for metric in compare_v3.METRICS:
+        block = seeds["training_seeds"][metric]
+        assert block["n_seeds"] == 3 and block["range"] == [min(p[metric] for p in points), max(p[metric] for p in points)]
+        assert math.isclose(block["mean"], sum(p[metric] for p in points) / 3)
+        # Paired: each draw averages the three seeds' differences, so the point is the mean of the per-seed differences.
+        for other in ("positive_sft", "full_sft"):
+            other_point = after["n_curve"]["5000"][other][metric]
+            assert math.isclose(seeds[f"training_seed_mean_minus_{other}"][metric]["delta"], block["mean"] - other_point, abs_tol=1e-12)
+            lo, hi = seeds[f"training_seed_mean_minus_{other}"][metric]["ci"]
+            assert lo <= hi
+    # full_sft has one seed at 1.7B: its seed mean is seed 0, so the two forms of the difference agree.
+    assert seeds["full_sft"]["training_seeds"]["accuracy"]["n_seeds"] == 1
+    assert seeds["training_seed_mean_minus_full_sft_seed_mean"] == seeds["training_seed_mean_minus_full_sft"]
+    assert set(seeds["minus_seed_0"]) == {"seed_1", "seed_2"}
+    # Adding the seeds leaves every single-seed value as it was.
+    assert after["n_curve"] == before["n_curve"] and seeds["seed_0"] == before["seeds"]["seed_0"]
+    assert set(after["sources"]) == set(before["sources"]) | {"direct_brier_n5000_s1", "direct_brier_n5000_s2"}
+
 def test_direct_log_seeds_get_a_mean_range_and_a_paired_difference_from_direct_brier_seeds(runs):
     runs_dir, subset = runs
     before = compare_v3.compare(runs_dir, "06b", 30, subset)

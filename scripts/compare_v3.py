@@ -33,7 +33,8 @@ differences are paired), and writes runs/v3_stage_<size>/metrics.json:
   minus full_sft, direct_brier_temp minus direct_brier and direct_brier_temp minus
   temperature; the off-policy arms as further columns (N 2000 and 5000), and under
   off_policy each one's paired difference from direct_brier and from positive_sft;
-- seeds: direct_brier at N 5000 for training seeds 0, 1 and 2 (mean and range) and
+- seeds: direct_brier at N 5000 for training seeds 0, 1 and 2 (mean and range; at 1.7B
+  seeds 1 and 2 come from session L, against single-seed full_sft and positive_sft) and
   on the seed 1 log (logging variance), with each run's difference from seed 0, and
   the seed mean minus positive_sft and minus full_sft at N 5000 (each draw averages
   the seeds' differences under the same record resample, decision 53); full_sft at
