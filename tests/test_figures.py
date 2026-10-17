@@ -27,7 +27,7 @@ def test_the_script_reads_no_per_question_files():
 
 
 def test_phase_4_figures_are_listed_and_the_pending_ones_documented():
-    for name in ("v4_offpolicy.png", "v4_noise_sweep.png", "v4_scale.png"):
+    for name in ("v4_offpolicy.png", "v4_noise_sweep.png", "v4_scale.png", "v4_emotion_n_curve.png"):
         assert name in make_figures.EXPECTED
     doc = make_figures.__doc__
     for name, (source, waits_for) in make_figures.PENDING.items():

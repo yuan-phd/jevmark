@@ -26,13 +26,15 @@ never results.jsonl.gz or replies.jsonl, so every figure rebuilds from git. Writ
   from the selected to the final step (runs/v3_noise_sweep_06b and the inverted files).
 - v4_scale.png: 0.6B against 1.7B at N 5000: accuracy, ECE and in-domain forgetting
   (runs/v3_stage_06b, runs/v3_stage_17b).
+- v4_emotion_n_curve.png: the emotion panel of the N-curve, accuracy and ECE against N on
+  v3_emotion_test_full per learner, with direct_brier's training-seed range and direct_log
+  at N 5000 (runs/v3_stage_emotion_06b).
 
 Each figure carries a caption line naming its metrics files.
 
-Pending, not drawn yet (PENDING below): the emotion panel of the N-curve waits for the
-emotion direct_brier and direct_log runs and runs/v3_stage_emotion_06b/metrics.json; the
-1.7B seed ranges in v4_scale.png wait for direct_brier's seeds 1 and 2 at 1.7B, and
-appear without a code change once runs/v3_stage_17b/metrics.json holds them.
+Pending, not drawn yet (PENDING below): the 1.7B seed ranges in v4_scale.png wait for
+direct_brier's seeds 1 and 2 at 1.7B, and appear without a code change once
+runs/v3_stage_17b/metrics.json holds them.
 """
 
 from __future__ import annotations
@@ -548,13 +550,45 @@ def v4_scale(runs: Path, out: Path, written: list[Path]) -> None:
     save(fig, out, "v4_scale.png", written)
 
 
-FIGURES = (v1_full_splits, v1_subset, v2_cascade, v2_reliability, v2_arm_ece, v3_n_curve, v3_coverage, v3_noise, v4_offpolicy, v4_noise_sweep, v4_scale)
+def v4_emotion_n_curve(runs: Path, out: Path, written: list[Path]) -> None:
+    stage = load(runs / "v3_stage_emotion_06b" / "metrics.json")
+    curve, seeds = stage["n_curve"], stage["seeds"]
+    colors = v3_colors()
+    learners = [(key, name) for key, name in V3_LEARNERS if key != "direct_brier_temp"]  # not run on emotion
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+    for ax, metric, label in ((axes[0], "accuracy", "accuracy"), (axes[1], "ece", "ECE (top-1, 15 bins)")):
+        for k, (key, name) in enumerate(learners):
+            points = [curve[str(n)][key] for n in NS]
+            ys = [p[metric] for p in points]
+            err = [[p[metric] - p[f"{metric}_ci"][0] for p in points], [p[f"{metric}_ci"][1] - p[metric] for p in points]]
+            ax.errorbar(NS, ys, yerr=err, color=colors[key], marker=MARKERS[k], linestyle="--" if key == "zero_shot" else "-", capsize=2,
+                        elinewidth=0.8, label=name)
+        log = curve["5000"]["direct_log"]
+        ax.errorbar([5000 * 1.09], [log[metric]], yerr=[[log[metric] - log[f"{metric}_ci"][0]], [log[f"{metric}_ci"][1] - log[metric]]],
+                    color=SERIES[6], marker=MARKERS[len(learners)], linestyle="none", capsize=2, elinewidth=0.8, label="direct_log (N 5000)")
+        lo, hi = seeds["training_seeds"][metric]["range"]
+        ax.vlines(5000 * 1.17, lo, hi, color=colors["direct_brier"], linewidth=4, alpha=0.6)
+        ax.set_xscale("log")
+        ax.set_xticks(NS, [str(n) for n in NS])
+        ax.minorticks_off()
+        ax.set_xlabel("N, logged interactions the learner sees")
+        ax.set_ylabel(label)
+    handles, names = axes[0].get_legend_handles_labels()
+    fig.legend(handles, names, ncol=3, loc="upper left", bbox_to_anchor=(0.01, 0.93))
+    fig.suptitle("Phase 4: learning emotion from the deployment log, v3_emotion_test_full (2000 records)", x=0.01, ha="left", fontsize=10)
+    fig.tight_layout(rect=(0, 0.07, 1, 0.82))
+    caption(fig, "Source: runs/v3_stage_emotion_06b/metrics.json: n_curve.<N>.<learner> (seed 0; whiskers 95% record bootstrap), n_curve.5000.direct_log, "
+                 "seeds.training_seeds (thick bar right of N 5000: direct_brier's range over training seeds 0, 1, 2). full_sft and positive_sft are one seed. "
+                 "A temperature changes no prediction, so the temperature's accuracy line covers zero-shot's.")
+    save(fig, out, "v4_emotion_n_curve.png", written)
+
+
+FIGURES = (v1_full_splits, v1_subset, v2_cascade, v2_reliability, v2_arm_ece, v3_n_curve, v3_coverage, v3_noise, v4_offpolicy, v4_noise_sweep, v4_scale,
+           v4_emotion_n_curve)
 EXPECTED = ("v1_full_splits.png", "v1_subset.png", "v2_cascade.png", "v2_reliability.png", "v2_arm_ece.png", "v3_n_curve.png", "v3_coverage.png", "v3_noise.png",
-            "v4_offpolicy.png", "v4_noise_sweep.png", "v4_scale.png")
+            "v4_offpolicy.png", "v4_noise_sweep.png", "v4_scale.png", "v4_emotion_n_curve.png")
 # Figures waiting for runs, not drawn: the file each would read and what it waits for.
 PENDING = {
-    "v4_emotion_n_curve.png": ("runs/v3_stage_emotion_06b/metrics.json", "the emotion N-curve panel: needs the emotion direct_brier runs at N 500, 2000 and 5000 "
-                               "(seeds 1 and 2 at N 5000) and direct_log at N 5000, then compare_v3.py --domain emotion"),
     "v4_scale.png, 1.7B seed ranges": ("runs/v3_stage_17b/metrics.json", "direct_brier seeds 1 and 2 at 1.7B; drawn by v4_scale without a code change once present"),
 }
 

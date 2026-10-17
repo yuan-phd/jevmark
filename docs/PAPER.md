@@ -2,10 +2,11 @@
 
 *Draft, second pass. Workshop length: main text sections 1 to 8, then the appendix.*
 
-Every number cites the report section and the committed metrics file it comes from. Report sections are RESULTS_v1, RESULTS_v2 and RESULTS_v3 (`docs/RESULTS_v*.md`), and docs/METHOD.md. Metrics files are given as `path:key`, with three shortcuts:
+Every number cites the report section and the committed metrics file it comes from. Report sections are RESULTS_v1, RESULTS_v2 and RESULTS_v3 (`docs/RESULTS_v*.md`), and docs/METHOD.md. Metrics files are given as `path:key`, with four shortcuts:
 - `S:` for `runs/v3_stage_06b/metrics.json`;
 - `N:` for `runs/v3_noise_sweep_06b/metrics.json`;
-- `L:` for `runs/v3_stage_17b/metrics.json`.
+- `L:` for `runs/v3_stage_17b/metrics.json`;
+- `E:` for `runs/v3_stage_emotion_06b/metrics.json`.
 
 The abstract's numbers are cited where they recur in Section 5 and the appendix. BibTeX entries for every reference are in `docs/references.bib`, each checked against the arXiv listing, the publisher's DOI record or the proceedings page.
 
@@ -33,7 +34,7 @@ A decision head reads a state and a list of options and returns a probability fo
 
 **What the paper does not show.**
 - The feedback is simulated from gold labels, cleanly or with symmetric flips at a known rate.
-- One adaptation domain is complete. A second is pending [pending session H].
+- Two adaptation domains, Banking77 and emotion, with one log each.
 - 1.7B is one seed [pending session L].
 - No counterfactual-risk policy learner (POEM or BanditNet), no doubly robust arm and no off-policy value estimate of the learned policy (Section 6).
 - The gap to full labels does not shrink as the log grows (RESULTS_v3 section 8).
@@ -208,14 +209,27 @@ The larger model helps the learner from logged bandit feedback most. The 1.7B se
 
 ### 5.4 A second domain: emotion
 
-[pending session H] The emotion log domain (dair-ai/emotion train split, 6 options, no `other`) is built and logged, and positive_sft, full_sft and the temperature learner have run at N 500, 2000 and 5000 (`runs/v3_emotion_06b_*`). CAPS-Brier, its seeds and CAPS-log are pending, and the emotion N-curve table and panel will come from `runs/v3_stage_emotion_06b/metrics.json`.
+(RESULTS_v3 section 13, `E:`; Figure `figures/v4_emotion_n_curve.png`; Table A.7.) The emotion log domain is the dair-ai/emotion train split, 15958 messages, each a choice over all 6 labels with no `other` option. The same sft_06b logs it, at policy accuracy .542, so .526 of the logged outcomes are negative, against .261 on Banking77 (`runs/v3_log_emotion_s0/metrics.json`, `runs/v3_log_s0/metrics.json`). Evaluation is on the full emotion test split, 2000 records.
+
+- *Against positive_sft:* CAPS-Brier leads at every N, by +.043 [+.027, +.060], +.126 [+.109, +.144] and +.217 [+.197, +.238] in accuracy at N 500, 2000 and 5000, with ECE lower by .186 to .276 and AURC by .050 to .174; at N 5000 its Cov@.05 is .595 against .032 (`E:n_curve.<N>.direct_brier_minus_positive_sft`, `E:n_curve.5000.<learner>.coverage_at_0.05`). positive_sft trains on 206 to 2151 confirmed answers and is worse calibrated than zero-shot at every N (ECE .256 to .363 against .251).
+- *Against full_sft:* 3.8 to 4.6 points below on seed 0; over three seeds at N 5000, -.043 [-.056, -.031] in accuracy against full_sft's one seed, with ECE level, +.006 [-.005, +.018] (`E:seeds.training_seed_mean_minus_full_sft`). It closes 68, 79 and 88 percent of the accuracy gap between zero-shot (.540) and full_sft, computed from the stored accuracies (`E:n_curve.<N>.<learner>.accuracy`).
+- *Seeds:* accuracy .821 to .832, ECE .031 to .070 (`E:seeds.training_seeds`).
+- *CAPS-log* at N 5000 is -.021 [-.030, -.012] below CAPS-Brier's seed mean in accuracy, with higher Brier and NLL (`E:seeds.direct_log_seed_mean_minus_direct_brier_seed_mean`); Brier stays the default.
+- *The temperature learner* (T about 2.3) has the lowest ECE, .024 at N 5000, and leaves AURC at .294 against zero-shot's .295 (`E:n_curve.5000.{zero_shot,temperature}`): it fixes the level, not the ranking.
+- *Forgetting:* at N 5000, CAPS-Brier costs 1.9 to 2.6 points of in-domain accuracy across seeds and full_sft 3.4, both with in-domain ECE within .004 of zero-shot (`E:forgetting.test_indomain.minus_zero_shot`).
+- *Label ceiling:* the audit finds a label problem in .32 and .40 of a uniform sample, mostly a labelling convention that follows emotion words (.20), and no plainly wrong label; the ceiling is .93 or higher if the convention is learnable and near .80 if it is not (`docs/audit/emotion_summary.json:groups`). full_sft and every CAPS-Brier seed are above .80.
+- *Against an API model:* on the 500-record emotion subset, gpt-4.1-mini scores .598 and CAPS-Brier at N 5000 .842 to .858, with no paired interval (`E:b2_reference`).
+
+The phase 4 plan predicted that "predictions 1 and 2 hold on emotion from N 2000 as on Banking77": held, and prediction 1 holds from N 500, where Banking77 tied. It predicted that "the gap to full_sft at N 5000 is larger than on Banking77 because the task is harder and the logging policy wrong more often": held, -.039 [-.052, -.027] against -.018 [-.025, -.011] on seed 0 and -.043 against -.015 for the seed means; the stated cause is consistent with the result but not isolated by it, since task and logging policy change together. What it did not predict is the size of the lead over positive_sft, nine times Banking77's at N 5000: with fewer than half the outcomes positive, discarding the negatives discards most of the log.
+
+![Emotion N-curve](figures/v4_emotion_n_curve.png)
 
 ## 6. Limitations
 
 - **Simulated feedback.** Outcomes come from gold labels, revealed cleanly or flipped symmetrically at a known rate. Real feedback is delayed, biased towards some errors, and of unknown noise rate, and backward correction needs that rate. The learned compression towards the channel is global: in-domain ECE rises by .050 for the noisy run (RESULTS_v3 section 5).
 - **Domains and sizes.**
-  - One complete adaptation domain; emotion is [pending session H].
-  - One logging policy at epsilon 0.1, already .836 accurate.
+  - Two adaptation domains with one log each; on emotion, positive_sft and full_sft have one seed.
+  - One logging policy per domain at epsilon 0.1: .836 accurate on Banking77, .542 on emotion.
   - Two sizes, with 1.7B on one seed [pending session L].
   - The noise sweep has one seed per rate.
 - **Missing off-policy arms.** The propensity-weighted arms reweight the direct-method loss; there is no counterfactual-risk policy learner (POEM or BanditNet; Swaminathan and Joachims 2015a; Joachims, Swaminathan and de Rijke 2018), no doubly robust arm (Dudík, Langford and Li 2011), and no self-normalised off-policy estimate of the learned policy's value from the log. The no-gain result is shown against reweighted regression, not against the methods built around the weights.
@@ -239,6 +253,7 @@ A decision head that can only see whether its chosen action was right should be 
   - b6b9e85 and 409c983: the off-policy runs;
   - 36e8ee1: the noise sweep;
   - c9e29c6: the 1.7B runs;
+  - c86d322: the emotion log and runs;
   - b9c0257: AURC and Cov@eps added to every run and stage file, earlier values unchanged.
 - **Run provenance:** every run's `metrics.json` records its commit, dirty flag, data sha256 and adapter sha256.
 - **Adapters on the Hugging Face Hub** (`yuanphd/jevmark`):
@@ -471,6 +486,63 @@ Source: RESULTS_v2 section 3, `runs/rlcd_stage2a_06b/metrics.json:unseen_schemas
 | CAPS-Brier | .159 (.173, .165, .139) | +.037 [+.032, +.043] | +.001 [-.004, +.007] |
 | CAPS-log | .170 (.181, .172, .156) | +.048 [+.043, +.055] | +.005 [+.001, +.011] |
 
-### A.7 Emotion
+### A.7 Emotion, 0.6B
 
-[pending session H] The emotion N-curve, seed and forgetting tables, from `runs/v3_stage_emotion_06b/metrics.json`.
+Source: RESULTS_v3 section 13, `E:n_curve.<N>.<learner>` (CAPS-Brier seed 0). Brackets are 95 percent record-bootstrap intervals; AURC and Cov@.05 rank by top-1 probability.
+
+| N | metric | zero-shot | temperature | positive_sft | full_sft | CAPS-Brier |
+|---|---|---|---|---|---|---|
+| 500 | accuracy | .540 [.518, .562] | .540 | .578 [.555, .599] | .659 [.640, .681] | .621 [.601, .642] |
+| 2000 | accuracy | .540 | .540 | .589 [.567, .611] | .760 [.742, .779] | .715 [.695, .734] |
+| 5000 | accuracy | .540 | .540 | .615 [.592, .636] | .871 [.856, .884] | .832 [.816, .848] |
+| 500 | ECE | .251 [.232, .272] | .031 [.024, .056] | .363 [.342, .385] | .066 [.057, .091] | .087 [.075, .110] |
+| 2000 | ECE | .251 | .027 [.021, .053] | .324 [.304, .344] | .056 [.043, .075] | .066 [.049, .085] |
+| 5000 | ECE | .251 | .024 [.020, .051] | .256 [.237, .277] | .041 [.031, .055] | .070 [.059, .087] |
+| 500 | Brier | .687 [.657, .718] | .600 [.580, .620] | .764 [.724, .805] | .482 [.457, .505] | .534 [.509, .559] |
+| 2000 | Brier | .687 | .600 [.580, .620] | .708 [.671, .744] | .346 [.321, .369] | .422 [.399, .446] |
+| 5000 | Brier | .687 | .600 [.580, .619] | .628 [.593, .662] | .193 [.175, .213] | .264 [.241, .288] |
+| 500 | NLL | 1.675 [1.579, 1.759] | 1.251 [1.209, 1.292] | 3.147 [2.939, 3.327] | .980 [.927, 1.030] | 1.154 [1.094, 1.212] |
+| 2000 | NLL | 1.675 | 1.251 [1.209, 1.292] | 2.256 [2.111, 2.389] | .697 [.644, .750] | .877 [.830, .924] |
+| 5000 | NLL | 1.675 | 1.251 [1.210, 1.291] | 1.641 [1.532, 1.741] | .383 [.340, .428] | .599 [.541, .657] |
+| 500 | AURC | .295 [.272, .321] | .294 [.270, .320] | .262 [.236, .286] | .190 [.170, .209] | .212 [.193, .234] |
+| 2000 | AURC | .295 | .294 [.270, .320] | .254 [.231, .277] | .101 [.088, .115] | .148 [.130, .165] |
+| 5000 | AURC | .295 | .294 [.270, .320] | .233 [.211, .255] | .031 [.025, .037] | .058 [.048, .069] |
+| 500 | Cov@.05 | .025 [.007, .062] | .014 [.007, .055] | .002 [.001, .029] | .072 [.041, .118] | .068 [.024, .105] |
+| 2000 | Cov@.05 | .025 | .014 [.007, .055] | .030 [.011, .054] | .277 [.163, .389] | .107 [.065, .219] |
+| 5000 | Cov@.05 | .025 | .015 [.007, .055] | .032 [.005, .071] | .762 [.689, .813] | .595 [.470, .660] |
+
+Paired differences, CAPS-Brier minus the other learner (`E:n_curve.<N>.direct_brier_minus_{positive_sft,full_sft}`):
+
+| N | vs | accuracy | ECE | Brier | NLL | AURC | Cov@.05 |
+|---|---|---|---|---|---|---|---|
+| 500 | positive_sft | +.043 [+.027, +.060] | -.276 [-.290, -.254] | -.230 [-.257, -.206] | -1.993 [-2.138, -1.841] | -.050 [-.064, -.036] | +.066 [+.019, +.101] |
+| 2000 | positive_sft | +.126 [+.109, +.144] | -.258 [-.282, -.232] | -.286 [-.313, -.261] | -1.379 [-1.482, -1.273] | -.106 [-.121, -.093] | +.077 [+.036, +.182] |
+| 5000 | positive_sft | +.217 [+.197, +.238] | -.186 [-.204, -.162] | -.364 [-.396, -.330] | -1.042 [-1.134, -.947] | -.174 [-.195, -.154] | +.564 [+.439, +.632] |
+| 500 | full_sft | -.038 [-.053, -.025] | +.021 [+.001, +.037] | +.053 [+.041, +.064] | +.174 [+.146, +.204] | +.022 [+.014, +.030] | -.005 [-.035, +.025] |
+| 2000 | full_sft | -.046 [-.060, -.033] | +.010 [-.009, +.027] | +.076 [+.066, +.087] | +.180 [+.154, +.206] | +.047 [+.039, +.054] | -.170 [-.242, -.030] |
+| 5000 | full_sft | -.039 [-.052, -.027] | +.029 [+.017, +.043] | +.070 [+.056, +.088] | +.216 [+.178, +.261] | +.027 [+.020, +.035] | -.167 [-.260, -.100] |
+
+CAPS-Brier at N 5000 over training seeds (`E:seeds`):
+
+| run | accuracy | ECE | Brier | NLL | AURC | Cov@.05 | minus seed 0, accuracy | minus seed 0, ECE |
+|---|---|---|---|---|---|---|---|---|
+| seed 0 | .832 [.816, .848] | .070 [.059, .087] | .264 | .599 | .058 | .595 |  | |
+| seed 1 | .829 [.812, .845] | .031 [.024, .049] | .261 | .567 | .059 | .556 | -.003 [-.014, +.008] | -.039 [-.048, -.025] |
+| seed 2 | .821 [.803, .837] | .038 [.028, .055] | .266 | .573 | .058 | .572 | -.011 [-.022, +.000] | -.032 [-.042, -.020] |
+| mean of 3 training seeds (range) | .827 (.821, .832) | .046 (.031, .070) | .263 (.261, .266) | .580 (.567, .599) | .059 (.058, .059) | .575 (.556, .595) | | |
+
+| seed mean minus | accuracy | ECE | Brier | NLL | AURC | Cov@.05 |
+|---|---|---|---|---|---|---|
+| positive_sft | +.213 [+.193, +.233] | -.210 [-.227, -.186] | -.364 [-.395, -.334] | -1.061 [-1.150, -.968] | -.174 [-.193, -.154] | +.543 [+.409, +.618] |
+| full_sft seed 0 | -.043 [-.056, -.031] | +.006 [-.005, +.018] | +.070 [+.056, +.085] | +.197 [+.164, +.235] | +.028 [+.022, +.034] | -.188 [-.297, -.128] |
+
+Forgetting at N 5000, minus zero-shot (test_indomain .956, test_unseen_intents .892; `E:forgetting.<split>.minus_zero_shot`):
+
+| run | test_indomain accuracy | test_indomain ECE | test_unseen_intents accuracy | test_unseen_intents ECE |
+|---|---|---|---|---|
+| positive_sft | -.005 [-.007, -.002] | +.007 [+.004, +.009] | +.010 [+.006, +.013] | -.003 [-.007, +.000] |
+| CAPS-Brier seed 0 | -.026 [-.031, -.023] | +.001 [-.004, +.004] | -.020 [-.027, -.013] | +.002 [-.005, +.009] |
+| CAPS-Brier seed 1 | -.019 [-.023, -.015] | +.003 [-.002, +.009] | -.024 [-.031, -.017] | -.017 [-.025, -.011] |
+| CAPS-Brier seed 2 | -.024 [-.027, -.020] | -.003 [-.007, +.004] | -.034 [-.042, -.026] | +.000 [-.008, +.007] |
+| CAPS-log | -.022 [-.026, -.019] | -.001 [-.006, +.003] | -.011 [-.018, -.004] | -.013 [-.020, -.007] |
+| full_sft | -.034 [-.038, -.029] | -.002 [-.007, +.001] | -.040 [-.048, -.032] | +.011 [+.003, +.018] |

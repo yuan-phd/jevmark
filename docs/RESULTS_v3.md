@@ -1,6 +1,6 @@
 # jevmark v3 results: adaptation from deployment feedback
 
-Every number cites the file it comes from, as `path:key`. Unless another file is named, numbers are from `runs/v3_stage_06b/metrics.json` (written by `scripts/compare_v3.py` at commit 83454a4, not dirty, regenerated at commit 9353145 with full_sft's seeds 1 and 2 added, at commit cd1217c with direct_brier plus a temperature added, and at commit 25d68e8 with the off-policy runs and direct_log's seeds of section 11 added; every earlier value is unchanged), shortened to `S:key`. Three more files are shortened the same way: `N:` for `runs/v3_noise_sweep_06b/metrics.json` (`scripts/compare_noise.py` at commit 36e8ee1, not dirty; the flip-rate sweep of section 4), `L:` for `runs/v3_stage_17b/metrics.json` (`scripts/compare_v3.py --size 17b` at commit 25d68e8, not dirty; section 12) and `P:` for `runs/paired_v3_17b_vs_06b/metrics.json` (`scripts/paired_deltas.py`, the same arm at both sizes; section 12). The v1 report (`docs/RESULTS_v1.md`, frozen, decision 49) and the v2 report (`docs/RESULTS_v2.md`) are the background this starts from.
+Every number cites the file it comes from, as `path:key`. Unless another file is named, numbers are from `runs/v3_stage_06b/metrics.json` (written by `scripts/compare_v3.py` at commit 83454a4, not dirty, regenerated at commit 9353145 with full_sft's seeds 1 and 2 added, at commit cd1217c with direct_brier plus a temperature added, and at commit 25d68e8 with the off-policy runs and direct_log's seeds of section 11 added; every earlier value is unchanged), shortened to `S:key`. Four more files are shortened the same way: `N:` for `runs/v3_noise_sweep_06b/metrics.json` (`scripts/compare_noise.py` at commit 36e8ee1, not dirty; the flip-rate sweep of section 4), `L:` for `runs/v3_stage_17b/metrics.json` (`scripts/compare_v3.py --size 17b` at commit 25d68e8, not dirty; section 12) `P:` for `runs/paired_v3_17b_vs_06b/metrics.json` (`scripts/paired_deltas.py`, the same arm at both sizes; section 12) and `E:` for `runs/v3_stage_emotion_06b/metrics.json` (`scripts/compare_v3.py --domain emotion` at commit 3237670, not dirty; section 13). The v1 report (`docs/RESULTS_v1.md`, frozen, decision 49) and the v2 report (`docs/RESULTS_v2.md`) are the background this starts from.
 
 ## 1. Setup
 
@@ -304,8 +304,8 @@ The predictions as stated before the runs, each with its verdict.
 
 ## 9. Limitations
 
-- **One domain.** Banking77 only, with 10 options and gold always present, so `other` is never right and "never answer other" is free to learn; other domains, other option counts or a gold-absent construction may differ.
-- **One logging policy.** sft_06b at epsilon 0.1, already .836 accurate on the log domain (`runs/v3_log_s0/metrics.json:accuracy`); a weaker or more exploratory policy changes how many negatives there are and which ones.
+- **Two domains.** Banking77, with 10 options and gold always present, so `other` is never right and "never answer other" is free to learn; and emotion, with 6 options and no `other` (section 13). Other option counts or a gold-absent construction may differ.
+- **One logging policy per domain.** sft_06b at epsilon 0.1, .836 accurate on the Banking77 log domain and .542 on emotion (`runs/v3_log_s0/metrics.json:accuracy`, `runs/v3_log_emotion_s0/metrics.json:accuracy`); the emotion log shows a weaker policy changes how many negatives there are (section 13), and a more exploratory one would change which.
 - **A simulated feedback channel.** Outcomes come from gold labels, revealed perfectly or flipped symmetrically at a known rate; real deployment feedback is delayed, biased towards some errors and of unknown noise rate, which the inversion needs.
 - **Two sizes, one seed at the larger.** 0.6B for everything; 1.7B for the N 5000 comparison of three learners, on one training seed and one log (section 12).
 - **The checkpoint grid.** Checkpoints are every 50 steps. At N 2000 direct_log and ips_log peaked at step 50, the first candidate, so a finer grid could favour the log-score arms there (section 11).
@@ -319,7 +319,7 @@ The predictions as stated before the runs, each with its verdict.
 
 v3 shows that when a deployed model sees only the correctness of its own actions on a new domain, training on that signal with a pathwise Brier loss beats discarding the failures, by 2.4 to 2.7 points of accuracy from 2000 logged interactions and by about .05 to .06 ECE at every N, and that it closes 69 to 91 percent of the accuracy gap between zero-shot and full-label SFT. It does not show that RLCD approaches full labels as feedback grows, since the 1.5-point gap at N 5000 (seed means of both) is no smaller than at N 500, and it does not show calibration robust to noisy feedback, where a proper score calibrates to the channel and needs a known noise rate to be undone. Together with v2, the claim that survives is narrow: RLCD adds value over positive-only SFT when the only feedback is partial, and nowhere else that was tested.
 
-Phase 4 adds three checks (sections 4, 11 and 12), and they leave that claim standing. Importance weighting adds nothing on this log, and a log score in place of the Brier score is a choice within the same pathwise family, with a small lead on Brier and NLL and more in-domain forgetting. At 1.7B the ordering holds and direct_brier comes within .4 points of full-label SFT, with an interval covering 0, on one seed. Under noise, RLCD's smaller accuracy loss than positive-only SFT holds at flip rates 0.1 and 0.2 and is gone at 0.3.
+Phase 4 adds four checks (sections 4, 11, 12 and 13), and they leave that claim standing. Importance weighting adds nothing on this log, and a log score in place of the Brier score is a choice within the same pathwise family, with a small lead on Brier and NLL and more in-domain forgetting. At 1.7B the ordering holds and direct_brier comes within .4 points of full-label SFT, with an interval covering 0, on one seed. Under noise, RLCD's smaller accuracy loss than positive-only SFT holds at flip rates 0.1 and 0.2 and is gone at 0.3. On a second domain, emotion, with a logging policy wrong on more than half the log, RLCD leads positive-only SFT at every N and by 21.7 points at N 5000, and the gap to full labels is larger, 4.3 points (section 13).
 
 ## 11. Off-policy baselines
 
@@ -463,3 +463,148 @@ Coverage at .80 / .90 / .95 on v3_banking77_test_full, accuracy of the kept answ
 **Forgetting at both sizes.** direct_brier keeps in-domain calibration: its in-domain ECE moves by +.006 at 1.7B against +.025 for full_sft, as at 0.6B (within .010, against .015 to .043; section 5). Its in-domain accuracy cost is like full_sft's: -.040 against -.038 at 1.7B, and seed ranges of -.027 to -.043 against -.036 to -.052 at 0.6B. Its gain on the unseen intents is smaller at 1.7B (+.012 against +.020 to +.026 at 0.6B).
 
 Everything at 1.7B is one training seed on one log. The direct_brier and full_sft comparison and the forgetting figures rest on that one seed; direct_brier's gain from the larger model is the firmest result, with its interval above 0 and the 1.7B value above every 0.6B seed.
+
+## 13. A second domain: emotion
+
+**Question.** Does the Banking77 result hold on a second log domain that is harder, with fewer options and a weaker logging policy? The prediction, stated before the runs (phase 4 plan, task 4.2): "predictions 1 and 2 hold on emotion from N 2000 as on Banking77; the gap to full_sft at N 5000 is larger than on Banking77 because the task is harder and the logging policy wrong more often (about 45 percent of interactions carry negative feedback)."
+
+Numbers in this section are from `runs/v3_stage_emotion_06b/metrics.json` (`scripts/compare_v3.py --domain emotion` at commit 3237670, not dirty), shortened to `E:key`.
+
+**Domain.** The dair-ai/emotion train split, never trained on: 15958 messages after the duplicate rules (`data/v3_emotion_train.jsonl`), each one choice question over all six emotions in a seeded option order, built as test_emotion records are; there is no `other` option, so the predicted-`other` analysis of section 6 does not apply (`E:other_note`). Evaluation is on `v3_emotion_test_full` (2000 records: the 1000 test_emotion records verbatim, then the other 1000 test messages) and, for forgetting, on test_indomain and test_unseen_intents. Data hashes are in `configs/v3_data.yaml`. The zero-shot run reproduces sft_06b's v1 number on test_emotion (.549; `runs/v3_emotion_06b_zeroshot/metrics.json`, `runs/sft_06b/metrics.json`).
+
+**The log.** sft_06b logged every message once with q = 0.9 p + 0.1 / K, as on Banking77 (`runs/v3_log_emotion_s0/metrics.json`, commit c86d322, not dirty, adapter sha256 5d2681f3...):
+
+| log | sha256 | policy accuracy | outcome rate | flip share | mean propensity |
+|---|---|---|---|---|---|
+| Banking77 seed 0 | 847f44c4... | .836 | .739 | .202 | .724 |
+| emotion seed 0 | 2e04b69e... | .542 | .474 | .202 | .605 |
+
+So 8393 of the 15958 logged outcomes are negative (.526), against about a quarter on Banking77; 3525 of those negatives (.420) fall on an option other than the logger's top choice, more than the .328 that uniform exploration alone would put there (`runs/v3_log_emotion_s0/metrics.json:negatives`).
+
+**Learners and runs.** The five learners of section 1 with `configs/v3_emotion_06b.yaml` (the Banking77 config with the emotion log domain), the same budget and selection rules, plus direct_brier's training seeds 1 and 2 and direct_log at N 5000. The temperature learner's T is 2.280, 2.290 and 2.340 at N 500, 2000 and 5000 (`E:temperatures`), against 1.45 to 1.55 on Banking77. positive_sft trains on 206, 867 and 2151 confirmed interactions (`runs/v3_emotion_06b_positive_sft_n<N>_s0/train_summary.json:n_used`). All 12 trained runs, the zero-shot evaluation and the log ran in two Kaggle sessions (G and H) at commit c86d322, not dirty, fp16 without fallback, every planned step run (`runs/v3_emotion_06b_*/metrics.json:git`, `:precision`).
+
+**Selection.** Best steps: positive_sft 50 at every N; full_sft 50, 150 and 500; direct_brier 50, 150 and 700, and 500 for seeds 1 and 2; direct_log 400 (`runs/v3_emotion_06b_<run>/train_summary.json:best_step`). positive_sft's criterion never improved on step 0 at any N (-2.299 against -1.083 at N 500, -1.140 against -.723 at N 2000, -.792 against -.788 at N 5000; `:selection_curve`, `:init_select`), as at N 500 and 5000 on Banking77, and here by much more.
+
+**The N-curve on v3_emotion_test_full** (`E:n_curve.<N>.<learner>`; direct_brier is seed 0):
+
+| N | metric | zero-shot | temperature | positive_sft | full_sft | direct_brier |
+|---|---|---|---|---|---|---|
+| 500 | accuracy | .540 [.518, .562] | .540 | .578 [.555, .599] | .659 [.640, .681] | .621 [.601, .642] |
+| 2000 | accuracy | .540 | .540 | .589 [.567, .611] | .760 [.742, .779] | .715 [.695, .734] |
+| 5000 | accuracy | .540 | .540 | .615 [.592, .636] | .871 [.856, .884] | .832 [.816, .848] |
+| 500 | ECE | .251 [.232, .272] | .031 [.024, .056] | .363 [.342, .385] | .066 [.057, .091] | .087 [.075, .110] |
+| 2000 | ECE | .251 | .027 [.021, .053] | .324 [.304, .344] | .056 [.043, .075] | .066 [.049, .085] |
+| 5000 | ECE | .251 | .024 [.020, .051] | .256 [.237, .277] | .041 [.031, .055] | .070 [.059, .087] |
+| 500 | Brier | .687 [.657, .718] | .600 [.580, .620] | .764 [.724, .805] | .482 [.457, .505] | .534 [.509, .559] |
+| 2000 | Brier | .687 | .600 [.580, .620] | .708 [.671, .744] | .346 [.321, .369] | .422 [.399, .446] |
+| 5000 | Brier | .687 | .600 [.580, .619] | .628 [.593, .662] | .193 [.175, .213] | .264 [.241, .288] |
+| 500 | NLL | 1.675 [1.579, 1.759] | 1.251 [1.209, 1.292] | 3.147 [2.939, 3.327] | .980 [.927, 1.030] | 1.154 [1.094, 1.212] |
+| 2000 | NLL | 1.675 | 1.251 [1.209, 1.292] | 2.256 [2.111, 2.389] | .697 [.644, .750] | .877 [.830, .924] |
+| 5000 | NLL | 1.675 | 1.251 [1.210, 1.291] | 1.641 [1.532, 1.741] | .383 [.340, .428] | .599 [.541, .657] |
+| 500 | AURC | .295 [.272, .321] | .294 [.270, .320] | .262 [.236, .286] | .190 [.170, .209] | .212 [.193, .234] |
+| 2000 | AURC | .295 | .294 [.270, .320] | .254 [.231, .277] | .101 [.088, .115] | .148 [.130, .165] |
+| 5000 | AURC | .295 | .294 [.270, .320] | .233 [.211, .255] | .031 [.025, .037] | .058 [.048, .069] |
+| 500 | Cov@.05 | .025 [.007, .062] | .014 [.007, .055] | .002 [.001, .029] | .072 [.041, .118] | .068 [.024, .105] |
+| 2000 | Cov@.05 | .025 | .014 [.007, .055] | .030 [.011, .054] | .277 [.163, .389] | .107 [.065, .219] |
+| 5000 | Cov@.05 | .025 | .015 [.007, .055] | .032 [.005, .071] | .762 [.689, .813] | .595 [.470, .660] |
+
+Paired differences, direct_brier minus the other learner (`E:n_curve.<N>.direct_brier_minus_positive_sft`, `E:n_curve.<N>.direct_brier_minus_full_sft`):
+
+| N | vs | accuracy | ECE | Brier | NLL | AURC | Cov@.05 |
+|---|---|---|---|---|---|---|---|
+| 500 | positive_sft | +.043 [+.027, +.060] | -.276 [-.290, -.254] | -.230 [-.257, -.206] | -1.993 [-2.138, -1.841] | -.050 [-.064, -.036] | +.066 [+.019, +.101] |
+| 2000 | positive_sft | +.126 [+.109, +.144] | -.258 [-.282, -.232] | -.286 [-.313, -.261] | -1.379 [-1.482, -1.273] | -.106 [-.121, -.093] | +.077 [+.036, +.182] |
+| 5000 | positive_sft | +.217 [+.197, +.238] | -.186 [-.204, -.162] | -.364 [-.396, -.330] | -1.042 [-1.134, -.947] | -.174 [-.195, -.154] | +.564 [+.439, +.632] |
+| 500 | full_sft | -.038 [-.053, -.025] | +.021 [+.001, +.037] | +.053 [+.041, +.064] | +.174 [+.146, +.204] | +.022 [+.014, +.030] | -.005 [-.035, +.025] |
+| 2000 | full_sft | -.046 [-.060, -.033] | +.010 [-.009, +.027] | +.076 [+.066, +.087] | +.180 [+.154, +.206] | +.047 [+.039, +.054] | -.170 [-.242, -.030] |
+| 5000 | full_sft | -.039 [-.052, -.027] | +.029 [+.017, +.043] | +.070 [+.056, +.088] | +.216 [+.178, +.261] | +.027 [+.020, +.035] | -.167 [-.260, -.100] |
+
+- **positive_sft** gains 3.8 to 7.5 points over zero-shot and is the worst-calibrated learner at every N, with ECE above zero-shot's (.363, .324, .256 against .251). On confirmed answers alone it learns little when fewer than half the answers are confirmed.
+- **direct_brier** leads positive_sft at every N, by 4.3, 12.6 and 21.7 points, with ECE lower by .186 to .276 and AURC lower by .050 to .174. It stays 3.8 to 4.6 points below full_sft, with higher ECE at N 500 and 5000 on seed 0, and higher Brier, NLL and AURC at every N. It closes 68, 79 and 88 percent of the accuracy gap between zero-shot and full_sft at N 500, 2000 and 5000, computed from the stored accuracies (`E:n_curve.<N>.<learner>.accuracy`).
+- **The temperature** (T about 2.3) changes no prediction and has the lowest ECE at every N (.024 to .031), but it leaves the ranking almost where it was: AURC .294 against zero-shot's .295, Cov@.05 .014 to .015 against .025. Calibration of the level is not selective risk.
+- **Selective risk.** At N 5000, a threshold keeps .595 of direct_brier's answers at an error of at most .05, against .762 for full_sft and .032 for positive_sft (`E:n_curve.5000.<learner>.coverage_at_0.05`).
+
+![Accuracy and ECE against N on emotion](figures/v4_emotion_n_curve.png)
+
+`figures/v4_emotion_n_curve.png`: accuracy and ECE against N for the five learners with their record-bootstrap intervals, direct_log at N 5000, and direct_brier's range over training seeds 0, 1 and 2 (`E:n_curve`, `E:seeds.training_seeds`).
+
+**Training seeds** (`E:seeds`): direct_brier at N 5000, seeds 0, 1 and 2 on the seed 0 log.
+
+| run | accuracy | ECE | Brier | NLL | AURC | Cov@.05 | minus seed 0, accuracy | minus seed 0, ECE |
+|---|---|---|---|---|---|---|---|---|
+| seed 0 | .832 [.816, .848] | .070 [.059, .087] | .264 | .599 | .058 | .595 |  | |
+| seed 1 | .829 [.812, .845] | .031 [.024, .049] | .261 | .567 | .059 | .556 | -.003 [-.014, +.008] | -.039 [-.048, -.025] |
+| seed 2 | .821 [.803, .837] | .038 [.028, .055] | .266 | .573 | .058 | .572 | -.011 [-.022, +.000] | -.032 [-.042, -.020] |
+| mean of 3 training seeds (range) | .827 (.821, .832) | .046 (.031, .070) | .263 (.261, .266) | .580 (.567, .599) | .059 (.058, .059) | .575 (.556, .595) | | |
+
+The training-seed mean against the other learners, paired as in section 3 (`E:seeds.training_seed_mean_minus_positive_sft`, `E:seeds.training_seed_mean_minus_full_sft`; positive_sft and full_sft have seed 0 only on emotion):
+
+| seed mean minus | accuracy | ECE | Brier | NLL | AURC | Cov@.05 |
+|---|---|---|---|---|---|---|
+| positive_sft | +.213 [+.193, +.233] | -.210 [-.227, -.186] | -.364 [-.395, -.334] | -1.061 [-1.150, -.968] | -.174 [-.193, -.154] | +.543 [+.409, +.618] |
+| full_sft seed 0 | -.043 [-.056, -.031] | +.006 [-.005, +.018] | +.070 [+.056, +.085] | +.197 [+.164, +.235] | +.028 [+.022, +.034] | -.188 [-.297, -.128] |
+
+- **Accuracy is stable across seeds** (.821 to .832), **ECE is not**: seed 0's .070 is the worst of the three, and seeds 1 and 2 are .039 and .032 below it with intervals excluding 0. On seed 0 alone direct_brier's ECE is above full_sft's (+.029 [+.017, +.043]); on the seed mean it is level (+.006 [-.005, +.018]). As on Banking77 (section 3), ECE differences of this size between the two learners are not called from one seed.
+- **The price of not having labels at N 5000** is 4.3 points of accuracy for the seed mean against full_sft's seed 0, with ECE level and higher Brier, NLL and AURC. full_sft has one seed here; on Banking77 its seed 0 was within a tenth of a point of its seed mean.
+
+**direct_log at N 5000** (seed 0; `E:n_curve.5000.direct_log`, `E:n_curve.5000.off_policy.direct_log`, `E:seeds.direct_log_seed_mean_minus_direct_brier_seed_mean`): accuracy .806 [.789, .823], ECE .049 [.039, .066], AURC .064. Against direct_brier's seed mean it is -.021 [-.030, -.012] in accuracy, +.003 [-.007, +.013] in ECE, +.019 [+.009, +.027] in Brier, +.023 [+.004, +.042] in NLL and +.005 [+.000, +.010] in AURC; against positive_sft +.192 [+.170, +.213]. On Banking77 the log score was level with Brier on accuracy and ahead on Brier and NLL (section 11); on emotion it is behind on all three, on one seed. The choice of Brier as the default holds.
+
+**Forgetting.** Accuracy and ECE minus zero-shot on test_indomain (zero-shot .956, ECE .013) and test_unseen_intents (zero-shot .892, ECE .068), paired (`E:forgetting.<split>.minus_zero_shot.<run>`):
+
+| run | test_indomain accuracy | test_indomain ECE | test_unseen_intents accuracy | test_unseen_intents ECE |
+|---|---|---|---|---|
+| temperature n500 | +.000 [+.000, +.000] | +.080 [+.073, +.086] | +.000 [+.000, +.000] | -.029 [-.042, -.015] |
+| temperature n2000 | +.000 [+.000, +.000] | +.082 [+.075, +.087] | +.000 [+.000, +.000] | -.027 [-.042, -.014] |
+| temperature n5000 | +.000 [+.000, +.000] | +.087 [+.080, +.093] | +.000 [+.000, +.000] | -.022 [-.036, -.009] |
+| positive_sft n500 | -.003 [-.005, -.001] | +.020 [+.017, +.022] | -.018 [-.023, -.014] | +.042 [+.036, +.046] |
+| positive_sft n2000 | -.001 [-.003, +.001] | +.013 [+.010, +.014] | -.002 [-.006, +.002] | +.017 [+.013, +.021] |
+| positive_sft n5000 | -.005 [-.007, -.002] | +.007 [+.004, +.009] | +.010 [+.006, +.013] | -.003 [-.007, +.000] |
+| direct_brier n500 | -.006 [-.008, -.003] | -.003 [-.008, +.002] | +.013 [+.008, +.018] | -.030 [-.036, -.026] |
+| direct_brier n2000 | -.008 [-.011, -.006] | -.001 [-.005, +.005] | -.004 [-.009, +.002] | -.023 [-.029, -.019] |
+| direct_brier n5000 seed 0 | -.026 [-.031, -.023] | +.001 [-.004, +.004] | -.020 [-.027, -.013] | +.002 [-.005, +.009] |
+| direct_brier n5000 seed 1 | -.019 [-.023, -.015] | +.003 [-.002, +.009] | -.024 [-.031, -.017] | -.017 [-.025, -.011] |
+| direct_brier n5000 seed 2 | -.024 [-.027, -.020] | -.003 [-.007, +.004] | -.034 [-.042, -.026] | +.000 [-.008, +.007] |
+| direct_log n5000 seed 0 | -.022 [-.026, -.019] | -.001 [-.006, +.003] | -.011 [-.018, -.004] | -.013 [-.020, -.007] |
+| full_sft n500 | -.004 [-.007, -.002] | +.002 [-.004, +.008] | +.002 [-.003, +.007] | -.028 [-.033, -.023] |
+| full_sft n2000 | -.014 [-.018, -.011] | -.004 [-.008, +.002] | -.014 [-.020, -.007] | -.016 [-.022, -.010] |
+| full_sft n5000 | -.034 [-.038, -.029] | -.002 [-.007, +.001] | -.040 [-.048, -.032] | +.011 [+.003, +.018] |
+
+- **In-domain, direct_brier and full_sft lose accuracy as N grows** and keep in-domain ECE within .004 of zero-shot: at N 5000 direct_brier costs 1.9 to 2.6 points across seeds and full_sft 3.4; positive_sft costs under 1 point at every N. The costs are smaller than on Banking77 (2.7 to 4.3 and 3.6 to 5.2 points, section 5).
+- **On the unseen intents the sign is reversed from Banking77**: at N 5000 every trained learner but positive_sft loses accuracy (direct_brier -2.0 to -3.4 points, full_sft -4.0), where on Banking77 every trained learner gained on them (section 5). Banking77 shares the intent format of those splits and emotion does not, which may be why; these runs do not test it.
+- **The temperature** fitted on the emotion log raises in-domain ECE by .080 to .087: one T of about 2.3 is right for emotion and wrong for the in-domain splits.
+
+**Coverage** at confidence thresholds .80, .90 and .95 (response confidence field; accuracy of the kept answers in brackets; `E:coverage.<run>`):
+
+| run | .80 | .90 | .95 |
+|---|---|---|---|
+| zero-shot | .391 (.740) | .267 (.775) | .157 (.822) |
+| temperature n5000 | .004 (1.000) | .000 (-) | .000 (-) |
+| positive_sft n500 | .814 (.644) | .760 (.663) | .718 (.673) |
+| positive_sft n5000 | .608 (.734) | .467 (.781) | .359 (.813) |
+| direct_brier n500 | .249 (.866) | .137 (.894) | .075 (.933) |
+| direct_brier n2000 | .242 (.919) | .095 (.958) | .022 (1.000) |
+| direct_brier n5000 seed 0 | .706 (.930) | .545 (.958) | .344 (.967) |
+| direct_brier n5000 seed 1 | .536 (.949) | .326 (.974) | .133 (.985) |
+| direct_brier n5000 seed 2 | .536 (.951) | .315 (.968) | .118 (.992) |
+| direct_log n5000 seed 0 | .549 (.944) | .385 (.965) | .231 (.976) |
+| full_sft n500 | .259 (.872) | .142 (.905) | .085 (.935) |
+| full_sft n5000 | .722 (.956) | .598 (.979) | .492 (.984) |
+
+positive_sft keeps .359 of its answers at the .95 threshold at N 5000 with .813 accuracy among them, so it would pass on about 19 percent errors as confident; at N 500 it keeps .718 at .673. Every direct_brier run keeps answers above .93 accuracy at .95. The temperature learner keeps almost nothing above .80.
+
+**The B2 reference** on the 500-record subset of test_emotion (`E:b2_reference`): gpt-4.1-mini scores .598, ECE .283. On the same records: zero-shot .564 (ECE .228); positive_sft .572, .604 and .638 at N 500, 2000 and 5000; direct_brier .620, .748 and .858 (seeds 1 and 2: .846 and .842; ECE .089, .085, .070, .052, .041); direct_log .822; full_sft .682, .776 and .888. From N 2000 every direct_brier run is well above gpt-4.1-mini on this subset, from 2000 logged correctness bits and no labels; these rows have no paired interval against B2.
+
+**The label ceiling** (`docs/audit/EMOTION_SUMMARY.md`, `docs/audit/emotion_summary.json:groups`). Two language-model judges, no human, find a label problem in .32 and .40 of a uniform sample of 50, mostly a labelling convention that follows emotion words (.20 for both), and no plainly wrong label (upper interval end .07). If the convention is learnable, the ceiling is .93 or higher; for a reader who goes by the option descriptions it is near .80. full_sft (.871) and every direct_brier seed (.821 to .832) are above .80, so both have learned part of the convention from the log domain's labels; if the train split follows the same rule, the clean outcomes reward it in about one interaction in five. Of the questions full_sft and positive_sft both miss, nine in ten carry a label problem (.93 and .90). The audit says nothing about the gap between direct_brier and full_sft, which lies in the questions on which they disagree.
+
+**The four predictions on emotion**, in the words of section 8:
+1. **"RLCD beats positive-only SFT in accuracy at every N, because it uses negative feedback."** Held at every N: +.043 [+.027, +.060], +.126 [+.109, +.144] and +.217 [+.197, +.238] at N 500, 2000 and 5000, +.213 [+.193, +.233] for the three-seed mean. Unlike Banking77, it holds at N 500 too.
+2. **"RLCD's ECE is lower than positive-only SFT's, which only ever sees confirmed answers and should be overconfident."** Held at every N: -.276 [-.290, -.254], -.258 [-.282, -.232] and -.186 [-.204, -.162], with Brier, NLL and AURC agreeing; positive_sft is the worst-calibrated learner at every N.
+3. **"RLCD approaches full-label SFT as N grows; the gap at N 5000 is the price of not having labels."** Failed, as on Banking77: -.038 [-.053, -.025], -.046 [-.060, -.033] and -.039 [-.052, -.027]; the gap does not shrink with N. The price at N 5000 is 4.3 points, -.043 [-.056, -.031] for the seed mean against full_sft's one seed, with ECE level.
+4. **"Under noisy feedback, RLCD degrades less than positive-only SFT."** Not tested on emotion: no noisy runs were planned for this domain.
+
+**The task 4.2 prediction, reported as stated.**
+- *"Predictions 1 and 2 hold on emotion from N 2000 as on Banking77": held,* and prediction 1 holds from N 500, where Banking77 tied.
+- *"The gap to full_sft at N 5000 is larger than on Banking77": held:* -.039 [-.052, -.027] on seed 0 against -.018 [-.025, -.011] on Banking77, and -.043 for the seed mean against Banking77's -.015 (seed means of both there). Its premise held more strongly than stated: .526 of interactions carry negative feedback, not about .45. The stated cause, a harder task and a weaker logging policy, is consistent with the result but not isolated by it, since both change together between the domains.
+- *What the prediction did not state:* the lead over positive_sft is far larger on emotion (+.217 at N 5000 against +.024 on Banking77). With fewer than half the outcomes positive, discarding the negatives discards most of the log.
+
+Everything on emotion is one log; positive_sft and full_sft are one training seed.
