@@ -1,0 +1,4355 @@
+{
+  "decision": 56,
+  "domain": "emotion",
+  "size": "06b",
+  "split": "v3_emotion_test_full",
+  "git": {
+    "commit": "3237670a42e763cb3654fe2af729b0555cd55586",
+    "dirty": false
+  },
+  "created": "2026-10-17T10:13:40+00:00",
+  "script_sha256": "a330f0080dd9c616288c59f0ad8e9ac5d4078dcd2f301bfd145ff13afddfc3ca",
+  "bootstrap": {
+    "resamples": 1000,
+    "by": "record",
+    "seed_text": "v3:<split>",
+    "paired": "the same record draws for every run on a split"
+  },
+  "note": "Adapted learners' Banking77 numbers are never mixed into the v1 or v2 unseen-schema means (decision 56).",
+  "data_files_sha256": {
+    "v3_emotion_test_full.jsonl": "e27736ed9f2d3b6c10385e9b7438ae0eed94b75da9bf4f29d47048eab15e0b22",
+    "test_emotion.jsonl": "12bc79d03bf87043b88a675244f928e29359cc1f8e2444a9efe4c7e8bdb17b5c",
+    "test_indomain.jsonl": "c68c7fd03f1ba2a35eb60eba6b9e3d3ea7bffa096f33c6823a5b1dfcdbdbd1cf",
+    "test_unseen_intents.jsonl": "3b1a0ff126504f99c9450b6fa321651acd21737377184e66a1969df289e6b847"
+  },
+  "temperatures": {
+    "500": 2.2800584382633637,
+    "2000": 2.289617269394954,
+    "5000": 2.3396259333642466
+  },
+  "direct_brier_temperatures": {},
+  "sources": {
+    "zero_shot": {
+      "dir": "runs/v3_emotion_06b_zeroshot",
+      "git": {
+        "commit": "c86d32248dfe2ae7632b4ad68bf8e1031cc372d0",
+        "dirty": false
+      },
+      "results_sha256": "8c834333d2c813c83d8458c7b7ea6bc8501ca2a579144f22bbd7c110916da741",
+      "adapter_sha256": "5d2681f3ba7a72cd4c0f1413e89c5e21c7bb96cee8645fa2a498516d67568809"
+    },
+    "temperature_n500": {
+      "dir": "runs/v3_emotion_06b_temp_n500",
+      "temperature": 2.2800584382633637
+    },
+    "temperature_n2000": {
+      "dir": "runs/v3_emotion_06b_temp_n2000",
+      "temperature": 2.289617269394954
+    },
+    "temperature_n5000": {
+      "dir": "runs/v3_emotion_06b_temp_n5000",
+      "temperature": 2.3396259333642466
+    },
+    "direct_brier_n2000_s0": {
+      "dir": "runs/v3_emotion_06b_direct_brier_n2000_s0",
+      "git": {
+        "commit": "c86d32248dfe2ae7632b4ad68bf8e1031cc372d0",
+        "dirty": false
+      },
+      "results_sha256": "7c19ed496a313cc9434ee46cf5da4971ee382482f6e16ae19e9a15f6fe9ffe79",
+      "v3": {
+        "log": "runs/v3_log_emotion_s0/log.jsonl",
+        "log_sha256": "2e04b69ecd14815aecee6a65095b83fc6c62388125d770b759a3c6f731b98953",
+        "log_seed": 0,
+        "n": 2000,
+        "noisy": false,
+        "noise": null,
+        "data_sha256": "979b850c13412c948edce6499bc15a8d1c12c4e4bae11232859f693752ba33da",
+        "arm": "direct_brier"
+      }
+    },
+    "direct_brier_n5000_s0": {
+      "dir": "runs/v3_emotion_06b_direct_brier_n5000_s0",
+      "git": {
+        "commit": "c86d32248dfe2ae7632b4ad68bf8e1031cc372d0",
+        "dirty": false
+      },
+      "results_sha256": "e1c18421a453b2a26be4e2d848df4f26ce89d4fe9a56359e7232a0f7195ce52b",
+      "v3": {
+        "log": "runs/v3_log_emotion_s0/log.jsonl",
+        "log_sha256": "2e04b69ecd14815aecee6a65095b83fc6c62388125d770b759a3c6f731b98953",
+        "log_seed": 0,
+        "n": 5000,
+        "noisy": false,
+        "noise": null,
+        "data_sha256": "979b850c13412c948edce6499bc15a8d1c12c4e4bae11232859f693752ba33da",
+        "arm": "direct_brier"
+      }
+    },
+    "direct_brier_n5000_s1": {
+      "dir": "runs/v3_emotion_06b_direct_brier_n5000_s1",
+      "git": {
+        "commit": "c86d32248dfe2ae7632b4ad68bf8e1031cc372d0",
+        "dirty": false
+      },
+      "results_sha256": "e94d009ade3502e57766cca903d360a4a3a503edb31a4e65e38ea57e7f41bedc",
+      "v3": {
+        "log": "runs/v3_log_emotion_s0/log.jsonl",
+        "log_sha256": "2e04b69ecd14815aecee6a65095b83fc6c62388125d770b759a3c6f731b98953",
+        "log_seed": 0,
+        "n": 5000,
+        "noisy": false,
+        "noise": null,
+        "data_sha256": "979b850c13412c948edce6499bc15a8d1c12c4e4bae11232859f693752ba33da",
+        "arm": "direct_brier"
+      }
+    },
+    "direct_brier_n5000_s2": {
+      "dir": "runs/v3_emotion_06b_direct_brier_n5000_s2",
+      "git": {
+        "commit": "c86d32248dfe2ae7632b4ad68bf8e1031cc372d0",
+        "dirty": false
+      },
+      "results_sha256": "51631c359171189875c0b8e7b5d7e93533913d6caaf0b95fb40191ca8752a3d3",
+      "v3": {
+        "log": "runs/v3_log_emotion_s0/log.jsonl",
+        "log_sha256": "2e04b69ecd14815aecee6a65095b83fc6c62388125d770b759a3c6f731b98953",
+        "log_seed": 0,
+        "n": 5000,
+        "noisy": false,
+        "noise": null,
+        "data_sha256": "979b850c13412c948edce6499bc15a8d1c12c4e4bae11232859f693752ba33da",
+        "arm": "direct_brier"
+      }
+    },
+    "direct_brier_n500_s0": {
+      "dir": "runs/v3_emotion_06b_direct_brier_n500_s0",
+      "git": {
+        "commit": "c86d32248dfe2ae7632b4ad68bf8e1031cc372d0",
+        "dirty": false
+      },
+      "results_sha256": "04af1423014bc98bd138c42094e5460734dbea93af0a278b9623bd9b5dcf8013",
+      "v3": {
+        "log": "runs/v3_log_emotion_s0/log.jsonl",
+        "log_sha256": "2e04b69ecd14815aecee6a65095b83fc6c62388125d770b759a3c6f731b98953",
+        "log_seed": 0,
+        "n": 500,
+        "noisy": false,
+        "noise": null,
+        "data_sha256": "979b850c13412c948edce6499bc15a8d1c12c4e4bae11232859f693752ba33da",
+        "arm": "direct_brier"
+      }
+    },
+    "direct_log_n5000_s0": {
+      "dir": "runs/v3_emotion_06b_direct_log_n5000_s0",
+      "git": {
+        "commit": "c86d32248dfe2ae7632b4ad68bf8e1031cc372d0",
+        "dirty": false
+      },
+      "results_sha256": "2306815ed0f3d9451ed6a0b895fca29e71255a3522546d985bb3ee38a609e504",
+      "v3": {
+        "log": "runs/v3_log_emotion_s0/log.jsonl",
+        "log_sha256": "2e04b69ecd14815aecee6a65095b83fc6c62388125d770b759a3c6f731b98953",
+        "log_seed": 0,
+        "n": 5000,
+        "noisy": false,
+        "noise": null,
+        "data_sha256": "979b850c13412c948edce6499bc15a8d1c12c4e4bae11232859f693752ba33da",
+        "arm": "direct_log"
+      }
+    },
+    "full_sft_n2000_s0": {
+      "dir": "runs/v3_emotion_06b_full_sft_n2000_s0",
+      "git": {
+        "commit": "c86d32248dfe2ae7632b4ad68bf8e1031cc372d0",
+        "dirty": false
+      },
+      "results_sha256": "5d2eeb2b6a65491d4e51b8dacc2840ebf050cdb9c16bce4c2206dedd4644ca56",
+      "v3": {
+        "log": "runs/v3_log_emotion_s0/log.jsonl",
+        "log_sha256": "2e04b69ecd14815aecee6a65095b83fc6c62388125d770b759a3c6f731b98953",
+        "log_seed": 0,
+        "n": 2000,
+        "noisy": false,
+        "noise": null,
+        "data_sha256": "979b850c13412c948edce6499bc15a8d1c12c4e4bae11232859f693752ba33da",
+        "arm": "full_sft"
+      }
+    },
+    "full_sft_n5000_s0": {
+      "dir": "runs/v3_emotion_06b_full_sft_n5000_s0",
+      "git": {
+        "commit": "c86d32248dfe2ae7632b4ad68bf8e1031cc372d0",
+        "dirty": false
+      },
+      "results_sha256": "6e4db37d03b97c847e9e798ce720237c742b783a2a94dc9cdeaae76b97ce98b3",
+      "v3": {
+        "log": "runs/v3_log_emotion_s0/log.jsonl",
+        "log_sha256": "2e04b69ecd14815aecee6a65095b83fc6c62388125d770b759a3c6f731b98953",
+        "log_seed": 0,
+        "n": 5000,
+        "noisy": false,
+        "noise": null,
+        "data_sha256": "979b850c13412c948edce6499bc15a8d1c12c4e4bae11232859f693752ba33da",
+        "arm": "full_sft"
+      }
+    },
+    "full_sft_n500_s0": {
+      "dir": "runs/v3_emotion_06b_full_sft_n500_s0",
+      "git": {
+        "commit": "c86d32248dfe2ae7632b4ad68bf8e1031cc372d0",
+        "dirty": false
+      },
+      "results_sha256": "c20bb0145b8cd417f7f9fd9437484bcfe07a4f6d7ad8006c8dc0c74c8d5e56df",
+      "v3": {
+        "log": "runs/v3_log_emotion_s0/log.jsonl",
+        "log_sha256": "2e04b69ecd14815aecee6a65095b83fc6c62388125d770b759a3c6f731b98953",
+        "log_seed": 0,
+        "n": 500,
+        "noisy": false,
+        "noise": null,
+        "data_sha256": "979b850c13412c948edce6499bc15a8d1c12c4e4bae11232859f693752ba33da",
+        "arm": "full_sft"
+      }
+    },
+    "positive_sft_n2000_s0": {
+      "dir": "runs/v3_emotion_06b_positive_sft_n2000_s0",
+      "git": {
+        "commit": "c86d32248dfe2ae7632b4ad68bf8e1031cc372d0",
+        "dirty": false
+      },
+      "results_sha256": "e0e27c0310d5d299a998725d05b39313eaa23ac232363f0c93707d404cc31ece",
+      "v3": {
+        "log": "runs/v3_log_emotion_s0/log.jsonl",
+        "log_sha256": "2e04b69ecd14815aecee6a65095b83fc6c62388125d770b759a3c6f731b98953",
+        "log_seed": 0,
+        "n": 2000,
+        "noisy": false,
+        "noise": null,
+        "data_sha256": "979b850c13412c948edce6499bc15a8d1c12c4e4bae11232859f693752ba33da",
+        "arm": "positive_sft"
+      }
+    },
+    "positive_sft_n5000_s0": {
+      "dir": "runs/v3_emotion_06b_positive_sft_n5000_s0",
+      "git": {
+        "commit": "c86d32248dfe2ae7632b4ad68bf8e1031cc372d0",
+        "dirty": false
+      },
+      "results_sha256": "824e2a403a85e80fb8c6139661c894c77d2c214cf368b97b50f46495fb015f72",
+      "v3": {
+        "log": "runs/v3_log_emotion_s0/log.jsonl",
+        "log_sha256": "2e04b69ecd14815aecee6a65095b83fc6c62388125d770b759a3c6f731b98953",
+        "log_seed": 0,
+        "n": 5000,
+        "noisy": false,
+        "noise": null,
+        "data_sha256": "979b850c13412c948edce6499bc15a8d1c12c4e4bae11232859f693752ba33da",
+        "arm": "positive_sft"
+      }
+    },
+    "positive_sft_n500_s0": {
+      "dir": "runs/v3_emotion_06b_positive_sft_n500_s0",
+      "git": {
+        "commit": "c86d32248dfe2ae7632b4ad68bf8e1031cc372d0",
+        "dirty": false
+      },
+      "results_sha256": "2f200cbad9273a3e6fe478d9082643cca4d03d9bc2bde844edecde5dddba6277",
+      "v3": {
+        "log": "runs/v3_log_emotion_s0/log.jsonl",
+        "log_sha256": "2e04b69ecd14815aecee6a65095b83fc6c62388125d770b759a3c6f731b98953",
+        "log_seed": 0,
+        "n": 500,
+        "noisy": false,
+        "noise": null,
+        "data_sha256": "979b850c13412c948edce6499bc15a8d1c12c4e4bae11232859f693752ba33da",
+        "arm": "positive_sft"
+      }
+    }
+  },
+  "n_curve": {
+    "500": {
+      "zero_shot": {
+        "n": 2000,
+        "accuracy": 0.54,
+        "accuracy_ci": [
+          0.5185,
+          0.5615125
+        ],
+        "ece": 0.2513090969771147,
+        "ece_ci": [
+          0.2320563355371356,
+          0.2721072932854295
+        ],
+        "brier": 0.686913430166479,
+        "brier_ci": [
+          0.6568644252108308,
+          0.7183604557679272
+        ],
+        "nll": 1.6745898008001858,
+        "nll_ci": [
+          1.5786327846861707,
+          1.7590949201853108
+        ],
+        "aurc": 0.29549677517770884,
+        "aurc_ci": [
+          0.2724152841064108,
+          0.32072470288149574
+        ],
+        "coverage_at_0.05": 0.0245,
+        "coverage_at_0.05_ci": [
+          0.0075,
+          0.062
+        ],
+        "coverage_at_0.10": 0.0565,
+        "coverage_at_0.10_ci": [
+          0.020987500000000003,
+          0.10801249999999998
+        ],
+        "coverage_at_0.20": 0.1975,
+        "coverage_at_0.20_ci": [
+          0.1334625,
+          0.3025
+        ],
+        "aurc_entropy": 0.29523238974011756,
+        "aurc_entropy_ci": [
+          0.2717178212714128,
+          0.3201181358926026
+        ],
+        "coverage_at_0.05_entropy": 0.0235,
+        "coverage_at_0.05_entropy_ci": [
+          0.0074875,
+          0.06151249999999999
+        ],
+        "coverage_at_0.10_entropy": 0.056,
+        "coverage_at_0.10_entropy_ci": [
+          0.019975000000000003,
+          0.10651249999999998
+        ],
+        "coverage_at_0.20_entropy": 0.1955,
+        "coverage_at_0.20_entropy_ci": [
+          0.14,
+          0.31303749999999997
+        ]
+      },
+      "temperature": {
+        "n": 2000,
+        "accuracy": 0.54,
+        "accuracy_ci": [
+          0.5185,
+          0.5615125
+        ],
+        "ece": 0.031336322394973,
+        "ece_ci": [
+          0.023925320685411585,
+          0.0555962104529098
+        ],
+        "brier": 0.5998986035086096,
+        "brier_ci": [
+          0.5800157888113927,
+          0.6196875504925694
+        ],
+        "nll": 1.2511283021362805,
+        "nll_ci": [
+          1.2089862188707643,
+          1.2923091372819124
+        ],
+        "aurc": 0.2943592715376349,
+        "aurc_ci": [
+          0.2704088038300975,
+          0.3198544044852743
+        ],
+        "coverage_at_0.05": 0.014,
+        "coverage_at_0.05_ci": [
+          0.0075,
+          0.055
+        ],
+        "coverage_at_0.10": 0.052,
+        "coverage_at_0.10_ci": [
+          0.0125,
+          0.1060999999999999
+        ],
+        "coverage_at_0.20": 0.195,
+        "coverage_at_0.20_ci": [
+          0.1384875,
+          0.3150125
+        ],
+        "aurc_entropy": 0.3000335849389709,
+        "aurc_entropy_ci": [
+          0.27581417053233126,
+          0.3238551189048398
+        ],
+        "coverage_at_0.05_entropy": 0.013,
+        "coverage_at_0.05_entropy_ci": [
+          0.007,
+          0.055
+        ],
+        "coverage_at_0.10_entropy": 0.046,
+        "coverage_at_0.10_entropy_ci": [
+          0.0109875,
+          0.10803749999999997
+        ],
+        "coverage_at_0.20_entropy": 0.213,
+        "coverage_at_0.20_entropy_ci": [
+          0.1464875,
+          0.2985999999999999
+        ]
+      },
+      "positive_sft": {
+        "n": 2000,
+        "accuracy": 0.5775,
+        "accuracy_ci": [
+          0.5555,
+          0.5985125
+        ],
+        "ece": 0.36284010124206545,
+        "ece_ci": [
+          0.34159363488815725,
+          0.38535163467787203
+        ],
+        "brier": 0.7642735269774863,
+        "brier_ci": [
+          0.7235162335283779,
+          0.804636508812469
+        ],
+        "nll": 3.1468670966329646,
+        "nll_ci": [
+          2.939267096323494,
+          3.326535411132979
+        ],
+        "aurc": 0.26242610689964885,
+        "aurc_ci": [
+          0.23607586892882607,
+          0.28643731146315193
+        ],
+        "coverage_at_0.05": 0.002,
+        "coverage_at_0.05_ci": [
+          0.0005,
+          0.029037499999999966
+        ],
+        "coverage_at_0.10": 0.013,
+        "coverage_at_0.10_ci": [
+          0.001,
+          0.14302499999999996
+        ],
+        "coverage_at_0.20": 0.305,
+        "coverage_at_0.20_ci": [
+          0.2179875,
+          0.405
+        ],
+        "aurc_entropy": 0.26189054185714794,
+        "aurc_entropy_ci": [
+          0.2357316785920688,
+          0.28559830247932716
+        ],
+        "coverage_at_0.05_entropy": 0.0025,
+        "coverage_at_0.05_entropy_ci": [
+          0.001,
+          0.0325
+        ],
+        "coverage_at_0.10_entropy": 0.013,
+        "coverage_at_0.10_entropy_ci": [
+          0.001,
+          0.1440125
+        ],
+        "coverage_at_0.20_entropy": 0.308,
+        "coverage_at_0.20_entropy_ci": [
+          0.217475,
+          0.406
+        ]
+      },
+      "full_sft": {
+        "n": 2000,
+        "accuracy": 0.659,
+        "accuracy_ci": [
+          0.64,
+          0.681
+        ],
+        "ece": 0.0661102992221713,
+        "ece_ci": [
+          0.05662701018638909,
+          0.09053867438342422
+        ],
+        "brier": 0.48180982090697255,
+        "brier_ci": [
+          0.45666353006061255,
+          0.5054129095197221
+        ],
+        "nll": 0.9795522680961303,
+        "nll_ci": [
+          0.9273848134521776,
+          1.0298187729156643
+        ],
+        "aurc": 0.18995801286655956,
+        "aurc_ci": [
+          0.16964841482597762,
+          0.20898033743313946
+        ],
+        "coverage_at_0.05": 0.0725,
+        "coverage_at_0.05_ci": [
+          0.041475000000000005,
+          0.118
+        ],
+        "coverage_at_0.10": 0.1875,
+        "coverage_at_0.10_ci": [
+          0.083,
+          0.271
+        ],
+        "coverage_at_0.20": 0.5575,
+        "coverage_at_0.20_ci": [
+          0.441475,
+          0.629025
+        ],
+        "aurc_entropy": 0.1927289532219395,
+        "aurc_entropy_ci": [
+          0.1727412181647192,
+          0.21153981239904407
+        ],
+        "coverage_at_0.05_entropy": 0.073,
+        "coverage_at_0.05_entropy_ci": [
+          0.0449875,
+          0.113
+        ],
+        "coverage_at_0.10_entropy": 0.174,
+        "coverage_at_0.10_entropy_ci": [
+          0.0824875,
+          0.2655125
+        ],
+        "coverage_at_0.20_entropy": 0.535,
+        "coverage_at_0.20_entropy_ci": [
+          0.4325,
+          0.6070125
+        ]
+      },
+      "direct_brier": {
+        "n": 2000,
+        "accuracy": 0.6205,
+        "accuracy_ci": [
+          0.6005,
+          0.6425
+        ],
+        "ece": 0.08681071562319995,
+        "ece_ci": [
+          0.07508161518387496,
+          0.11020157490503044
+        ],
+        "brier": 0.5343659862290585,
+        "brier_ci": [
+          0.5093867210193879,
+          0.5590224639851226
+        ],
+        "nll": 1.1535279386595094,
+        "nll_ci": [
+          1.0943817612450988,
+          1.2119428839580766
+        ],
+        "aurc": 0.2122405328275459,
+        "aurc_ci": [
+          0.1925522014908785,
+          0.23398314472011386
+        ],
+        "coverage_at_0.05": 0.0675,
+        "coverage_at_0.05_ci": [
+          0.024,
+          0.105
+        ],
+        "coverage_at_0.10": 0.152,
+        "coverage_at_0.10_ci": [
+          0.0815,
+          0.23854999999999996
+        ],
+        "coverage_at_0.20": 0.4575,
+        "coverage_at_0.20_ci": [
+          0.37098749999999997,
+          0.5325124999999999
+        ],
+        "aurc_entropy": 0.21415504396846433,
+        "aurc_entropy_ci": [
+          0.19431359646425783,
+          0.23566328538335402
+        ],
+        "coverage_at_0.05_entropy": 0.069,
+        "coverage_at_0.05_entropy_ci": [
+          0.0245,
+          0.10451249999999998
+        ],
+        "coverage_at_0.10_entropy": 0.1355,
+        "coverage_at_0.10_entropy_ci": [
+          0.0809875,
+          0.254
+        ],
+        "coverage_at_0.20_entropy": 0.4425,
+        "coverage_at_0.20_entropy_ci": [
+          0.3685,
+          0.5135124999999999
+        ]
+      },
+      "direct_brier_temp": null,
+      "direct_brier_minus_positive_sft": {
+        "accuracy": {
+          "delta": 0.04300000000000004,
+          "ci": [
+            0.027000000000000024,
+            0.06001250000000004
+          ]
+        },
+        "ece": {
+          "delta": -0.2760293856188655,
+          "ci": [
+            -0.29013967407271263,
+            -0.2535812060344964
+          ]
+        },
+        "brier": {
+          "delta": -0.22990754074842779,
+          "ci": [
+            -0.25728678672802757,
+            -0.20571739848688886
+          ]
+        },
+        "nll": {
+          "delta": -1.9933391579734552,
+          "ci": [
+            -2.138358358180201,
+            -1.840863246342603
+          ]
+        },
+        "aurc": {
+          "delta": -0.050185574072102945,
+          "ci": [
+            -0.0637718612301659,
+            -0.03638835850018067
+          ]
+        },
+        "coverage_at_0.05": {
+          "delta": 0.0655,
+          "ci": [
+            0.019,
+            0.10051249999999998
+          ]
+        },
+        "coverage_at_0.10": {
+          "delta": 0.13899999999999998,
+          "ci": [
+            0.0324625,
+            0.21253749999999993
+          ]
+        },
+        "coverage_at_0.20": {
+          "delta": 0.15250000000000002,
+          "ci": [
+            0.067,
+            0.23553749999999996
+          ]
+        },
+        "aurc_entropy": {
+          "delta": -0.047735497888683615,
+          "ci": [
+            -0.061543540270974986,
+            -0.03389271483294904
+          ]
+        },
+        "coverage_at_0.05_entropy": {
+          "delta": 0.0665,
+          "ci": [
+            0.0199875,
+            0.099
+          ]
+        },
+        "coverage_at_0.10_entropy": {
+          "delta": 0.12250000000000001,
+          "ci": [
+            0.025487499999999996,
+            0.20852499999999996
+          ]
+        },
+        "coverage_at_0.20_entropy": {
+          "delta": 0.1345,
+          "ci": [
+            0.057475,
+            0.2135125
+          ]
+        }
+      },
+      "direct_brier_minus_full_sft": {
+        "accuracy": {
+          "delta": -0.03849999999999998,
+          "ci": [
+            -0.05251249999999999,
+            -0.024500000000000074
+          ]
+        },
+        "ece": {
+          "delta": 0.02070041640102864,
+          "ci": [
+            0.001477679009549326,
+            0.03655249124560505
+          ]
+        },
+        "brier": {
+          "delta": 0.05255616532208596,
+          "ci": [
+            0.04144850117579252,
+            0.06391989034555196
+          ]
+        },
+        "nll": {
+          "delta": 0.17397567056337915,
+          "ci": [
+            0.14622240946942247,
+            0.20368220425135253
+          ]
+        },
+        "aurc": {
+          "delta": 0.022282519960986347,
+          "ci": [
+            0.014153174812651317,
+            0.030443914166511755
+          ]
+        },
+        "coverage_at_0.05": {
+          "delta": -0.0049999999999999906,
+          "ci": [
+            -0.0355,
+            0.024999999999999994
+          ]
+        },
+        "coverage_at_0.10": {
+          "delta": -0.035500000000000004,
+          "ci": [
+            -0.09503749999999998,
+            0.05556249999999994
+          ]
+        },
+        "coverage_at_0.20": {
+          "delta": -0.09999999999999998,
+          "ci": [
+            -0.15700000000000003,
+            -0.020000000000000018
+          ]
+        },
+        "aurc_entropy": {
+          "delta": 0.021426090746524823,
+          "ci": [
+            0.013188377269512495,
+            0.03010537209734457
+          ]
+        },
+        "coverage_at_0.05_entropy": {
+          "delta": -0.00399999999999999,
+          "ci": [
+            -0.0335125,
+            0.021012499999999993
+          ]
+        },
+        "coverage_at_0.10_entropy": {
+          "delta": -0.03849999999999998,
+          "ci": [
+            -0.0950375,
+            0.0545125
+          ]
+        },
+        "coverage_at_0.20_entropy": {
+          "delta": -0.09250000000000003,
+          "ci": [
+            -0.14405000000000007,
+            -0.02797500000000005
+          ]
+        }
+      },
+      "direct_brier_temp_minus_direct_brier": null,
+      "direct_brier_temp_minus_temperature": null,
+      "direct_log": null,
+      "outcome_minus_p_log": null,
+      "ips_log": null,
+      "ips_positive": null,
+      "off_policy": {}
+    },
+    "2000": {
+      "zero_shot": {
+        "n": 2000,
+        "accuracy": 0.54,
+        "accuracy_ci": [
+          0.5185,
+          0.5615125
+        ],
+        "ece": 0.2513090969771147,
+        "ece_ci": [
+          0.2320563355371356,
+          0.2721072932854295
+        ],
+        "brier": 0.686913430166479,
+        "brier_ci": [
+          0.6568644252108308,
+          0.7183604557679272
+        ],
+        "nll": 1.6745898008001858,
+        "nll_ci": [
+          1.5786327846861707,
+          1.7590949201853108
+        ],
+        "aurc": 0.29549677517770884,
+        "aurc_ci": [
+          0.2724152841064108,
+          0.32072470288149574
+        ],
+        "coverage_at_0.05": 0.0245,
+        "coverage_at_0.05_ci": [
+          0.0075,
+          0.062
+        ],
+        "coverage_at_0.10": 0.0565,
+        "coverage_at_0.10_ci": [
+          0.020987500000000003,
+          0.10801249999999998
+        ],
+        "coverage_at_0.20": 0.1975,
+        "coverage_at_0.20_ci": [
+          0.1334625,
+          0.3025
+        ],
+        "aurc_entropy": 0.29523238974011756,
+        "aurc_entropy_ci": [
+          0.2717178212714128,
+          0.3201181358926026
+        ],
+        "coverage_at_0.05_entropy": 0.0235,
+        "coverage_at_0.05_entropy_ci": [
+          0.0074875,
+          0.06151249999999999
+        ],
+        "coverage_at_0.10_entropy": 0.056,
+        "coverage_at_0.10_entropy_ci": [
+          0.019975000000000003,
+          0.10651249999999998
+        ],
+        "coverage_at_0.20_entropy": 0.1955,
+        "coverage_at_0.20_entropy_ci": [
+          0.14,
+          0.31303749999999997
+        ]
+      },
+      "temperature": {
+        "n": 2000,
+        "accuracy": 0.54,
+        "accuracy_ci": [
+          0.5185,
+          0.5615125
+        ],
+        "ece": 0.027488289597514332,
+        "ece_ci": [
+          0.021300623314390425,
+          0.05321456156481993
+        ],
+        "brier": 0.5998515479392287,
+        "brier_ci": [
+          0.5800175794065678,
+          0.6195830688664656
+        ],
+        "nll": 1.2510078885098197,
+        "nll_ci": [
+          1.2090157902366743,
+          1.2920639704375596
+        ],
+        "aurc": 0.29434050496969155,
+        "aurc_ci": [
+          0.27038855278958,
+          0.3198335609668128
+        ],
+        "coverage_at_0.05": 0.014,
+        "coverage_at_0.05_ci": [
+          0.0075,
+          0.055
+        ],
+        "coverage_at_0.10": 0.052,
+        "coverage_at_0.10_ci": [
+          0.0125,
+          0.1060999999999999
+        ],
+        "coverage_at_0.20": 0.195,
+        "coverage_at_0.20_ci": [
+          0.1389875,
+          0.3150125
+        ],
+        "aurc_entropy": 0.3000719408654197,
+        "aurc_entropy_ci": [
+          0.2758423660252898,
+          0.3239268708998884
+        ],
+        "coverage_at_0.05_entropy": 0.0125,
+        "coverage_at_0.05_entropy_ci": [
+          0.007,
+          0.055
+        ],
+        "coverage_at_0.10_entropy": 0.046,
+        "coverage_at_0.10_entropy_ci": [
+          0.0105,
+          0.10901249999999998
+        ],
+        "coverage_at_0.20_entropy": 0.213,
+        "coverage_at_0.20_entropy_ci": [
+          0.1464875,
+          0.2990874999999999
+        ]
+      },
+      "positive_sft": {
+        "n": 2000,
+        "accuracy": 0.589,
+        "accuracy_ci": [
+          0.5669875,
+          0.6105
+        ],
+        "ece": 0.3241681531220674,
+        "ece_ci": [
+          0.30377933499664067,
+          0.34373036259356887
+        ],
+        "brier": 0.7081413287716141,
+        "brier_ci": [
+          0.670634784157509,
+          0.743826877079806
+        ],
+        "nll": 2.2563096089666703,
+        "nll_ci": [
+          2.1110357388882983,
+          2.3887956500147527
+        ],
+        "aurc": 0.2539350911909572,
+        "aurc_ci": [
+          0.23070565032851778,
+          0.2768403571799762
+        ],
+        "coverage_at_0.05": 0.03,
+        "coverage_at_0.05_ci": [
+          0.011,
+          0.0545
+        ],
+        "coverage_at_0.10": 0.0465,
+        "coverage_at_0.10_ci": [
+          0.016487500000000002,
+          0.15502499999999997
+        ],
+        "coverage_at_0.20": 0.3165,
+        "coverage_at_0.20_ci": [
+          0.245,
+          0.4425125
+        ],
+        "aurc_entropy": 0.253422236019416,
+        "aurc_entropy_ci": [
+          0.23026821312424048,
+          0.2761042574031229
+        ],
+        "coverage_at_0.05_entropy": 0.0205,
+        "coverage_at_0.05_entropy_ci": [
+          0.011,
+          0.0555
+        ],
+        "coverage_at_0.10_entropy": 0.0505,
+        "coverage_at_0.10_entropy_ci": [
+          0.016,
+          0.156
+        ],
+        "coverage_at_0.20_entropy": 0.3115,
+        "coverage_at_0.20_entropy_ci": [
+          0.2415,
+          0.4435125
+        ]
+      },
+      "full_sft": {
+        "n": 2000,
+        "accuracy": 0.7605,
+        "accuracy_ci": [
+          0.742,
+          0.779
+        ],
+        "ece": 0.055853987395763395,
+        "ece_ci": [
+          0.04270892511047423,
+          0.07455675819292663
+        ],
+        "brier": 0.34569887506157315,
+        "brier_ci": [
+          0.3209913846400479,
+          0.36938054173349905
+        ],
+        "nll": 0.6966059369361205,
+        "nll_ci": [
+          0.644282816203025,
+          0.7500757470732573
+        ],
+        "aurc": 0.10087140202360845,
+        "aurc_ci": [
+          0.08750941777391677,
+          0.1145185405137286
+        ],
+        "coverage_at_0.05": 0.277,
+        "coverage_at_0.05_ci": [
+          0.1629875,
+          0.389
+        ],
+        "coverage_at_0.10": 0.5315,
+        "coverage_at_0.10_ci": [
+          0.4404875,
+          0.61005
+        ],
+        "coverage_at_0.20": 0.9075,
+        "coverage_at_0.20_ci": [
+          0.858,
+          0.9595125
+        ],
+        "aurc_entropy": 0.10167644149709917,
+        "aurc_entropy_ci": [
+          0.08858885591992822,
+          0.1154689018738496
+        ],
+        "coverage_at_0.05_entropy": 0.274,
+        "coverage_at_0.05_entropy_ci": [
+          0.17098750000000001,
+          0.3815375
+        ],
+        "coverage_at_0.10_entropy": 0.5205,
+        "coverage_at_0.10_entropy_ci": [
+          0.4464875,
+          0.6055125
+        ],
+        "coverage_at_0.20_entropy": 0.909,
+        "coverage_at_0.20_entropy_ci": [
+          0.8455,
+          0.953
+        ]
+      },
+      "direct_brier": {
+        "n": 2000,
+        "accuracy": 0.7145,
+        "accuracy_ci": [
+          0.695,
+          0.734
+        ],
+        "ece": 0.0659060701802373,
+        "ece_ci": [
+          0.04932789503727108,
+          0.08483042041938751
+        ],
+        "brier": 0.4221516658014829,
+        "brier_ci": [
+          0.398532213948426,
+          0.4455346952510317
+        ],
+        "nll": 0.8768748537872479,
+        "nll_ci": [
+          0.8295144799789677,
+          0.924154133779894
+        ],
+        "aurc": 0.14754213664456545,
+        "aurc_ci": [
+          0.13033502184861337,
+          0.1651607604089147
+        ],
+        "coverage_at_0.05": 0.107,
+        "coverage_at_0.05_ci": [
+          0.0649875,
+          0.21902499999999997
+        ],
+        "coverage_at_0.10": 0.315,
+        "coverage_at_0.10_ci": [
+          0.2289625,
+          0.3805
+        ],
+        "coverage_at_0.20": 0.7125,
+        "coverage_at_0.20_ci": [
+          0.5859749999999999,
+          0.8085
+        ],
+        "aurc_entropy": 0.15042504769968554,
+        "aurc_entropy_ci": [
+          0.13283721479888777,
+          0.16817696373652383
+        ],
+        "coverage_at_0.05_entropy": 0.111,
+        "coverage_at_0.05_entropy_ci": [
+          0.0535,
+          0.2200125
+        ],
+        "coverage_at_0.10_entropy": 0.307,
+        "coverage_at_0.10_entropy_ci": [
+          0.2244375,
+          0.378
+        ],
+        "coverage_at_0.20_entropy": 0.6835,
+        "coverage_at_0.20_entropy_ci": [
+          0.5754875,
+          0.7900125
+        ]
+      },
+      "direct_brier_temp": null,
+      "direct_brier_minus_positive_sft": {
+        "accuracy": {
+          "delta": 0.12550000000000006,
+          "ci": [
+            0.10899999999999999,
+            0.14401250000000002
+          ]
+        },
+        "ece": {
+          "delta": -0.2582620829418301,
+          "ci": [
+            -0.28176111826151606,
+            -0.23245663608126343
+          ]
+        },
+        "brier": {
+          "delta": -0.2859896629701312,
+          "ci": [
+            -0.31252239335290977,
+            -0.26088396888369003
+          ]
+        },
+        "nll": {
+          "delta": -1.3794347551794224,
+          "ci": [
+            -1.481994914941114,
+            -1.2728982772466482
+          ]
+        },
+        "aurc": {
+          "delta": -0.10639295454639175,
+          "ci": [
+            -0.12054402526933325,
+            -0.09307190977285261
+          ]
+        },
+        "coverage_at_0.05": {
+          "delta": 0.077,
+          "ci": [
+            0.036000000000000004,
+            0.1825
+          ]
+        },
+        "coverage_at_0.10": {
+          "delta": 0.2685,
+          "ci": [
+            0.1625,
+            0.320025
+          ]
+        },
+        "coverage_at_0.20": {
+          "delta": 0.396,
+          "ci": [
+            0.2769625,
+            0.48101249999999995
+          ]
+        },
+        "aurc_entropy": {
+          "delta": -0.10299718831973045,
+          "ci": [
+            -0.11735153761794877,
+            -0.08945846499070988
+          ]
+        },
+        "coverage_at_0.05_entropy": {
+          "delta": 0.0905,
+          "ci": [
+            0.030000000000000002,
+            0.1875
+          ]
+        },
+        "coverage_at_0.10_entropy": {
+          "delta": 0.2565,
+          "ci": [
+            0.157975,
+            0.315
+          ]
+        },
+        "coverage_at_0.20_entropy": {
+          "delta": 0.372,
+          "ci": [
+            0.26798749999999993,
+            0.4425125
+          ]
+        }
+      },
+      "direct_brier_minus_full_sft": {
+        "accuracy": {
+          "delta": -0.04599999999999993,
+          "ci": [
+            -0.059512499999999996,
+            -0.03300000000000003
+          ]
+        },
+        "ece": {
+          "delta": 0.0100520827844739,
+          "ci": [
+            -0.009007574865780767,
+            0.02737049008123577
+          ]
+        },
+        "brier": {
+          "delta": 0.07645279073990974,
+          "ci": [
+            0.06580876059669921,
+            0.08741642126324206
+          ]
+        },
+        "nll": {
+          "delta": 0.18026891685112745,
+          "ci": [
+            0.1540126299436881,
+            0.2063779421954626
+          ]
+        },
+        "aurc": {
+          "delta": 0.046670734620957,
+          "ci": [
+            0.038701538130068325,
+            0.054132609924106394
+          ]
+        },
+        "coverage_at_0.05": {
+          "delta": -0.17000000000000004,
+          "ci": [
+            -0.242,
+            -0.02998750000000001
+          ]
+        },
+        "coverage_at_0.10": {
+          "delta": -0.21649999999999997,
+          "ci": [
+            -0.28152499999999997,
+            -0.1519625
+          ]
+        },
+        "coverage_at_0.20": {
+          "delta": -0.19499999999999995,
+          "ci": [
+            -0.28900000000000003,
+            -0.1279875
+          ]
+        },
+        "aurc_entropy": {
+          "delta": 0.048748606202586364,
+          "ci": [
+            0.040531769951573454,
+            0.05662584802306129
+          ]
+        },
+        "coverage_at_0.05_entropy": {
+          "delta": -0.16300000000000003,
+          "ci": [
+            -0.2450125,
+            -0.03543750000000006
+          ]
+        },
+        "coverage_at_0.10_entropy": {
+          "delta": -0.21349999999999997,
+          "ci": [
+            -0.28502500000000003,
+            -0.15148749999999997
+          ]
+        },
+        "coverage_at_0.20_entropy": {
+          "delta": -0.22550000000000003,
+          "ci": [
+            -0.28700000000000003,
+            -0.14898750000000002
+          ]
+        }
+      },
+      "direct_brier_temp_minus_direct_brier": null,
+      "direct_brier_temp_minus_temperature": null,
+      "direct_log": null,
+      "outcome_minus_p_log": null,
+      "ips_log": null,
+      "ips_positive": null,
+      "off_policy": {}
+    },
+    "5000": {
+      "zero_shot": {
+        "n": 2000,
+        "accuracy": 0.54,
+        "accuracy_ci": [
+          0.5185,
+          0.5615125
+        ],
+        "ece": 0.2513090969771147,
+        "ece_ci": [
+          0.2320563355371356,
+          0.2721072932854295
+        ],
+        "brier": 0.686913430166479,
+        "brier_ci": [
+          0.6568644252108308,
+          0.7183604557679272
+        ],
+        "nll": 1.6745898008001858,
+        "nll_ci": [
+          1.5786327846861707,
+          1.7590949201853108
+        ],
+        "aurc": 0.29549677517770884,
+        "aurc_ci": [
+          0.2724152841064108,
+          0.32072470288149574
+        ],
+        "coverage_at_0.05": 0.0245,
+        "coverage_at_0.05_ci": [
+          0.0075,
+          0.062
+        ],
+        "coverage_at_0.10": 0.0565,
+        "coverage_at_0.10_ci": [
+          0.020987500000000003,
+          0.10801249999999998
+        ],
+        "coverage_at_0.20": 0.1975,
+        "coverage_at_0.20_ci": [
+          0.1334625,
+          0.3025
+        ],
+        "aurc_entropy": 0.29523238974011756,
+        "aurc_entropy_ci": [
+          0.2717178212714128,
+          0.3201181358926026
+        ],
+        "coverage_at_0.05_entropy": 0.0235,
+        "coverage_at_0.05_entropy_ci": [
+          0.0074875,
+          0.06151249999999999
+        ],
+        "coverage_at_0.10_entropy": 0.056,
+        "coverage_at_0.10_entropy_ci": [
+          0.019975000000000003,
+          0.10651249999999998
+        ],
+        "coverage_at_0.20_entropy": 0.1955,
+        "coverage_at_0.20_entropy_ci": [
+          0.14,
+          0.31303749999999997
+        ]
+      },
+      "temperature": {
+        "n": 2000,
+        "accuracy": 0.54,
+        "accuracy_ci": [
+          0.5185,
+          0.5615125
+        ],
+        "ece": 0.02406089327607227,
+        "ece_ci": [
+          0.020297857939858575,
+          0.05059966621283887
+        ],
+        "brier": 0.5996965361864768,
+        "brier_ci": [
+          0.5802122603793819,
+          0.6191265650005331
+        ],
+        "nll": 1.2506179231125207,
+        "nll_ci": [
+          1.2095583436757964,
+          1.291033641793074
+        ],
+        "aurc": 0.29429759289665236,
+        "aurc_ci": [
+          0.27042018296260556,
+          0.31980525933039045
+        ],
+        "coverage_at_0.05": 0.0145,
+        "coverage_at_0.05_ci": [
+          0.0075,
+          0.05451249999999999
+        ],
+        "coverage_at_0.10": 0.0515,
+        "coverage_at_0.10_ci": [
+          0.0129875,
+          0.111
+        ],
+        "coverage_at_0.20": 0.196,
+        "coverage_at_0.20_ci": [
+          0.14,
+          0.31453749999999997
+        ],
+        "aurc_entropy": 0.3003206795183024,
+        "aurc_entropy_ci": [
+          0.2760530731564461,
+          0.3240186353346736
+        ],
+        "coverage_at_0.05_entropy": 0.0125,
+        "coverage_at_0.05_entropy_ci": [
+          0.007,
+          0.055
+        ],
+        "coverage_at_0.10_entropy": 0.046,
+        "coverage_at_0.10_entropy_ci": [
+          0.0105,
+          0.1095
+        ],
+        "coverage_at_0.20_entropy": 0.2105,
+        "coverage_at_0.20_entropy_ci": [
+          0.1469875,
+          0.3015
+        ]
+      },
+      "positive_sft": {
+        "n": 2000,
+        "accuracy": 0.6145,
+        "accuracy_ci": [
+          0.592,
+          0.6365
+        ],
+        "ece": 0.25602744410932066,
+        "ece_ci": [
+          0.23654293649084865,
+          0.27687417388521135
+        ],
+        "brier": 0.6275594047828783,
+        "brier_ci": [
+          0.5927098089161053,
+          0.6619072719671846
+        ],
+        "nll": 1.640757678873085,
+        "nll_ci": [
+          1.5321199886213663,
+          1.7407589486300858
+        ],
+        "aurc": 0.23267190937782592,
+        "aurc_ci": [
+          0.2105143266372308,
+          0.25468971702178644
+        ],
+        "coverage_at_0.05": 0.0315,
+        "coverage_at_0.05_ci": [
+          0.005,
+          0.071
+        ],
+        "coverage_at_0.10": 0.069,
+        "coverage_at_0.10_ci": [
+          0.0234875,
+          0.1965125
+        ],
+        "coverage_at_0.20": 0.38,
+        "coverage_at_0.20_ci": [
+          0.3224625,
+          0.49501249999999997
+        ],
+        "aurc_entropy": 0.23188754160615394,
+        "aurc_entropy_ci": [
+          0.21004210884899455,
+          0.2539813482981599
+        ],
+        "coverage_at_0.05_entropy": 0.03,
+        "coverage_at_0.05_entropy_ci": [
+          0.0055,
+          0.07201249999999998
+        ],
+        "coverage_at_0.10_entropy": 0.073,
+        "coverage_at_0.10_entropy_ci": [
+          0.0225,
+          0.1975
+        ],
+        "coverage_at_0.20_entropy": 0.38,
+        "coverage_at_0.20_entropy_ci": [
+          0.3214875,
+          0.4925
+        ]
+      },
+      "full_sft": {
+        "n": 2000,
+        "accuracy": 0.8705,
+        "accuracy_ci": [
+          0.8555,
+          0.8845
+        ],
+        "ece": 0.04078852628171444,
+        "ece_ci": [
+          0.03115963861718774,
+          0.054633442428335545
+        ],
+        "brier": 0.19319741620103364,
+        "brier_ci": [
+          0.1746861402758199,
+          0.21251653487314548
+        ],
+        "nll": 0.3826544275778836,
+        "nll_ci": [
+          0.3399372962057439,
+          0.4283377850866005
+        ],
+        "aurc": 0.030990270654880584,
+        "aurc_ci": [
+          0.02508147519248319,
+          0.037222108519897594
+        ],
+        "coverage_at_0.05": 0.762,
+        "coverage_at_0.05_ci": [
+          0.6894875,
+          0.8130124999999999
+        ],
+        "coverage_at_0.10": 0.9325,
+        "coverage_at_0.10_ci": [
+          0.8915,
+          0.961
+        ],
+        "coverage_at_0.20": 1.0,
+        "coverage_at_0.20_ci": [
+          1.0,
+          1.0
+        ],
+        "aurc_entropy": 0.030526515046332553,
+        "aurc_entropy_ci": [
+          0.024719741265399192,
+          0.03656849314797699
+        ],
+        "coverage_at_0.05_entropy": 0.7705,
+        "coverage_at_0.05_entropy_ci": [
+          0.6949875,
+          0.8185125
+        ],
+        "coverage_at_0.10_entropy": 0.932,
+        "coverage_at_0.10_entropy_ci": [
+          0.9024749999999999,
+          0.9645125
+        ],
+        "coverage_at_0.20_entropy": 1.0,
+        "coverage_at_0.20_entropy_ci": [
+          1.0,
+          1.0
+        ]
+      },
+      "direct_brier": {
+        "n": 2000,
+        "accuracy": 0.832,
+        "accuracy_ci": [
+          0.8164875,
+          0.8475
+        ],
+        "ece": 0.07004616013169289,
+        "ece_ci": [
+          0.05863326791971922,
+          0.0867422926157713
+        ],
+        "brier": 0.2636309696309953,
+        "brier_ci": [
+          0.24052494059253193,
+          0.28773238649403604
+        ],
+        "nll": 0.5990552937226482,
+        "nll_ci": [
+          0.5406791074289302,
+          0.6568890413819918
+        ],
+        "aurc": 0.058415196526139364,
+        "aurc_ci": [
+          0.04833470918889937,
+          0.06911260194206587
+        ],
+        "coverage_at_0.05": 0.595,
+        "coverage_at_0.05_ci": [
+          0.46998749999999995,
+          0.6605
+        ],
+        "coverage_at_0.10": 0.822,
+        "coverage_at_0.10_ci": [
+          0.7605,
+          0.8630125
+        ],
+        "coverage_at_0.20": 1.0,
+        "coverage_at_0.20_ci": [
+          1.0,
+          1.0
+        ],
+        "aurc_entropy": 0.05839797224753988,
+        "aurc_entropy_ci": [
+          0.04831681863441494,
+          0.06909089111093132
+        ],
+        "coverage_at_0.05_entropy": 0.605,
+        "coverage_at_0.05_entropy_ci": [
+          0.47893749999999996,
+          0.6665
+        ],
+        "coverage_at_0.10_entropy": 0.8075,
+        "coverage_at_0.10_entropy_ci": [
+          0.7499875,
+          0.8735
+        ],
+        "coverage_at_0.20_entropy": 1.0,
+        "coverage_at_0.20_entropy_ci": [
+          1.0,
+          1.0
+        ]
+      },
+      "direct_brier_temp": null,
+      "direct_brier_minus_positive_sft": {
+        "accuracy": {
+          "delta": 0.21749999999999992,
+          "ci": [
+            0.19699999999999995,
+            0.23849999999999993
+          ]
+        },
+        "ece": {
+          "delta": -0.18598128397762775,
+          "ci": [
+            -0.20407738203704356,
+            -0.16240738689266146
+          ]
+        },
+        "brier": {
+          "delta": -0.363928435151883,
+          "ci": [
+            -0.3957866147676923,
+            -0.3300086910161035
+          ]
+        },
+        "nll": {
+          "delta": -1.0417023851504368,
+          "ci": [
+            -1.1341744448325308,
+            -0.9474720619527525
+          ]
+        },
+        "aurc": {
+          "delta": -0.17425671285168656,
+          "ci": [
+            -0.19490631196161187,
+            -0.1536725015832927
+          ]
+        },
+        "coverage_at_0.05": {
+          "delta": 0.5635,
+          "ci": [
+            0.4389875,
+            0.6325
+          ]
+        },
+        "coverage_at_0.10": {
+          "delta": 0.7529999999999999,
+          "ci": [
+            0.61595,
+            0.8065
+          ]
+        },
+        "coverage_at_0.20": {
+          "delta": 0.62,
+          "ci": [
+            0.5049875,
+            0.6775374999999999
+          ]
+        },
+        "aurc_entropy": {
+          "delta": -0.17348956935861407,
+          "ci": [
+            -0.1940072527770726,
+            -0.15268915437396693
+          ]
+        },
+        "coverage_at_0.05_entropy": {
+          "delta": 0.575,
+          "ci": [
+            0.4449,
+            0.636025
+          ]
+        },
+        "coverage_at_0.10_entropy": {
+          "delta": 0.7345,
+          "ci": [
+            0.613,
+            0.8125249999999999
+          ]
+        },
+        "coverage_at_0.20_entropy": {
+          "delta": 0.62,
+          "ci": [
+            0.5075000000000001,
+            0.6785125
+          ]
+        }
+      },
+      "direct_brier_minus_full_sft": {
+        "accuracy": {
+          "delta": -0.03850000000000009,
+          "ci": [
+            -0.05249999999999999,
+            -0.026987500000000036
+          ]
+        },
+        "ece": {
+          "delta": 0.029257633849978447,
+          "ci": [
+            0.01704798223003745,
+            0.042999183342978343
+          ]
+        },
+        "brier": {
+          "delta": 0.07043355342996166,
+          "ci": [
+            0.05590523799387893,
+            0.08794478764903474
+          ]
+        },
+        "nll": {
+          "delta": 0.21640086614476461,
+          "ci": [
+            0.17790197626463383,
+            0.26108151689429915
+          ]
+        },
+        "aurc": {
+          "delta": 0.02742492587125878,
+          "ci": [
+            0.02006200309064728,
+            0.03518298157679627
+          ]
+        },
+        "coverage_at_0.05": {
+          "delta": -0.16700000000000004,
+          "ci": [
+            -0.25951250000000003,
+            -0.10048750000000005
+          ]
+        },
+        "coverage_at_0.10": {
+          "delta": -0.11050000000000004,
+          "ci": [
+            -0.15853750000000008,
+            -0.07650000000000001
+          ]
+        },
+        "coverage_at_0.20": {
+          "delta": 0.0,
+          "ci": [
+            0.0,
+            0.0
+          ]
+        },
+        "aurc_entropy": {
+          "delta": 0.027871457201207324,
+          "ci": [
+            0.02069502671669912,
+            0.035745743580840574
+          ]
+        },
+        "coverage_at_0.05_entropy": {
+          "delta": -0.16549999999999998,
+          "ci": [
+            -0.26605,
+            -0.10547500000000005
+          ]
+        },
+        "coverage_at_0.10_entropy": {
+          "delta": -0.12450000000000006,
+          "ci": [
+            -0.1635000000000001,
+            -0.07248750000000002
+          ]
+        },
+        "coverage_at_0.20_entropy": {
+          "delta": 0.0,
+          "ci": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "direct_brier_temp_minus_direct_brier": null,
+      "direct_brier_temp_minus_temperature": null,
+      "direct_log": {
+        "n": 2000,
+        "accuracy": 0.806,
+        "accuracy_ci": [
+          0.789,
+          0.8230124999999999
+        ],
+        "ece": 0.049131067000329494,
+        "ece_ci": [
+          0.0388843204325065,
+          0.06592104852888733
+        ],
+        "brier": 0.28213919579045194,
+        "brier_ci": [
+          0.26024335155058875,
+          0.3040171597428752
+        ],
+        "nll": 0.6030094857085124,
+        "nll_ci": [
+          0.5505524248811016,
+          0.6505235354960104
+        ],
+        "aurc": 0.06364718537110658,
+        "aurc_ci": [
+          0.05426183493159201,
+          0.07371806276912574
+        ],
+        "coverage_at_0.05": 0.516,
+        "coverage_at_0.05_ci": [
+          0.422475,
+          0.5985375
+        ],
+        "coverage_at_0.10": 0.7835,
+        "coverage_at_0.10_ci": [
+          0.7149375,
+          0.8225374999999999
+        ],
+        "coverage_at_0.20": 1.0,
+        "coverage_at_0.20_ci": [
+          0.982,
+          1.0
+        ],
+        "aurc_entropy": 0.06401404290284127,
+        "aurc_entropy_ci": [
+          0.054540768700046885,
+          0.07419936923820675
+        ],
+        "coverage_at_0.05_entropy": 0.51,
+        "coverage_at_0.05_entropy_ci": [
+          0.423475,
+          0.6
+        ],
+        "coverage_at_0.10_entropy": 0.763,
+        "coverage_at_0.10_entropy_ci": [
+          0.7159749999999999,
+          0.822
+        ],
+        "coverage_at_0.20_entropy": 1.0,
+        "coverage_at_0.20_entropy_ci": [
+          0.9779749999999999,
+          1.0
+        ]
+      },
+      "outcome_minus_p_log": null,
+      "ips_log": null,
+      "ips_positive": null,
+      "off_policy": {
+        "direct_log": {
+          "minus_direct_brier": {
+            "accuracy": {
+              "delta": -0.025999999999999912,
+              "ci": [
+                -0.03649999999999998,
+                -0.015499999999999958
+              ]
+            },
+            "ece": {
+              "delta": -0.020915093131363395,
+              "ci": [
+                -0.030635612390562887,
+                -0.008165719276107845
+              ]
+            },
+            "brier": {
+              "delta": 0.01850822615945663,
+              "ci": [
+                0.005898614178449439,
+                0.029292982418232905
+              ]
+            },
+            "nll": {
+              "delta": 0.003954191985864219,
+              "ci": [
+                -0.02218480564434615,
+                0.030367119734368557
+              ]
+            },
+            "aurc": {
+              "delta": 0.005231988844967221,
+              "ci": [
+                -0.0011677966286887448,
+                0.010891850489148343
+              ]
+            },
+            "coverage_at_0.05": {
+              "delta": -0.07899999999999996,
+              "ci": [
+                -0.13805000000000006,
+                0.004037499999999968
+              ]
+            },
+            "coverage_at_0.10": {
+              "delta": -0.03849999999999998,
+              "ci": [
+                -0.07802500000000007,
+                -0.0044875000000000696
+              ]
+            },
+            "coverage_at_0.20": {
+              "delta": 0.0,
+              "ci": [
+                -0.018000000000000016,
+                0.0
+              ]
+            },
+            "aurc_entropy": {
+              "delta": 0.00561607065530139,
+              "ci": [
+                -0.0005325921248331538,
+                0.011406661714825427
+              ]
+            },
+            "coverage_at_0.05_entropy": {
+              "delta": -0.09499999999999997,
+              "ci": [
+                -0.14902499999999996,
+                0.0005249999999999792
+              ]
+            },
+            "coverage_at_0.10_entropy": {
+              "delta": -0.044499999999999984,
+              "ci": [
+                -0.08649999999999991,
+                -0.01200000000000001
+              ]
+            },
+            "coverage_at_0.20_entropy": {
+              "delta": 0.0,
+              "ci": [
+                -0.022025000000000017,
+                0.0
+              ]
+            }
+          },
+          "minus_positive_sft": {
+            "accuracy": {
+              "delta": 0.1915,
+              "ci": [
+                0.1704875,
+                0.21250000000000002
+              ]
+            },
+            "ece": {
+              "delta": -0.20689637710899117,
+              "ci": [
+                -0.22368878183979546,
+                -0.18293221754077824
+              ]
+            },
+            "brier": {
+              "delta": -0.34542020899242637,
+              "ci": [
+                -0.3760776221410769,
+                -0.3154570413631628
+              ]
+            },
+            "nll": {
+              "delta": -1.0377481931645727,
+              "ci": [
+                -1.1278354515814453,
+                -0.9507480143408908
+              ]
+            },
+            "aurc": {
+              "delta": -0.16902472400671933,
+              "ci": [
+                -0.1890264819743406,
+                -0.14896758037099375
+              ]
+            },
+            "coverage_at_0.05": {
+              "delta": 0.48450000000000004,
+              "ci": [
+                0.3859625,
+                0.5705
+              ]
+            },
+            "coverage_at_0.10": {
+              "delta": 0.7144999999999999,
+              "ci": [
+                0.5764875,
+                0.7675
+              ]
+            },
+            "coverage_at_0.20": {
+              "delta": 0.62,
+              "ci": [
+                0.5049875,
+                0.6735625
+              ]
+            },
+            "aurc_entropy": {
+              "delta": -0.16787349870331267,
+              "ci": [
+                -0.18763468946186748,
+                -0.1479682476184691
+              ]
+            },
+            "coverage_at_0.05_entropy": {
+              "delta": 0.48,
+              "ci": [
+                0.3834875,
+                0.571525
+              ]
+            },
+            "coverage_at_0.10_entropy": {
+              "delta": 0.6900000000000001,
+              "ci": [
+                0.5694874999999999,
+                0.758025
+              ]
+            },
+            "coverage_at_0.20_entropy": {
+              "delta": 0.62,
+              "ci": [
+                0.5075000000000001,
+                0.6735125
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "seeds": {
+    "seed_0": {
+      "n": 2000,
+      "accuracy": 0.832,
+      "accuracy_ci": [
+        0.8164875,
+        0.8475
+      ],
+      "ece": 0.07004616013169289,
+      "ece_ci": [
+        0.05863326791971922,
+        0.0867422926157713
+      ],
+      "brier": 0.2636309696309953,
+      "brier_ci": [
+        0.24052494059253193,
+        0.28773238649403604
+      ],
+      "nll": 0.5990552937226482,
+      "nll_ci": [
+        0.5406791074289302,
+        0.6568890413819918
+      ],
+      "aurc": 0.058415196526139364,
+      "aurc_ci": [
+        0.04833470918889937,
+        0.06911260194206587
+      ],
+      "coverage_at_0.05": 0.595,
+      "coverage_at_0.05_ci": [
+        0.46998749999999995,
+        0.6605
+      ],
+      "coverage_at_0.10": 0.822,
+      "coverage_at_0.10_ci": [
+        0.7605,
+        0.8630125
+      ],
+      "coverage_at_0.20": 1.0,
+      "coverage_at_0.20_ci": [
+        1.0,
+        1.0
+      ],
+      "aurc_entropy": 0.05839797224753988,
+      "aurc_entropy_ci": [
+        0.04831681863441494,
+        0.06909089111093132
+      ],
+      "coverage_at_0.05_entropy": 0.605,
+      "coverage_at_0.05_entropy_ci": [
+        0.47893749999999996,
+        0.6665
+      ],
+      "coverage_at_0.10_entropy": 0.8075,
+      "coverage_at_0.10_entropy_ci": [
+        0.7499875,
+        0.8735
+      ],
+      "coverage_at_0.20_entropy": 1.0,
+      "coverage_at_0.20_entropy_ci": [
+        1.0,
+        1.0
+      ]
+    },
+    "seed_1": {
+      "n": 2000,
+      "accuracy": 0.829,
+      "accuracy_ci": [
+        0.812475,
+        0.845
+      ],
+      "ece": 0.030641892932355405,
+      "ece_ci": [
+        0.024186075297743085,
+        0.04932976225633174
+      ],
+      "brier": 0.2609152033789826,
+      "brier_ci": [
+        0.23873363159572894,
+        0.28315465520427796
+      ],
+      "nll": 0.5670633536801736,
+      "nll_ci": [
+        0.5164011940654751,
+        0.615480667101781
+      ],
+      "aurc": 0.05927752318040974,
+      "aurc_ci": [
+        0.04966350514977209,
+        0.0696657933247136
+      ],
+      "coverage_at_0.05": 0.5565,
+      "coverage_at_0.05_ci": [
+        0.3939875,
+        0.6465624999999999
+      ],
+      "coverage_at_0.10": 0.8065,
+      "coverage_at_0.10_ci": [
+        0.74395,
+        0.8555125
+      ],
+      "coverage_at_0.20": 1.0,
+      "coverage_at_0.20_ci": [
+        1.0,
+        1.0
+      ],
+      "aurc_entropy": 0.060159619614943836,
+      "aurc_entropy_ci": [
+        0.050197607949224246,
+        0.07073078326968803
+      ],
+      "coverage_at_0.05_entropy": 0.5225,
+      "coverage_at_0.05_entropy_ci": [
+        0.3969875,
+        0.6455124999999999
+      ],
+      "coverage_at_0.10_entropy": 0.787,
+      "coverage_at_0.10_entropy_ci": [
+        0.7415,
+        0.8475
+      ],
+      "coverage_at_0.20_entropy": 1.0,
+      "coverage_at_0.20_entropy_ci": [
+        1.0,
+        1.0
+      ]
+    },
+    "seed_2": {
+      "n": 2000,
+      "accuracy": 0.821,
+      "accuracy_ci": [
+        0.8035,
+        0.837
+      ],
+      "ece": 0.03833220537751913,
+      "ece_ci": [
+        0.028424101074784994,
+        0.054544803038612005
+      ],
+      "brier": 0.2655852604201906,
+      "brier_ci": [
+        0.24427794548529289,
+        0.28686553903237166
+      ],
+      "nll": 0.5732163611336566,
+      "nll_ci": [
+        0.5243647272019759,
+        0.6200239680100519
+      ],
+      "aurc": 0.05840095070560866,
+      "aurc_ci": [
+        0.048900527922462085,
+        0.06823785444780692
+      ],
+      "coverage_at_0.05": 0.572,
+      "coverage_at_0.05_ci": [
+        0.3824375,
+        0.6555124999999999
+      ],
+      "coverage_at_0.10": 0.808,
+      "coverage_at_0.10_ci": [
+        0.7535,
+        0.8515
+      ],
+      "coverage_at_0.20": 1.0,
+      "coverage_at_0.20_ci": [
+        1.0,
+        1.0
+      ],
+      "aurc_entropy": 0.059277777761718733,
+      "aurc_entropy_ci": [
+        0.04955927768839851,
+        0.06925927926822069
+      ],
+      "coverage_at_0.05_entropy": 0.5715,
+      "coverage_at_0.05_entropy_ci": [
+        0.372975,
+        0.6500125
+      ],
+      "coverage_at_0.10_entropy": 0.7975,
+      "coverage_at_0.10_entropy_ci": [
+        0.748,
+        0.8405
+      ],
+      "coverage_at_0.20_entropy": 1.0,
+      "coverage_at_0.20_entropy_ci": [
+        1.0,
+        1.0
+      ]
+    },
+    "log_seed_1": null,
+    "training_seeds": {
+      "accuracy": {
+        "mean": 0.8273333333333334,
+        "range": [
+          0.821,
+          0.832
+        ],
+        "n_seeds": 3
+      },
+      "ece": {
+        "mean": 0.046340086147189145,
+        "range": [
+          0.030641892932355405,
+          0.07004616013169289
+        ],
+        "n_seeds": 3
+      },
+      "brier": {
+        "mean": 0.26337714447672284,
+        "range": [
+          0.2609152033789826,
+          0.2655852604201906
+        ],
+        "n_seeds": 3
+      },
+      "nll": {
+        "mean": 0.5797783361788261,
+        "range": [
+          0.5670633536801736,
+          0.5990552937226482
+        ],
+        "n_seeds": 3
+      },
+      "aurc": {
+        "mean": 0.05869789013738592,
+        "range": [
+          0.05840095070560866,
+          0.05927752318040974
+        ],
+        "n_seeds": 3
+      },
+      "coverage_at_0.05": {
+        "mean": 0.5745,
+        "range": [
+          0.5565,
+          0.595
+        ],
+        "n_seeds": 3
+      },
+      "coverage_at_0.10": {
+        "mean": 0.8121666666666666,
+        "range": [
+          0.8065,
+          0.822
+        ],
+        "n_seeds": 3
+      },
+      "coverage_at_0.20": {
+        "mean": 1.0,
+        "range": [
+          1.0,
+          1.0
+        ],
+        "n_seeds": 3
+      },
+      "aurc_entropy": {
+        "mean": 0.05927845654140081,
+        "range": [
+          0.05839797224753988,
+          0.060159619614943836
+        ],
+        "n_seeds": 3
+      },
+      "coverage_at_0.05_entropy": {
+        "mean": 0.5663333333333332,
+        "range": [
+          0.5225,
+          0.605
+        ],
+        "n_seeds": 3
+      },
+      "coverage_at_0.10_entropy": {
+        "mean": 0.7973333333333333,
+        "range": [
+          0.787,
+          0.8075
+        ],
+        "n_seeds": 3
+      },
+      "coverage_at_0.20_entropy": {
+        "mean": 1.0,
+        "range": [
+          1.0,
+          1.0
+        ],
+        "n_seeds": 3
+      }
+    },
+    "training_seed_mean_minus_positive_sft": {
+      "accuracy": {
+        "delta": 0.21283333333333332,
+        "ci": [
+          0.1928333333333334,
+          0.2328375000000001
+        ]
+      },
+      "ece": {
+        "delta": -0.2096873579621315,
+        "ci": [
+          -0.22663389155156907,
+          -0.1861698974997426
+        ]
+      },
+      "brier": {
+        "delta": -0.36418226030615547,
+        "ci": [
+          -0.3953337997005315,
+          -0.33369942020631727
+        ]
+      },
+      "nll": {
+        "delta": -1.0609793426942589,
+        "ci": [
+          -1.149663997015569,
+          -0.9677174301832897
+        ]
+      },
+      "aurc": {
+        "delta": -0.17397401924044,
+        "ci": [
+          -0.19344308988429146,
+          -0.15422370370763006
+        ]
+      },
+      "coverage_at_0.05": {
+        "delta": 0.543,
+        "ci": [
+          0.4094875,
+          0.6175
+        ]
+      },
+      "coverage_at_0.10": {
+        "delta": 0.7431666666666665,
+        "ci": [
+          0.6148291666666668,
+          0.7985041666666666
+        ]
+      },
+      "coverage_at_0.20": {
+        "delta": 0.62,
+        "ci": [
+          0.5049875,
+          0.6770125
+        ]
+      },
+      "aurc_entropy": {
+        "delta": -0.17260908506475311,
+        "ci": [
+          -0.1920205977784933,
+          -0.15246524832378697
+        ]
+      },
+      "coverage_at_0.05_entropy": {
+        "delta": 0.5363333333333332,
+        "ci": [
+          0.41056666666666664,
+          0.6208666666666667
+        ]
+      },
+      "coverage_at_0.10_entropy": {
+        "delta": 0.7243333333333334,
+        "ci": [
+          0.6033124999999999,
+          0.7911666666666667
+        ]
+      },
+      "coverage_at_0.20_entropy": {
+        "delta": 0.62,
+        "ci": [
+          0.5075000000000001,
+          0.6785083333333333
+        ]
+      }
+    },
+    "training_seed_mean_minus_full_sft": {
+      "accuracy": {
+        "delta": -0.043166666666666687,
+        "ci": [
+          -0.0558333333333334,
+          -0.031166666666666676
+        ]
+      },
+      "ece": {
+        "delta": 0.005551559865474703,
+        "ci": [
+          -0.004588815628550949,
+          0.018023166935704642
+        ]
+      },
+      "brier": {
+        "delta": 0.07017972827568919,
+        "ci": [
+          0.056156023945524,
+          0.0850361570378746
+        ]
+      },
+      "nll": {
+        "delta": 0.19712390860094253,
+        "ci": [
+          0.16352304472824405,
+          0.23530063793621858
+        ]
+      },
+      "aurc": {
+        "delta": 0.027707619482505334,
+        "ci": [
+          0.02156381129991633,
+          0.03427928266890896
+        ]
+      },
+      "coverage_at_0.05": {
+        "delta": -0.1875,
+        "ci": [
+          -0.2968375,
+          -0.12797083333333337
+        ]
+      },
+      "coverage_at_0.10": {
+        "delta": -0.1203333333333334,
+        "ci": [
+          -0.16216666666666668,
+          -0.0866625
+        ]
+      },
+      "coverage_at_0.20": {
+        "delta": 0.0,
+        "ci": [
+          0.0,
+          0.0
+        ]
+      },
+      "aurc_entropy": {
+        "delta": 0.02875194149506826,
+        "ci": [
+          0.022403952659963377,
+          0.03545257453474785
+        ]
+      },
+      "coverage_at_0.05_entropy": {
+        "delta": -0.20416666666666672,
+        "ci": [
+          -0.30309166666666665,
+          -0.13482916666666658
+        ]
+      },
+      "coverage_at_0.10_entropy": {
+        "delta": -0.1346666666666667,
+        "ci": [
+          -0.17034166666666678,
+          -0.0953291666666666
+        ]
+      },
+      "coverage_at_0.20_entropy": {
+        "delta": 0.0,
+        "ci": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "minus_seed_0": {
+      "seed_1": {
+        "accuracy": {
+          "delta": -0.0030000000000000027,
+          "ci": [
+            -0.013512500000000066,
+            0.007500000000000062
+          ]
+        },
+        "ece": {
+          "delta": -0.039404267199337484,
+          "ci": [
+            -0.04770448850076645,
+            -0.024713664607144897
+          ]
+        },
+        "brier": {
+          "delta": -0.002715766252012697,
+          "ci": [
+            -0.011606532939116766,
+            0.0056536561650475685
+          ]
+        },
+        "nll": {
+          "delta": -0.03199194004247463,
+          "ci": [
+            -0.052050215160834135,
+            -0.012274500849866941
+          ]
+        },
+        "aurc": {
+          "delta": 0.0008623266542703775,
+          "ci": [
+            -0.0038717268799722004,
+            0.005187719185653842
+          ]
+        },
+        "coverage_at_0.05": {
+          "delta": -0.03849999999999998,
+          "ci": [
+            -0.14551250000000002,
+            0.026524999999999944
+          ]
+        },
+        "coverage_at_0.10": {
+          "delta": -0.015499999999999958,
+          "ci": [
+            -0.04401250000000004,
+            0.017000000000000015
+          ]
+        },
+        "coverage_at_0.20": {
+          "delta": 0.0,
+          "ci": [
+            0.0,
+            0.0
+          ]
+        },
+        "aurc_entropy": {
+          "delta": 0.0017616473674039596,
+          "ci": [
+            -0.0030507748887522303,
+            0.0062569333784119096
+          ]
+        },
+        "coverage_at_0.05_entropy": {
+          "delta": -0.08250000000000002,
+          "ci": [
+            -0.14401250000000002,
+            0.019012500000000005
+          ]
+        },
+        "coverage_at_0.10_entropy": {
+          "delta": -0.020499999999999963,
+          "ci": [
+            -0.055512500000000096,
+            0.007000000000000006
+          ]
+        },
+        "coverage_at_0.20_entropy": {
+          "delta": 0.0,
+          "ci": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "seed_2": {
+        "accuracy": {
+          "delta": -0.01100000000000001,
+          "ci": [
+            -0.022499999999999964,
+            0.0
+          ]
+        },
+        "ece": {
+          "delta": -0.03171395475417376,
+          "ci": [
+            -0.04210912096016109,
+            -0.02036022957749665
+          ]
+        },
+        "brier": {
+          "delta": 0.00195429078919529,
+          "ci": [
+            -0.009487947493878478,
+            0.012561974810566588
+          ]
+        },
+        "nll": {
+          "delta": -0.025838932588991614,
+          "ci": [
+            -0.050420498647782724,
+            -0.0019088164500670874
+          ]
+        },
+        "aurc": {
+          "delta": -1.4245820530701947e-05,
+          "ci": [
+            -0.005126938549304689,
+            0.0052398314861646055
+          ]
+        },
+        "coverage_at_0.05": {
+          "delta": -0.02300000000000002,
+          "ci": [
+            -0.14399999999999996,
+            0.039524999999999956
+          ]
+        },
+        "coverage_at_0.10": {
+          "delta": -0.013999999999999901,
+          "ci": [
+            -0.03849999999999998,
+            0.024512500000000065
+          ]
+        },
+        "coverage_at_0.20": {
+          "delta": 0.0,
+          "ci": [
+            0.0,
+            0.0
+          ]
+        },
+        "aurc_entropy": {
+          "delta": 0.0008798055141788566,
+          "ci": [
+            -0.0044627522214621095,
+            0.006356955559199228
+          ]
+        },
+        "coverage_at_0.05_entropy": {
+          "delta": -0.033499999999999974,
+          "ci": [
+            -0.178025,
+            0.045012500000000025
+          ]
+        },
+        "coverage_at_0.10_entropy": {
+          "delta": -0.010000000000000009,
+          "ci": [
+            -0.05251249999999999,
+            0.020499999999999963
+          ]
+        },
+        "coverage_at_0.20_entropy": {
+          "delta": 0.0,
+          "ci": [
+            0.0,
+            0.0
+          ]
+        }
+      }
+    },
+    "full_sft": {
+      "seed_0": {
+        "n": 2000,
+        "accuracy": 0.8705,
+        "accuracy_ci": [
+          0.8555,
+          0.8845
+        ],
+        "ece": 0.04078852628171444,
+        "ece_ci": [
+          0.03115963861718774,
+          0.054633442428335545
+        ],
+        "brier": 0.19319741620103364,
+        "brier_ci": [
+          0.1746861402758199,
+          0.21251653487314548
+        ],
+        "nll": 0.3826544275778836,
+        "nll_ci": [
+          0.3399372962057439,
+          0.4283377850866005
+        ],
+        "aurc": 0.030990270654880584,
+        "aurc_ci": [
+          0.02508147519248319,
+          0.037222108519897594
+        ],
+        "coverage_at_0.05": 0.762,
+        "coverage_at_0.05_ci": [
+          0.6894875,
+          0.8130124999999999
+        ],
+        "coverage_at_0.10": 0.9325,
+        "coverage_at_0.10_ci": [
+          0.8915,
+          0.961
+        ],
+        "coverage_at_0.20": 1.0,
+        "coverage_at_0.20_ci": [
+          1.0,
+          1.0
+        ],
+        "aurc_entropy": 0.030526515046332553,
+        "aurc_entropy_ci": [
+          0.024719741265399192,
+          0.03656849314797699
+        ],
+        "coverage_at_0.05_entropy": 0.7705,
+        "coverage_at_0.05_entropy_ci": [
+          0.6949875,
+          0.8185125
+        ],
+        "coverage_at_0.10_entropy": 0.932,
+        "coverage_at_0.10_entropy_ci": [
+          0.9024749999999999,
+          0.9645125
+        ],
+        "coverage_at_0.20_entropy": 1.0,
+        "coverage_at_0.20_entropy_ci": [
+          1.0,
+          1.0
+        ]
+      },
+      "seed_1": null,
+      "seed_2": null,
+      "training_seeds": {
+        "accuracy": {
+          "mean": 0.8705,
+          "range": [
+            0.8705,
+            0.8705
+          ],
+          "n_seeds": 1
+        },
+        "ece": {
+          "mean": 0.04078852628171444,
+          "range": [
+            0.04078852628171444,
+            0.04078852628171444
+          ],
+          "n_seeds": 1
+        },
+        "brier": {
+          "mean": 0.19319741620103364,
+          "range": [
+            0.19319741620103364,
+            0.19319741620103364
+          ],
+          "n_seeds": 1
+        },
+        "nll": {
+          "mean": 0.3826544275778836,
+          "range": [
+            0.3826544275778836,
+            0.3826544275778836
+          ],
+          "n_seeds": 1
+        },
+        "aurc": {
+          "mean": 0.030990270654880584,
+          "range": [
+            0.030990270654880584,
+            0.030990270654880584
+          ],
+          "n_seeds": 1
+        },
+        "coverage_at_0.05": {
+          "mean": 0.762,
+          "range": [
+            0.762,
+            0.762
+          ],
+          "n_seeds": 1
+        },
+        "coverage_at_0.10": {
+          "mean": 0.9325,
+          "range": [
+            0.9325,
+            0.9325
+          ],
+          "n_seeds": 1
+        },
+        "coverage_at_0.20": {
+          "mean": 1.0,
+          "range": [
+            1.0,
+            1.0
+          ],
+          "n_seeds": 1
+        },
+        "aurc_entropy": {
+          "mean": 0.030526515046332553,
+          "range": [
+            0.030526515046332553,
+            0.030526515046332553
+          ],
+          "n_seeds": 1
+        },
+        "coverage_at_0.05_entropy": {
+          "mean": 0.7705,
+          "range": [
+            0.7705,
+            0.7705
+          ],
+          "n_seeds": 1
+        },
+        "coverage_at_0.10_entropy": {
+          "mean": 0.932,
+          "range": [
+            0.932,
+            0.932
+          ],
+          "n_seeds": 1
+        },
+        "coverage_at_0.20_entropy": {
+          "mean": 1.0,
+          "range": [
+            1.0,
+            1.0
+          ],
+          "n_seeds": 1
+        }
+      },
+      "minus_seed_0": {}
+    },
+    "training_seed_mean_minus_full_sft_seed_mean": {
+      "accuracy": {
+        "delta": -0.043166666666666687,
+        "ci": [
+          -0.0558333333333334,
+          -0.031166666666666676
+        ]
+      },
+      "ece": {
+        "delta": 0.005551559865474703,
+        "ci": [
+          -0.004588815628550949,
+          0.018023166935704642
+        ]
+      },
+      "brier": {
+        "delta": 0.07017972827568919,
+        "ci": [
+          0.056156023945524,
+          0.0850361570378746
+        ]
+      },
+      "nll": {
+        "delta": 0.19712390860094253,
+        "ci": [
+          0.16352304472824405,
+          0.23530063793621858
+        ]
+      },
+      "aurc": {
+        "delta": 0.027707619482505334,
+        "ci": [
+          0.02156381129991633,
+          0.03427928266890896
+        ]
+      },
+      "coverage_at_0.05": {
+        "delta": -0.1875,
+        "ci": [
+          -0.2968375,
+          -0.12797083333333337
+        ]
+      },
+      "coverage_at_0.10": {
+        "delta": -0.1203333333333334,
+        "ci": [
+          -0.16216666666666668,
+          -0.0866625
+        ]
+      },
+      "coverage_at_0.20": {
+        "delta": 0.0,
+        "ci": [
+          0.0,
+          0.0
+        ]
+      },
+      "aurc_entropy": {
+        "delta": 0.02875194149506826,
+        "ci": [
+          0.022403952659963377,
+          0.03545257453474785
+        ]
+      },
+      "coverage_at_0.05_entropy": {
+        "delta": -0.20416666666666672,
+        "ci": [
+          -0.30309166666666665,
+          -0.13482916666666658
+        ]
+      },
+      "coverage_at_0.10_entropy": {
+        "delta": -0.1346666666666667,
+        "ci": [
+          -0.17034166666666678,
+          -0.0953291666666666
+        ]
+      },
+      "coverage_at_0.20_entropy": {
+        "delta": 0.0,
+        "ci": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "direct_brier_temp": {
+      "seed_0": null,
+      "seed_1": null,
+      "seed_2": null
+    },
+    "direct_brier_temp_seed_mean_minus_direct_brier_seed_mean": null,
+    "direct_log": {
+      "seed_0": {
+        "n": 2000,
+        "accuracy": 0.806,
+        "accuracy_ci": [
+          0.789,
+          0.8230124999999999
+        ],
+        "ece": 0.049131067000329494,
+        "ece_ci": [
+          0.0388843204325065,
+          0.06592104852888733
+        ],
+        "brier": 0.28213919579045194,
+        "brier_ci": [
+          0.26024335155058875,
+          0.3040171597428752
+        ],
+        "nll": 0.6030094857085124,
+        "nll_ci": [
+          0.5505524248811016,
+          0.6505235354960104
+        ],
+        "aurc": 0.06364718537110658,
+        "aurc_ci": [
+          0.05426183493159201,
+          0.07371806276912574
+        ],
+        "coverage_at_0.05": 0.516,
+        "coverage_at_0.05_ci": [
+          0.422475,
+          0.5985375
+        ],
+        "coverage_at_0.10": 0.7835,
+        "coverage_at_0.10_ci": [
+          0.7149375,
+          0.8225374999999999
+        ],
+        "coverage_at_0.20": 1.0,
+        "coverage_at_0.20_ci": [
+          0.982,
+          1.0
+        ],
+        "aurc_entropy": 0.06401404290284127,
+        "aurc_entropy_ci": [
+          0.054540768700046885,
+          0.07419936923820675
+        ],
+        "coverage_at_0.05_entropy": 0.51,
+        "coverage_at_0.05_entropy_ci": [
+          0.423475,
+          0.6
+        ],
+        "coverage_at_0.10_entropy": 0.763,
+        "coverage_at_0.10_entropy_ci": [
+          0.7159749999999999,
+          0.822
+        ],
+        "coverage_at_0.20_entropy": 1.0,
+        "coverage_at_0.20_entropy_ci": [
+          0.9779749999999999,
+          1.0
+        ]
+      },
+      "seed_1": null,
+      "seed_2": null,
+      "training_seeds": {
+        "accuracy": {
+          "mean": 0.806,
+          "range": [
+            0.806,
+            0.806
+          ],
+          "n_seeds": 1
+        },
+        "ece": {
+          "mean": 0.049131067000329494,
+          "range": [
+            0.049131067000329494,
+            0.049131067000329494
+          ],
+          "n_seeds": 1
+        },
+        "brier": {
+          "mean": 0.28213919579045194,
+          "range": [
+            0.28213919579045194,
+            0.28213919579045194
+          ],
+          "n_seeds": 1
+        },
+        "nll": {
+          "mean": 0.6030094857085124,
+          "range": [
+            0.6030094857085124,
+            0.6030094857085124
+          ],
+          "n_seeds": 1
+        },
+        "aurc": {
+          "mean": 0.06364718537110658,
+          "range": [
+            0.06364718537110658,
+            0.06364718537110658
+          ],
+          "n_seeds": 1
+        },
+        "coverage_at_0.05": {
+          "mean": 0.516,
+          "range": [
+            0.516,
+            0.516
+          ],
+          "n_seeds": 1
+        },
+        "coverage_at_0.10": {
+          "mean": 0.7835,
+          "range": [
+            0.7835,
+            0.7835
+          ],
+          "n_seeds": 1
+        },
+        "coverage_at_0.20": {
+          "mean": 1.0,
+          "range": [
+            1.0,
+            1.0
+          ],
+          "n_seeds": 1
+        },
+        "aurc_entropy": {
+          "mean": 0.06401404290284127,
+          "range": [
+            0.06401404290284127,
+            0.06401404290284127
+          ],
+          "n_seeds": 1
+        },
+        "coverage_at_0.05_entropy": {
+          "mean": 0.51,
+          "range": [
+            0.51,
+            0.51
+          ],
+          "n_seeds": 1
+        },
+        "coverage_at_0.10_entropy": {
+          "mean": 0.763,
+          "range": [
+            0.763,
+            0.763
+          ],
+          "n_seeds": 1
+        },
+        "coverage_at_0.20_entropy": {
+          "mean": 1.0,
+          "range": [
+            1.0,
+            1.0
+          ],
+          "n_seeds": 1
+        }
+      },
+      "minus_seed_0": {}
+    },
+    "direct_log_seed_mean_minus_direct_brier_seed_mean": {
+      "accuracy": {
+        "delta": -0.021333333333333315,
+        "ci": [
+          -0.030333333333333323,
+          -0.0118291666666667
+        ]
+      },
+      "ece": {
+        "delta": 0.0027909808531403485,
+        "ci": [
+          -0.007314608863616982,
+          0.012737814125542833
+        ]
+      },
+      "brier": {
+        "delta": 0.0187620513137291,
+        "ci": [
+          0.008852822613133129,
+          0.027417499438908997
+        ]
+      },
+      "nll": {
+        "delta": 0.0232311495296863,
+        "ci": [
+          0.004184721705233316,
+          0.04187088720743201
+        ]
+      },
+      "aurc": {
+        "delta": 0.004949295233720667,
+        "ci": [
+          0.00019937904946782238,
+          0.009720914968164832
+        ]
+      },
+      "coverage_at_0.05": {
+        "delta": -0.058499999999999996,
+        "ci": [
+          -0.10884166666666667,
+          0.030354166666666585
+        ]
+      },
+      "coverage_at_0.10": {
+        "delta": -0.028666666666666618,
+        "ci": [
+          -0.06500416666666661,
+          -0.002829166666666581
+        ]
+      },
+      "coverage_at_0.20": {
+        "delta": 0.0,
+        "ci": [
+          -0.018000000000000016,
+          0.0
+        ]
+      },
+      "aurc_entropy": {
+        "delta": 0.004735586361440454,
+        "ci": [
+          -0.00013017990632430439,
+          0.009585040222716898
+        ]
+      },
+      "coverage_at_0.05_entropy": {
+        "delta": -0.056333333333333235,
+        "ci": [
+          -0.1115041666666666,
+          0.034504166666666634
+        ]
+      },
+      "coverage_at_0.10_entropy": {
+        "delta": -0.03433333333333333,
+        "ci": [
+          -0.06484166666666663,
+          -0.005325000000000085
+        ]
+      },
+      "coverage_at_0.20_entropy": {
+        "delta": 0.0,
+        "ci": [
+          -0.022025000000000017,
+          0.0
+        ]
+      }
+    }
+  },
+  "noisy": {
+    "direct_brier": {
+      "noisy": null,
+      "clean": {
+        "n": 2000,
+        "accuracy": 0.832,
+        "accuracy_ci": [
+          0.8164875,
+          0.8475
+        ],
+        "ece": 0.07004616013169289,
+        "ece_ci": [
+          0.05863326791971922,
+          0.0867422926157713
+        ],
+        "brier": 0.2636309696309953,
+        "brier_ci": [
+          0.24052494059253193,
+          0.28773238649403604
+        ],
+        "nll": 0.5990552937226482,
+        "nll_ci": [
+          0.5406791074289302,
+          0.6568890413819918
+        ],
+        "aurc": 0.058415196526139364,
+        "aurc_ci": [
+          0.04833470918889937,
+          0.06911260194206587
+        ],
+        "coverage_at_0.05": 0.595,
+        "coverage_at_0.05_ci": [
+          0.46998749999999995,
+          0.6605
+        ],
+        "coverage_at_0.10": 0.822,
+        "coverage_at_0.10_ci": [
+          0.7605,
+          0.8630125
+        ],
+        "coverage_at_0.20": 1.0,
+        "coverage_at_0.20_ci": [
+          1.0,
+          1.0
+        ],
+        "aurc_entropy": 0.05839797224753988,
+        "aurc_entropy_ci": [
+          0.04831681863441494,
+          0.06909089111093132
+        ],
+        "coverage_at_0.05_entropy": 0.605,
+        "coverage_at_0.05_entropy_ci": [
+          0.47893749999999996,
+          0.6665
+        ],
+        "coverage_at_0.10_entropy": 0.8075,
+        "coverage_at_0.10_entropy_ci": [
+          0.7499875,
+          0.8735
+        ],
+        "coverage_at_0.20_entropy": 1.0,
+        "coverage_at_0.20_entropy_ci": [
+          1.0,
+          1.0
+        ]
+      },
+      "noisy_minus_clean": null
+    },
+    "positive_sft": {
+      "noisy": null,
+      "clean": {
+        "n": 2000,
+        "accuracy": 0.6145,
+        "accuracy_ci": [
+          0.592,
+          0.6365
+        ],
+        "ece": 0.25602744410932066,
+        "ece_ci": [
+          0.23654293649084865,
+          0.27687417388521135
+        ],
+        "brier": 0.6275594047828783,
+        "brier_ci": [
+          0.5927098089161053,
+          0.6619072719671846
+        ],
+        "nll": 1.640757678873085,
+        "nll_ci": [
+          1.5321199886213663,
+          1.7407589486300858
+        ],
+        "aurc": 0.23267190937782592,
+        "aurc_ci": [
+          0.2105143266372308,
+          0.25468971702178644
+        ],
+        "coverage_at_0.05": 0.0315,
+        "coverage_at_0.05_ci": [
+          0.005,
+          0.071
+        ],
+        "coverage_at_0.10": 0.069,
+        "coverage_at_0.10_ci": [
+          0.0234875,
+          0.1965125
+        ],
+        "coverage_at_0.20": 0.38,
+        "coverage_at_0.20_ci": [
+          0.3224625,
+          0.49501249999999997
+        ],
+        "aurc_entropy": 0.23188754160615394,
+        "aurc_entropy_ci": [
+          0.21004210884899455,
+          0.2539813482981599
+        ],
+        "coverage_at_0.05_entropy": 0.03,
+        "coverage_at_0.05_entropy_ci": [
+          0.0055,
+          0.07201249999999998
+        ],
+        "coverage_at_0.10_entropy": 0.073,
+        "coverage_at_0.10_entropy_ci": [
+          0.0225,
+          0.1975
+        ],
+        "coverage_at_0.20_entropy": 0.38,
+        "coverage_at_0.20_entropy_ci": [
+          0.3214875,
+          0.4925
+        ]
+      },
+      "noisy_minus_clean": null
+    },
+    "direct_brier_change_minus_positive_sft_change": null
+  },
+  "forgetting": {
+    "test_indomain": {
+      "zero_shot": {
+        "n": 11800,
+        "accuracy": 0.9561864406779661,
+        "accuracy_ci": [
+          0.9523728813559322,
+          0.9599152542372882
+        ],
+        "ece": 0.013161054791535362,
+        "ece_ci": [
+          0.011048958748515886,
+          0.017166589012527364
+        ],
+        "brier": 0.06743740360975306,
+        "brier_ci": [
+          0.06231453801644348,
+          0.07300179819388751
+        ],
+        "nll": 0.12251817605966145,
+        "nll_ci": [
+          0.11180533883027668,
+          0.13378527693270229
+        ]
+      },
+      "minus_zero_shot": {
+        "temperature_n500": {
+          "accuracy": {
+            "delta": 0.0,
+            "ci": [
+              0.0,
+              0.0
+            ]
+          },
+          "ece": {
+            "delta": 0.08042777492445231,
+            "ci": [
+              0.07346227028253133,
+              0.08572282085841994
+            ]
+          }
+        },
+        "temperature_n2000": {
+          "accuracy": {
+            "delta": 0.0,
+            "ci": [
+              0.0,
+              0.0
+            ]
+          },
+          "ece": {
+            "delta": 0.0815324244002984,
+            "ci": [
+              0.07456537469582203,
+              0.08682739964530616
+            ]
+          }
+        },
+        "temperature_n5000": {
+          "accuracy": {
+            "delta": 0.0,
+            "ci": [
+              0.0,
+              0.0
+            ]
+          },
+          "ece": {
+            "delta": 0.08733301478453083,
+            "ci": [
+              0.08033564356237363,
+              0.09264061318259119
+            ]
+          }
+        },
+        "direct_brier_n2000_s0": {
+          "accuracy": {
+            "delta": -0.008220338983050857,
+            "ci": [
+              -0.011016949152542366,
+              -0.005760593220338896
+            ]
+          },
+          "ece": {
+            "delta": -0.000884228262860897,
+            "ci": [
+              -0.004978104324032694,
+              0.005043315255793473
+            ]
+          }
+        },
+        "direct_brier_n5000_s0": {
+          "accuracy": {
+            "delta": -0.026440677966101722,
+            "ci": [
+              -0.03059322033898304,
+              -0.022707627118644158
+            ]
+          },
+          "ece": {
+            "delta": 0.0008506159635923681,
+            "ci": [
+              -0.0037339841463934573,
+              0.004141189594263746
+            ]
+          }
+        },
+        "direct_brier_n5000_s1": {
+          "accuracy": {
+            "delta": -0.01889830508474577,
+            "ci": [
+              -0.022629237288135543,
+              -0.015338983050847466
+            ]
+          },
+          "ece": {
+            "delta": 0.003395183341482937,
+            "ci": [
+              -0.002103938610687601,
+              0.009221959738597525
+            ]
+          }
+        },
+        "direct_brier_n5000_s2": {
+          "accuracy": {
+            "delta": -0.023559322033898322,
+            "ci": [
+              -0.027288135593220297,
+              -0.019745762711864453
+            ]
+          },
+          "ece": {
+            "delta": -0.002564728959637174,
+            "ci": [
+              -0.0066602198254253914,
+              0.003561226449149136
+            ]
+          }
+        },
+        "direct_brier_n500_s0": {
+          "accuracy": {
+            "delta": -0.0059322033898304705,
+            "ci": [
+              -0.00838983050847453,
+              -0.0034745762711864137
+            ]
+          },
+          "ece": {
+            "delta": -0.002899979378207256,
+            "ci": [
+              -0.008187778285309926,
+              0.002222952361644828
+            ]
+          }
+        },
+        "direct_log_n5000_s0": {
+          "accuracy": {
+            "delta": -0.022457627118644075,
+            "ci": [
+              -0.02627118644067794,
+              -0.01881355932203399
+            ]
+          },
+          "ece": {
+            "delta": -0.0011319635202318937,
+            "ci": [
+              -0.005961548552801044,
+              0.0029373953504708856
+            ]
+          }
+        },
+        "full_sft_n2000_s0": {
+          "accuracy": {
+            "delta": -0.01449152542372878,
+            "ci": [
+              -0.017711864406779635,
+              -0.011355932203389818
+            ]
+          },
+          "ece": {
+            "delta": -0.003696079350123971,
+            "ci": [
+              -0.008261053320399283,
+              0.0022376536271708474
+            ]
+          }
+        },
+        "full_sft_n5000_s0": {
+          "accuracy": {
+            "delta": -0.03355932203389833,
+            "ci": [
+              -0.03813559322033899,
+              -0.02940677966101701
+            ]
+          },
+          "ece": {
+            "delta": -0.0022893021722971384,
+            "ci": [
+              -0.00674454622374753,
+              0.0011650434933855366
+            ]
+          }
+        },
+        "full_sft_n500_s0": {
+          "accuracy": {
+            "delta": -0.004152542372881318,
+            "ci": [
+              -0.006525423728813595,
+              -0.0019470338983050275
+            ]
+          },
+          "ece": {
+            "delta": 0.0020773430976827253,
+            "ci": [
+              -0.0043113741484486455,
+              0.007833522050562551
+            ]
+          }
+        },
+        "positive_sft_n2000_s0": {
+          "accuracy": {
+            "delta": -0.0011864406779661385,
+            "ci": [
+              -0.0027987288135594146,
+              0.0005084745762711229
+            ]
+          },
+          "ece": {
+            "delta": 0.012893383927264456,
+            "ci": [
+              0.009855210551329084,
+              0.014210165436111264
+            ]
+          }
+        },
+        "positive_sft_n5000_s0": {
+          "accuracy": {
+            "delta": -0.004576271186440661,
+            "ci": [
+              -0.006697033898305171,
+              -0.002372881355932277
+            ]
+          },
+          "ece": {
+            "delta": 0.006886910902241529,
+            "ci": [
+              0.004085909452036778,
+              0.008535404188337467
+            ]
+          }
+        },
+        "positive_sft_n500_s0": {
+          "accuracy": {
+            "delta": -0.0026271186440678385,
+            "ci": [
+              -0.004576271186440772,
+              -0.0007627118644067954
+            ]
+          },
+          "ece": {
+            "delta": 0.020055148225214522,
+            "ci": [
+              0.01663918935987404,
+              0.021648253896920867
+            ]
+          }
+        }
+      }
+    },
+    "test_unseen_intents": {
+      "zero_shot": {
+        "n": 6000,
+        "accuracy": 0.8918333333333334,
+        "accuracy_ci": [
+          0.8831625,
+          0.8998375000000001
+        ],
+        "ece": 0.06823988118271034,
+        "ece_ci": [
+          0.06237017771651348,
+          0.07689366590393086
+        ],
+        "brier": 0.17416784214363762,
+        "brier_ci": [
+          0.16154454762057638,
+          0.1883779210035593
+        ],
+        "nll": 0.3705668566140236,
+        "nll_ci": [
+          0.3387309738300017,
+          0.4054888153522844
+        ]
+      },
+      "minus_zero_shot": {
+        "temperature_n500": {
+          "accuracy": {
+            "delta": 0.0,
+            "ci": [
+              0.0,
+              0.0
+            ]
+          },
+          "ece": {
+            "delta": -0.028547496515550094,
+            "ci": [
+              -0.0424546798222193,
+              -0.01539849968177111
+            ]
+          }
+        },
+        "temperature_n2000": {
+          "accuracy": {
+            "delta": 0.0,
+            "ci": [
+              0.0,
+              0.0
+            ]
+          },
+          "ece": {
+            "delta": -0.027486481257018282,
+            "ci": [
+              -0.041728795125247964,
+              -0.014354346411338682
+            ]
+          }
+        },
+        "temperature_n5000": {
+          "accuracy": {
+            "delta": 0.0,
+            "ci": [
+              0.0,
+              0.0
+            ]
+          },
+          "ece": {
+            "delta": -0.021834104113894887,
+            "ci": [
+              -0.036251509258401024,
+              -0.0088567358995217
+            ]
+          }
+        },
+        "direct_brier_n2000_s0": {
+          "accuracy": {
+            "delta": -0.0038333333333333552,
+            "ci": [
+              -0.009333333333333305,
+              0.001666666666666597
+            ]
+          },
+          "ece": {
+            "delta": -0.023324663385748866,
+            "ci": [
+              -0.029278571748236816,
+              -0.018640027951200806
+            ]
+          }
+        },
+        "direct_brier_n5000_s0": {
+          "accuracy": {
+            "delta": -0.01983333333333337,
+            "ci": [
+              -0.027166666666666672,
+              -0.012500000000000063
+            ]
+          },
+          "ece": {
+            "delta": 0.002242241938908887,
+            "ci": [
+              -0.005389731906354425,
+              0.009080448702474438
+            ]
+          }
+        },
+        "direct_brier_n5000_s1": {
+          "accuracy": {
+            "delta": -0.023833333333333373,
+            "ci": [
+              -0.031166666666666676,
+              -0.016500000000000067
+            ]
+          },
+          "ece": {
+            "delta": -0.017470261186361316,
+            "ci": [
+              -0.02485223705184956,
+              -0.010589689925064647
+            ]
+          }
+        },
+        "direct_brier_n5000_s2": {
+          "accuracy": {
+            "delta": -0.03400000000000003,
+            "ci": [
+              -0.042166666666666686,
+              -0.026329166666666657
+            ]
+          },
+          "ece": {
+            "delta": 4.1246210535361705e-05,
+            "ci": [
+              -0.007726380005478862,
+              0.007009582201515636
+            ]
+          }
+        },
+        "direct_brier_n500_s0": {
+          "accuracy": {
+            "delta": 0.013000000000000012,
+            "ci": [
+              0.008166666666666655,
+              0.018000000000000016
+            ]
+          },
+          "ece": {
+            "delta": -0.03026724328100682,
+            "ci": [
+              -0.035905246150493626,
+              -0.02620649744781356
+            ]
+          }
+        },
+        "direct_log_n5000_s0": {
+          "accuracy": {
+            "delta": -0.01100000000000001,
+            "ci": [
+              -0.017837500000000034,
+              -0.0043333333333333
+            ]
+          },
+          "ece": {
+            "delta": -0.013017499675353372,
+            "ci": [
+              -0.01974424373594423,
+              -0.00690804432866475
+            ]
+          }
+        },
+        "full_sft_n2000_s0": {
+          "accuracy": {
+            "delta": -0.013500000000000068,
+            "ci": [
+              -0.020166666666666666,
+              -0.006833333333333358
+            ]
+          },
+          "ece": {
+            "delta": -0.015826262772083287,
+            "ci": [
+              -0.021882541032011312,
+              -0.009527306077753504
+            ]
+          }
+        },
+        "full_sft_n5000_s0": {
+          "accuracy": {
+            "delta": -0.040000000000000036,
+            "ci": [
+              -0.04783333333333328,
+              -0.03166666666666673
+            ]
+          },
+          "ece": {
+            "delta": 0.010649535804986954,
+            "ci": [
+              0.0026159386763970035,
+              0.017857639939462145
+            ]
+          }
+        },
+        "full_sft_n500_s0": {
+          "accuracy": {
+            "delta": 0.0023333333333332984,
+            "ci": [
+              -0.002670833333333372,
+              0.007337499999999966
+            ]
+          },
+          "ece": {
+            "delta": -0.02753835703929266,
+            "ci": [
+              -0.03273243297673763,
+              -0.022503990838552517
+            ]
+          }
+        },
+        "positive_sft_n2000_s0": {
+          "accuracy": {
+            "delta": -0.0020000000000000018,
+            "ci": [
+              -0.005833333333333357,
+              0.0016666666666665941
+            ]
+          },
+          "ece": {
+            "delta": 0.017367411042253172,
+            "ci": [
+              0.012945432980606955,
+              0.020756052042916414
+            ]
+          }
+        },
+        "positive_sft_n5000_s0": {
+          "accuracy": {
+            "delta": 0.00983333333333325,
+            "ci": [
+              0.006162499999999987,
+              0.013333333333333312
+            ]
+          },
+          "ece": {
+            "delta": -0.0027715999037027372,
+            "ci": [
+              -0.006977019496758772,
+              0.0004623522204657428
+            ]
+          }
+        },
+        "positive_sft_n500_s0": {
+          "accuracy": {
+            "delta": -0.018333333333333313,
+            "ci": [
+              -0.02316666666666667,
+              -0.014000000000000009
+            ]
+          },
+          "ece": {
+            "delta": 0.04199393788476785,
+            "ci": [
+              0.03630704092656574,
+              0.046472742258757346
+            ]
+          }
+        }
+      }
+    }
+  },
+  "other": null,
+  "other_note": "emotion has no other option: other is never among the options, so the predicted-other analysis does not apply",
+  "coverage": {
+    "zero_shot": {
+      "0.80": {
+        "coverage": 0.391,
+        "n": 782,
+        "accuracy": 0.7404092071611253
+      },
+      "0.90": {
+        "coverage": 0.267,
+        "n": 534,
+        "accuracy": 0.7752808988764045
+      },
+      "0.95": {
+        "coverage": 0.157,
+        "n": 314,
+        "accuracy": 0.821656050955414
+      }
+    },
+    "temperature_n500": {
+      "0.80": {
+        "coverage": 0.007,
+        "n": 14,
+        "accuracy": 1.0
+      },
+      "0.90": {
+        "coverage": 0.0,
+        "n": 0,
+        "accuracy": null
+      },
+      "0.95": {
+        "coverage": 0.0,
+        "n": 0,
+        "accuracy": null
+      }
+    },
+    "temperature_n2000": {
+      "0.80": {
+        "coverage": 0.007,
+        "n": 14,
+        "accuracy": 1.0
+      },
+      "0.90": {
+        "coverage": 0.0,
+        "n": 0,
+        "accuracy": null
+      },
+      "0.95": {
+        "coverage": 0.0,
+        "n": 0,
+        "accuracy": null
+      }
+    },
+    "temperature_n5000": {
+      "0.80": {
+        "coverage": 0.0045,
+        "n": 9,
+        "accuracy": 1.0
+      },
+      "0.90": {
+        "coverage": 0.0,
+        "n": 0,
+        "accuracy": null
+      },
+      "0.95": {
+        "coverage": 0.0,
+        "n": 0,
+        "accuracy": null
+      }
+    },
+    "direct_brier_n2000_s0": {
+      "0.80": {
+        "coverage": 0.242,
+        "n": 484,
+        "accuracy": 0.9194214876033058
+      },
+      "0.90": {
+        "coverage": 0.095,
+        "n": 190,
+        "accuracy": 0.9578947368421052
+      },
+      "0.95": {
+        "coverage": 0.022,
+        "n": 44,
+        "accuracy": 1.0
+      }
+    },
+    "direct_brier_n5000_s0": {
+      "0.80": {
+        "coverage": 0.706,
+        "n": 1412,
+        "accuracy": 0.9298866855524079
+      },
+      "0.90": {
+        "coverage": 0.545,
+        "n": 1090,
+        "accuracy": 0.9577981651376147
+      },
+      "0.95": {
+        "coverage": 0.3445,
+        "n": 689,
+        "accuracy": 0.9666182873730044
+      }
+    },
+    "direct_brier_n5000_s1": {
+      "0.80": {
+        "coverage": 0.5365,
+        "n": 1073,
+        "accuracy": 0.9487418452935694
+      },
+      "0.90": {
+        "coverage": 0.3255,
+        "n": 651,
+        "accuracy": 0.9738863287250384
+      },
+      "0.95": {
+        "coverage": 0.133,
+        "n": 266,
+        "accuracy": 0.9849624060150376
+      }
+    },
+    "direct_brier_n5000_s2": {
+      "0.80": {
+        "coverage": 0.536,
+        "n": 1072,
+        "accuracy": 0.9514925373134329
+      },
+      "0.90": {
+        "coverage": 0.3145,
+        "n": 629,
+        "accuracy": 0.9682034976152624
+      },
+      "0.95": {
+        "coverage": 0.118,
+        "n": 236,
+        "accuracy": 0.9915254237288136
+      }
+    },
+    "direct_brier_n500_s0": {
+      "0.80": {
+        "coverage": 0.2495,
+        "n": 499,
+        "accuracy": 0.8657314629258517
+      },
+      "0.90": {
+        "coverage": 0.137,
+        "n": 274,
+        "accuracy": 0.8941605839416058
+      },
+      "0.95": {
+        "coverage": 0.075,
+        "n": 150,
+        "accuracy": 0.9333333333333333
+      }
+    },
+    "direct_log_n5000_s0": {
+      "0.80": {
+        "coverage": 0.549,
+        "n": 1098,
+        "accuracy": 0.9444444444444444
+      },
+      "0.90": {
+        "coverage": 0.385,
+        "n": 770,
+        "accuracy": 0.964935064935065
+      },
+      "0.95": {
+        "coverage": 0.2305,
+        "n": 461,
+        "accuracy": 0.9761388286334056
+      }
+    },
+    "full_sft_n2000_s0": {
+      "0.80": {
+        "coverage": 0.424,
+        "n": 848,
+        "accuracy": 0.9245283018867925
+      },
+      "0.90": {
+        "coverage": 0.257,
+        "n": 514,
+        "accuracy": 0.9494163424124513
+      },
+      "0.95": {
+        "coverage": 0.132,
+        "n": 264,
+        "accuracy": 0.9696969696969697
+      }
+    },
+    "full_sft_n5000_s0": {
+      "0.80": {
+        "coverage": 0.7215,
+        "n": 1443,
+        "accuracy": 0.9563409563409564
+      },
+      "0.90": {
+        "coverage": 0.5975,
+        "n": 1195,
+        "accuracy": 0.9790794979079498
+      },
+      "0.95": {
+        "coverage": 0.492,
+        "n": 984,
+        "accuracy": 0.983739837398374
+      }
+    },
+    "full_sft_n500_s0": {
+      "0.80": {
+        "coverage": 0.2585,
+        "n": 517,
+        "accuracy": 0.8723404255319149
+      },
+      "0.90": {
+        "coverage": 0.1425,
+        "n": 285,
+        "accuracy": 0.9052631578947369
+      },
+      "0.95": {
+        "coverage": 0.085,
+        "n": 170,
+        "accuracy": 0.9352941176470588
+      }
+    },
+    "positive_sft_n2000_s0": {
+      "0.80": {
+        "coverage": 0.7375,
+        "n": 1475,
+        "accuracy": 0.6623728813559322
+      },
+      "0.90": {
+        "coverage": 0.645,
+        "n": 1290,
+        "accuracy": 0.689922480620155
+      },
+      "0.95": {
+        "coverage": 0.569,
+        "n": 1138,
+        "accuracy": 0.7170474516695958
+      }
+    },
+    "positive_sft_n5000_s0": {
+      "0.80": {
+        "coverage": 0.6075,
+        "n": 1215,
+        "accuracy": 0.7341563786008231
+      },
+      "0.90": {
+        "coverage": 0.467,
+        "n": 934,
+        "accuracy": 0.7805139186295503
+      },
+      "0.95": {
+        "coverage": 0.359,
+        "n": 718,
+        "accuracy": 0.8133704735376045
+      }
+    },
+    "positive_sft_n500_s0": {
+      "0.80": {
+        "coverage": 0.814,
+        "n": 1628,
+        "accuracy": 0.6443488943488943
+      },
+      "0.90": {
+        "coverage": 0.7605,
+        "n": 1521,
+        "accuracy": 0.663379355687048
+      },
+      "0.95": {
+        "coverage": 0.718,
+        "n": 1436,
+        "accuracy": 0.6727019498607242
+      }
+    }
+  },
+  "b2_reference": {
+    "subset": "data/baseline_subset.json, test_emotion, 500 records",
+    "b2": {
+      "accuracy_all": 0.598,
+      "ece": 0.28275999999999957,
+      "n": 500
+    },
+    "runs": {
+      "zero_shot": {
+        "n": 500,
+        "accuracy": 0.564,
+        "ece": 0.22788219147920608,
+        "brier": 0.6611230513211735,
+        "nll": 1.6205822508631538,
+        "aurc": 0.27770929663456295,
+        "coverage_at_0.05": 0.016,
+        "coverage_at_0.10": 0.1,
+        "coverage_at_0.20": 0.23,
+        "aurc_entropy": 0.27884902133007483,
+        "coverage_at_0.05_entropy": 0.016,
+        "coverage_at_0.10_entropy": 0.064,
+        "coverage_at_0.20_entropy": 0.232
+      },
+      "temperature_n500": {
+        "n": 500,
+        "accuracy": 0.564,
+        "ece": 0.03248184257412756,
+        "brier": 0.5884684469323036,
+        "nll": 1.2367015210401877,
+        "aurc": 0.2779300898320637,
+        "coverage_at_0.05": 0.018,
+        "coverage_at_0.10": 0.064,
+        "coverage_at_0.20": 0.27,
+        "aurc_entropy": 0.28345566293950214,
+        "coverage_at_0.05_entropy": 0.02,
+        "coverage_at_0.10_entropy": 0.062,
+        "coverage_at_0.20_entropy": 0.292
+      },
+      "temperature_n2000": {
+        "n": 500,
+        "accuracy": 0.564,
+        "ece": 0.03167888207932756,
+        "brier": 0.588505676431914,
+        "nll": 1.236709557402895,
+        "aurc": 0.27788859855761583,
+        "coverage_at_0.05": 0.018,
+        "coverage_at_0.10": 0.064,
+        "coverage_at_0.20": 0.27,
+        "aurc_entropy": 0.283510560843758,
+        "coverage_at_0.05_entropy": 0.02,
+        "coverage_at_0.10_entropy": 0.062,
+        "coverage_at_0.20_entropy": 0.292
+      },
+      "temperature_n5000": {
+        "n": 500,
+        "accuracy": 0.564,
+        "ece": 0.025169838409705495,
+        "brier": 0.5887837990979468,
+        "nll": 1.236971414745138,
+        "aurc": 0.27794522704251173,
+        "coverage_at_0.05": 0.018,
+        "coverage_at_0.10": 0.064,
+        "coverage_at_0.20": 0.27,
+        "aurc_entropy": 0.2835570293866186,
+        "coverage_at_0.05_entropy": 0.02,
+        "coverage_at_0.10_entropy": 0.062,
+        "coverage_at_0.20_entropy": 0.292
+      },
+      "direct_brier_n2000_s0": {
+        "n": 500,
+        "accuracy": 0.748,
+        "ece": 0.08547455456852913,
+        "brier": 0.4049572409394759,
+        "nll": 0.8410502748213592,
+        "aurc": 0.13767791597490248,
+        "coverage_at_0.05": 0.202,
+        "coverage_at_0.10": 0.32,
+        "coverage_at_0.20": 0.744,
+        "aurc_entropy": 0.13908128628570493,
+        "coverage_at_0.05_entropy": 0.204,
+        "coverage_at_0.10_entropy": 0.306,
+        "coverage_at_0.20_entropy": 0.704
+      },
+      "direct_brier_n5000_s0": {
+        "n": 500,
+        "accuracy": 0.858,
+        "ece": 0.0701036331653595,
+        "brier": 0.23608156601986166,
+        "nll": 0.5176170924430487,
+        "aurc": 0.05101163272344201,
+        "coverage_at_0.05": 0.632,
+        "coverage_at_0.10": 0.862,
+        "coverage_at_0.20": 1.0,
+        "aurc_entropy": 0.05058539408026003,
+        "coverage_at_0.05_entropy": 0.63,
+        "coverage_at_0.10_entropy": 0.884,
+        "coverage_at_0.20_entropy": 1.0
+      },
+      "direct_brier_n5000_s1": {
+        "n": 500,
+        "accuracy": 0.846,
+        "ece": 0.052329213380813595,
+        "brier": 0.2420195404630197,
+        "nll": 0.5120122165381762,
+        "aurc": 0.049196699076608195,
+        "coverage_at_0.05": 0.618,
+        "coverage_at_0.10": 0.852,
+        "coverage_at_0.20": 1.0,
+        "aurc_entropy": 0.05000047799511491,
+        "coverage_at_0.05_entropy": 0.572,
+        "coverage_at_0.10_entropy": 0.842,
+        "coverage_at_0.20_entropy": 1.0
+      },
+      "direct_brier_n5000_s2": {
+        "n": 500,
+        "accuracy": 0.842,
+        "ece": 0.04088844561576843,
+        "brier": 0.23965111415019383,
+        "nll": 0.5107232311408968,
+        "aurc": 0.04851504062251647,
+        "coverage_at_0.05": 0.666,
+        "coverage_at_0.10": 0.844,
+        "coverage_at_0.20": 1.0,
+        "aurc_entropy": 0.049133400164917726,
+        "coverage_at_0.05_entropy": 0.65,
+        "coverage_at_0.10_entropy": 0.842,
+        "coverage_at_0.20_entropy": 1.0
+      },
+      "direct_brier_n500_s0": {
+        "n": 500,
+        "accuracy": 0.62,
+        "ece": 0.0894815391600132,
+        "brier": 0.5275877548852883,
+        "nll": 1.1405812878190549,
+        "aurc": 0.2083666017366324,
+        "coverage_at_0.05": 0.056,
+        "coverage_at_0.10": 0.188,
+        "coverage_at_0.20": 0.444,
+        "aurc_entropy": 0.21061678487718322,
+        "coverage_at_0.05_entropy": 0.062,
+        "coverage_at_0.10_entropy": 0.19,
+        "coverage_at_0.20_entropy": 0.42
+      },
+      "direct_log_n5000_s0": {
+        "n": 500,
+        "accuracy": 0.822,
+        "ece": 0.060058523774147034,
+        "brier": 0.25271698582109436,
+        "nll": 0.5243736849381329,
+        "aurc": 0.051373877018862854,
+        "coverage_at_0.05": 0.576,
+        "coverage_at_0.10": 0.848,
+        "coverage_at_0.20": 1.0,
+        "aurc_entropy": 0.053157270052018174,
+        "coverage_at_0.05_entropy": 0.574,
+        "coverage_at_0.10_entropy": 0.83,
+        "coverage_at_0.20_entropy": 1.0
+      },
+      "full_sft_n2000_s0": {
+        "n": 500,
+        "accuracy": 0.776,
+        "ece": 0.043229043841362,
+        "brier": 0.32307980990667967,
+        "nll": 0.6236747998151978,
+        "aurc": 0.08713679508241932,
+        "coverage_at_0.05": 0.418,
+        "coverage_at_0.10": 0.58,
+        "coverage_at_0.20": 0.942,
+        "aurc_entropy": 0.08866072287335865,
+        "coverage_at_0.05_entropy": 0.448,
+        "coverage_at_0.10_entropy": 0.584,
+        "coverage_at_0.20_entropy": 0.946
+      },
+      "full_sft_n5000_s0": {
+        "n": 500,
+        "accuracy": 0.888,
+        "ece": 0.040947272539138796,
+        "brier": 0.1621229489611147,
+        "nll": 0.30234925955972997,
+        "aurc": 0.020560477432625148,
+        "coverage_at_0.05": 0.85,
+        "coverage_at_0.10": 0.974,
+        "coverage_at_0.20": 1.0,
+        "aurc_entropy": 0.020647819598573272,
+        "coverage_at_0.05_entropy": 0.856,
+        "coverage_at_0.10_entropy": 0.974,
+        "coverage_at_0.20_entropy": 1.0
+      },
+      "full_sft_n500_s0": {
+        "n": 500,
+        "accuracy": 0.682,
+        "ece": 0.06954550442099572,
+        "brier": 0.4642376366003742,
+        "nll": 0.9465633875715955,
+        "aurc": 0.18069451593208602,
+        "coverage_at_0.05": 0.068,
+        "coverage_at_0.10": 0.242,
+        "coverage_at_0.20": 0.566,
+        "aurc_entropy": 0.18532397780494636,
+        "coverage_at_0.05_entropy": 0.066,
+        "coverage_at_0.10_entropy": 0.236,
+        "coverage_at_0.20_entropy": 0.57
+      },
+      "positive_sft_n2000_s0": {
+        "n": 500,
+        "accuracy": 0.604,
+        "ece": 0.3122041190266609,
+        "brier": 0.6753177529918676,
+        "nll": 2.156301275722657,
+        "aurc": 0.24422432822935253,
+        "coverage_at_0.05": 0.01,
+        "coverage_at_0.10": 0.01,
+        "coverage_at_0.20": 0.464,
+        "aurc_entropy": 0.24461085372215186,
+        "coverage_at_0.05_entropy": 0.01,
+        "coverage_at_0.10_entropy": 0.01,
+        "coverage_at_0.20_entropy": 0.464
+      },
+      "positive_sft_n5000_s0": {
+        "n": 500,
+        "accuracy": 0.638,
+        "ece": 0.23994626367092134,
+        "brier": 0.5967293313450595,
+        "nll": 1.5675607230505502,
+        "aurc": 0.21401736730582588,
+        "coverage_at_0.05": 0.014,
+        "coverage_at_0.10": 0.108,
+        "coverage_at_0.20": 0.512,
+        "aurc_entropy": 0.2137729915722389,
+        "coverage_at_0.05_entropy": 0.014,
+        "coverage_at_0.10_entropy": 0.108,
+        "coverage_at_0.20_entropy": 0.51
+      },
+      "positive_sft_n500_s0": {
+        "n": 500,
+        "accuracy": 0.572,
+        "ece": 0.3680124433040619,
+        "brier": 0.7702853773116752,
+        "nll": 3.088421475975316,
+        "aurc": 0.2634227153461714,
+        "coverage_at_0.05": 0.008,
+        "coverage_at_0.10": 0.008,
+        "coverage_at_0.20": 0.42,
+        "aurc_entropy": 0.2628917900526316,
+        "coverage_at_0.05_entropy": 0.008,
+        "coverage_at_0.10_entropy": 0.008,
+        "coverage_at_0.20_entropy": 0.42
+      }
+    }
+  },
+  "missing": [],
+  "missing_off_policy": [
+    "direct_log_n2000_s0",
+    "ips_log_n2000_s0",
+    "ips_log_n5000_s0",
+    "ips_positive_n2000_s0",
+    "ips_positive_n5000_s0",
+    "outcome_minus_p_log_n2000_s0",
+    "outcome_minus_p_log_n5000_s0"
+  ]
+}
