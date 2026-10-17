@@ -8,36 +8,34 @@ Every number cites the report section and the committed metrics file it comes fr
 - `L:` for `runs/v3_stage_17b/metrics.json`;
 - `E:` for `runs/v3_stage_emotion_06b/metrics.json`.
 
-The abstract's numbers are cited where they recur in Section 5 and the appendix. BibTeX entries for every reference are in `docs/references.bib`, each checked against the arXiv listing, the publisher's DOI record or the proceedings page.
+The abstract's numbers are cited where they recur in Section 4 and the appendix. BibTeX entries for every reference are in `docs/references.bib`, each checked against the arXiv listing, the publisher's DOI record or the proceedings page.
 
 ## Abstract
 
 A decision head reads a state and a list of options and returns a probability for each option in one forward pass; a caller answers when the top probability clears a threshold and escalates otherwise. Once deployed, it usually observes only whether the option it chose was right: logged bandit feedback. We adapt such a head, a LoRA adapter on Qwen3-0.6B-Base and 1.7B-Base, from that feedback, and report three results.
-1. **A proper score of the sampled action's own probability is not a usable REINFORCE reward.** That a detached, parameter-dependent reward drops the pathwise term of the gradient is known; we give the corollary for this reward. Against a group-mean baseline every wrong action earns at least the gold action's reward, the lowest-probability wrong action sampled gets the largest advantage, and at K = 2 the signal is exactly zero. In practice it cut one score task's accuracy from .636 to .111.
-2. **With full labels, no bandit objective beat cross-entropy plus one temperature on calibration under label-space shift.** This replicates a concurrent finding under a stricter protocol: transfer to unseen label schemas, a continued cross-entropy control, and four bandit arms under one temperature. The best arm was level, -.002 [-.006, +.004].
-3. **From logged bandit feedback alone, Chosen-Action Proper Scoring (CAPS) works.** CAPS is the direct method with a proper score: it fits the chosen action's probability to its logged outcome by the pathwise gradient. On Banking77 it beats fine-tuning on confirmed answers only, which is positive-unlabeled learning with the negatives discarded, by +2.6 points [1.9, 3.3] in accuracy, .053 in ECE and .0095 in AURC. It stays 1.5 points [1.0, 2.0] below full-label training at 0.6B and .6 points [.2, 1.1] below it at 1.7B, so the gap shrinks with scale (three CAPS seeds, one full-label seed at 1.7B). Propensity weights add nothing, as expected of a well-specified regression. Under feedback flipped at a known rate, CAPS calibrates to the noisy channel without any correction, backward correction maps it back, and early stopping on the held-out log-likelihood of logged outcomes prevents the memorisation of the single noisy draw.
+
+First, a proper score of the sampled action's own probability is not a usable REINFORCE reward. That a detached, parameter-dependent reward drops the pathwise term of the gradient is known; we give the corollary for this reward: against a group-mean baseline every wrong action earns at least the gold action's reward, the lowest-probability wrong action sampled gets the largest advantage, and at K = 2 the signal is exactly zero. In practice it cut one score task's accuracy from .636 to .111.
+
+Second, with full labels, no bandit objective beat cross-entropy plus one temperature on calibration under label-space shift; the best arm was level, -.002 [-.006, +.004]. This replicates a concurrent finding under a stricter protocol: transfer to unseen label schemas, a continued cross-entropy control, and four bandit arms under one temperature.
+
+Third, from logged bandit feedback alone, Chosen-Action Proper Scoring (CAPS), the direct method with a proper score that fits the chosen action's probability to its logged outcome by the pathwise gradient, beats fine-tuning on confirmed answers only, which is positive-unlabeled learning with the negatives discarded: on Banking77 by +2.6 points [1.9, 3.3] in accuracy, .053 in ECE and .0095 in AURC. It stays 1.5 points [1.0, 2.0] below full-label training at 0.6B and .6 points [.2, 1.1] below it at 1.7B, so the gap shrinks with scale (three CAPS seeds, one full-label seed at 1.7B), and propensity weights add nothing, as expected of a well-specified regression. Under feedback flipped at a known rate, CAPS calibrates to the noisy channel without any correction, backward correction recovers most of the clean calibration, and early stopping on the held-out log-likelihood of logged outcomes prevents the memorisation of the single noisy draw.
 
 ## 1. Introduction
 
-**The decision head.** A decision head answers typed questions about a text state: yes or no, one of K options, or a level on a scale. The options are part of each request, so the same model answers label sets it was never trained on. It returns a full distribution per question from the option-letter probabilities at an answer slot, in one forward pass, with no text generated. The caller's code turns the probabilities into actions, for example by answering above a confidence threshold and escalating below it, which is selective classification with a reject option. That only works if the probabilities are calibrated and rank the errors lowest. Ours is a LoRA adapter on Qwen3-0.6B-Base and 1.7B-Base. Its in-domain ECE is .013 to .015, but it is overconfident on unfamiliar schemas, with ECE up to .22 (RESULTS_v1 section 2, `runs/sft_{06b,17b}/metrics.json:splits.<split>.overall.ece`). The setting is the one TypeSafe AI announced with Jev (TypeSafe AI 2026), trained by an unpublished recipe called RLCD, reinforcement learning for calibrated decisions; jevmark is an independent re-implementation of the concept.
+**The decision head.** A decision head answers typed questions about a text state: yes or no, one of K options, or a level on a scale. The options are part of each request, so the same model answers label sets it was never trained on. It returns a full distribution per question from the option-letter probabilities at an answer slot, in one forward pass, with no text generated. The caller's code turns the probabilities into actions, for example by answering above a confidence threshold and escalating below it, which is selective classification with a reject option. That only works if the probabilities are calibrated and rank the errors lowest. Ours is a LoRA adapter on Qwen3-0.6B-Base and 1.7B-Base. Its in-domain ECE is .013 to .015, but it is overconfident on unfamiliar schemas, with ECE up to .22 (RESULTS_v1 section 2, `runs/sft_{06b,17b}/metrics.json:splits.<split>.overall.ece`). The setting is the one TypeSafe AI announced with Jev (TypeSafe AI 2026), trained by an unpublished recipe called RLCD, reinforcement learning for calibrated decisions. Our decision head is an independent re-implementation of the concept; jevmark is the name of its code repository and released adapters.
 
-**Why logged bandit feedback is the realistic case.** After deployment on a new domain, labels are expensive and rare. What a system does record is whether the action it took turned out right: a ticket reopened or not, a routing corrected or not. This is logged bandit feedback: one outcome per interaction, only for the chosen action, under a known logging policy. The common practice is to fine-tune on the interactions that went well and discard the rest. That discards the negatives, which makes it positive-unlabeled learning, and, as we show, leaves the model overconfident (Section 5.3).
+**Why logged bandit feedback is the realistic case.** After deployment on a new domain, labels are expensive and rare. What a system does record is whether the action it took turned out right: a ticket reopened or not, a routing corrected or not. This is logged bandit feedback: one outcome per interaction, only for the chosen action, under a known logging policy. The common practice is to fine-tune on the interactions that went well and discard the rest. That discards the negatives, which makes it positive-unlabeled learning, and, as we show, leaves the model overconfident (Section 4.3).
 
 **This paper.** It makes three claims, the third of which is the core.
-1. **A corollary on detached proper-score rewards.** The general principle is that a detached, parameter-dependent reward drops the pathwise term of the gradient (Schulman et al. 2015; Mohamed et al. 2020). Our contribution is the specific algebra when the reward is a proper score of the sampled action's own probability: a wrong action's reward is never below gold's, the lowest-probability wrong action sampled gets the largest advantage, and the signal is exactly zero at K = 2 (Section 3); and the measured collapse (Section 5.2). The concurrent OpenJev-RLCD (Gao and Wang 2026) reaches the same recipe, pathwise gradient only and the score-function term harmful, by a gradient-norm argument for a different object: its REINFORCE term acts on a sampled rationale, not on the answer whose probability is scored. Bereket and Leskovec (2025) and Damani et al. (2026) show that REINFORCE with a proper-score reward works when the forecast is a separately emitted probability, and Bereket and Leskovec trace GRPO's overconfidence to dividing the advantage by the group standard deviation. Our group baseline subtracts the group mean only, with no standard-deviation normalisation (`rlcd.normalize_std: false` in every full-label run, and a batch mean only in the logged-feedback REINFORCE arm), so their failure mode does not apply, and our pathology is specific to scoring the sampling probability itself.
-2. **A replication, under a stricter protocol, that full labels leave nothing for bandit objectives.** OpenJev-RLCD's direct-scorer ablation reports that proper-score RL never beat cross-entropy on CLINC150 (94.6 against 96.3 accuracy) and that RLVR collapsed to the mode. We find the same direction and add the transfer-to-unseen-schema protocol, the continued cross-entropy control, four bandit arms under one temperature, and the finding that a single temperature is the strongest cheap fix (Section 5.2). The direction is not new.
+1. **A corollary on detached proper-score rewards.** The general principle is that a detached, parameter-dependent reward drops the pathwise term of the gradient (Schulman et al. 2015; Mohamed et al. 2020). Our contribution is the specific algebra when the reward is a proper score of the sampled action's own probability: a wrong action's reward is never below gold's, the lowest-probability wrong action sampled gets the largest advantage, and the signal is exactly zero at K = 2 (Section 3); and the measured collapse (Section 4.2). The concurrent OpenJev-RLCD (Gao and Wang 2026) reaches the same recipe, pathwise gradient only and the score-function term harmful, by a gradient-norm argument for a different object: its REINFORCE term acts on a sampled rationale, not on the answer whose probability is scored. Bereket and Leskovec (2025) and Damani et al. (2026) show that REINFORCE with a proper-score reward works when the forecast is a separately emitted probability, and Bereket and Leskovec trace GRPO's overconfidence to dividing the advantage by the group standard deviation. Our group baseline subtracts the group mean only, with no standard-deviation normalisation (`rlcd.normalize_std: false` in every full-label run, and a batch mean only in the logged-feedback REINFORCE arm), so their failure mode does not apply, and our pathology is specific to scoring the sampling probability itself.
+2. **A replication, under a stricter protocol, that full labels leave nothing for bandit objectives.** OpenJev-RLCD's direct-scorer ablation reports that proper-score RL never beat cross-entropy on CLINC150 (94.6 against 96.3 accuracy) and that RLVR collapsed to the mode. We find the same direction and add the transfer-to-unseen-schema protocol, the continued cross-entropy control, four bandit arms under one temperature, and the finding that a single temperature is the strongest cheap fix (Section 4.2). The direction is not new.
 3. **Learning from logged bandit feedback with CAPS.** CAPS is the direct method of logged bandit feedback (Dudík, Langford and Li 2011), trained with a proper score on the chosen action, the regression-oracle objective (Foster et al. 2018; Foster and Rakhlin 2020). What is new is the package for LoRA-adapted LLM decision heads at 2000 interactions:
    - positive-only fine-tuning diagnosed as positive-unlabeled learning (Elkan and Noto 2008) and beaten from 2000 interactions on Banking77 and from 500 on emotion, with better calibration and selective risk at every log size;
    - no gain from propensity weights, the expected behaviour of a well-specified regression (Shimodaira 2000; Byrd and Lipton 2019);
    - calibration to the noisy channel without correction, and backward correction (Natarajan et al. 2013; Patrini et al. 2017) with its 1 / (1 - 2f) factor (Angluin and Laird 1988);
    - memorisation of a fixed noisy log, and checkpoint selection on the held-out log-likelihood of logged outcomes, which needs no label.
 
-**What the paper does not show.**
-- The feedback is simulated from gold labels, cleanly or with symmetric flips at a known rate.
-- Two adaptation domains, Banking77 and emotion, with one log each.
-- At 1.7B, CAPS has three training seeds and the baselines one.
-- No counterfactual-risk policy learner (POEM or BanditNet), no doubly robust arm and no off-policy value estimate of the learned policy (Section 6).
-- The gap to full labels does not shrink as the log grows (RESULTS_v3 section 8).
+**What the paper does not show.** The feedback is simulated from gold labels, cleanly or with symmetric flips at a known rate, on two adaptation domains, Banking77 and emotion, with one log each, and at 1.7B CAPS has three training seeds and the baselines one. There is no counterfactual-risk policy learner (POEM or BanditNet), no doubly robust arm and no off-policy value estimate of the learned policy (Section 5). The gap to full labels does not shrink as the log grows (RESULTS_v3 section 8).
 
 ## 2. Related work
 
@@ -93,23 +91,11 @@ The gradient of the expected reward, sum_a p_a R(a), has a score-function term, 
 
 The score grades p_a as a forecast of r_a, and a low probability on a wrong option is always a good forecast. CAPS uses the same score as a loss on p_a by its pathwise gradient, not as a reward on a. Neither statement depends on the standard-deviation normalisation that Bereket and Leskovec (2025) identify as GRPO's source of overconfidence: our full-label runs use a group of 4 and subtract its mean only (`rlcd.normalize_std: false` in `configs/rlcd_06b.yaml` and in the `config.yaml` of all 31 full-label runs), and the logged-feedback REINFORCE arm subtracts the batch mean only. Nor does the corollary contradict the proper-score rewards of Damani et al. (2026) and Bereket and Leskovec (2025), which score a confidence the model emits separately, not the probability with which it sampled the action being rewarded.
 
-**Selection.** Train on the first 0.9 N interactions. Keep the checkpoint, from a 50-step grid, with the highest mean Bernoulli log-likelihood of the logged outcomes under p(logged action) on the last 0.1 N: early stopping on the held-out log score of logged outcomes. No gold label is read (RESULTS_v3 section 1). Under noisy feedback this is what prevents memorisation (Section 5.3).
+**Selection.** Train on the first 0.9 N interactions. Keep the checkpoint, from a 50-step grid, with the highest mean Bernoulli log-likelihood of the logged outcomes under p(logged action) on the last 0.1 N: early stopping on the held-out log score of logged outcomes. No gold label is read (RESULTS_v3 section 1). Under noisy feedback this is what prevents memorisation (Section 4.3).
 
-## 4. Relation to the baselines
+## 4. Experiments
 
-- **Temperature** fitted to the logged outcomes: post-hoc and global, and it changes no argmax.
-- **positive_sft**: cross-entropy on confirmed actions, positive-unlabeled learning with the negatives discarded, not unobserved. What practitioners do.
-- **full_sft**: cross-entropy on gold for every logged interaction. The upper bound, at one label per interaction.
-- **Off-policy forms**, all on the same log:
-  - REINFORCE with reward r - p_a, detached, a batch-mean baseline and the importance weight min(p / q, 5) (outcome_minus_p_log);
-  - CAPS with the log score and inverse propensity weighting of the direct-method loss, min(1 / q, 5) divided by its mean over the training prefix (ips_log), which is importance-weighted regression;
-  - positive_sft with the same weights (ips_positive).
-
-The weighted forms reweight the direct-method loss. They are not counterfactual risk minimisation, which weights the policy objective itself; that arm was not run (Section 6). In tables, CAPS with the Brier score is the run name direct_brier, and with the log score direct_log.
-
-## 5. Experiments
-
-### 5.1 Setup
+### 4.1 Setup
 
 **Model and data.**
 - Qwen3-0.6B-Base and 1.7B-Base with LoRA (r 16, alpha 32, attention projections) (Hu et al. 2022; Qwen Team 2025). Answers are read from the letter logits at each question's answer slot in one forward pass.
@@ -129,11 +115,22 @@ The Banking77 log domain drops 30 messages that match the test split and 31 repe
 - Intervals are 95 percent bootstrap over records (Efron 1979; Efron and Tibshirani 1993), 1000 resamples, paired across runs.
 - At N 5000, CAPS-Brier, CAPS-log and full_sft each have three training seeds, and CAPS-Brier also has a second log draw.
 
+**Learners.**
+- **Temperature** fitted to the logged outcomes: post-hoc and global, and it changes no argmax.
+- **positive_sft**: cross-entropy on confirmed actions, positive-unlabeled learning with the negatives discarded, not unobserved. What practitioners do.
+- **full_sft**: cross-entropy on gold for every logged interaction. The upper bound, at one label per interaction.
+- **Off-policy forms**, all on the same log:
+  - REINFORCE with reward r - p_a, detached, a batch-mean baseline and the importance weight min(p / q, 5) (outcome_minus_p_log);
+  - CAPS with the log score and inverse propensity weighting of the direct-method loss, min(1 / q, 5) divided by its mean over the training prefix (ips_log), which is importance-weighted regression;
+  - positive_sft with the same weights (ips_positive).
+
+The weighted forms reweight the direct-method loss. They are not counterfactual risk minimisation, which weights the policy objective itself; that arm was not run (Section 5). In tables, CAPS with the Brier score is the run name direct_brier, and with the log score direct_log.
+
 **Metrics.** Accuracy, ECE with 15 equal-width bins, Brier and NLL, and two selective-classification metrics for the caller who thresholds (Geifman and El-Yaniv 2017). Questions are ranked by top-1 probability. AURC is the area under the risk-coverage curve, the mean error of the kept answers over all coverages; Cov@eps is the largest share of questions a top-1 threshold keeps with error at most eps, for eps in {.05, .10, .20}, with ties in top-1 kept or dropped together. Lower AURC and higher Cov@eps are better. Every trained learner reaches Cov@.20 = 1, and from N 2000 Cov@.10 = 1 as well, so the tables show Cov@.05. The same metrics ranked by the response's confidence field, 1 - H / ln K, are stored under `_entropy` keys.
 
 A temperature changes the level of the probabilities and only slightly their ranking: one temperature is monotone within a question but can reorder top-1 probabilities across questions. At N 5000 the temperature learner cuts zero-shot ECE from .063 to .020 but moves AURC only from .0333 to .0328 and Cov@.05 from .756 to .765 (`S:n_curve.5000.{zero_shot,temperature}`); on CAPS-Brier, whose fitted temperature is near 1, it moves AURC by under .0001 (`S:n_curve.5000.direct_brier_temp_minus_direct_brier.aurc`).
 
-### 5.2 Full labels: the negative results (v2)
+### 4.2 Full labels: the negative results (v2)
 
 **The broken reward.** A first run used Brier as a detached REINFORCE reward on fully labelled in-domain data, group of 4, mean baseline without standard-deviation normalisation (RESULTS_v2 section 2, `runs/sft_06b/metrics.json` and `runs/rlcd_06b_brier_s0/metrics.json:splits.<split>.score.accuracy`; `runs/rlcd_06b_brier_s0/config.yaml:rlcd.normalize_std`).
 - Score accuracy fell from .636 to .111 on SST-5 and from .505 to .044 on Yelp.
@@ -152,7 +149,7 @@ Each ran three seeds at 0.6B. Against SFT plus one in-domain temperature (unseen
 
 When gold is known, whether a sampled answer was right carries no more than the label itself, and one temperature is the strongest cheap fix. OpenJev-RLCD reports the same direction on CLINC150 with a different training setup; the transfer to unseen schemas and the continued cross-entropy control are ours. Figure `figures/v2_arm_ece.png` shows the arms.
 
-### 5.3 Logged bandit feedback only (v3, Banking77)
+### 4.3 Logged bandit feedback only (v3, Banking77)
 
 **The N-curve** (RESULTS_v3 section 2, `S:n_curve.<N>`; Figure `figures/v3_n_curve.png`; Table A.1).
 - *Against positive_sft:* CAPS-Brier ties on accuracy at N 500, +.002 [-.006, +.009]. It leads by +.027 [+.019, +.035] at N 2000 and +.024 [+.016, +.031] at N 5000. Its ECE is lower by .052 to .060 and its AURC by .0035 to .0099 at every N; its Cov@.05 is level at N 500 and higher by +.065 [+.048, +.093] and +.069 [+.046, +.094] at N 2000 and 5000 (`S:n_curve.<N>.direct_brier_minus_positive_sft`).
@@ -206,9 +203,9 @@ The gap to full-label training shrinks with scale, from 1.5 points [1.0, 2.0] at
 - *In-domain ECE:* CAPS-Brier keeps it within .010 of zero-shot.
 - *At a fixed confidence threshold of .95:* positive_sft keeps .916 of answers at .942 accuracy, so it passes on about 6 percent errors as confident. CAPS-Brier keeps .743 at .986 (`S:coverage.positive_sft_n5000_s0.0.95`, `S:coverage.direct_brier_n5000_s0.0.95`). At a fixed error budget of .05 instead, CAPS-Brier keeps .957 of answers against positive_sft's .888 (`S:n_curve.5000.{direct_brier,positive_sft}.coverage_at_0.05`).
 
-**Against an API model.** On the 500-record Banking77 subset, every CAPS-Brier run at N 5000 scores .926 to .936, against gpt-4.1-mini's .918. That comes from 5000 correctness bits, with no paired interval (RESULTS_v3 section 7, `S:b2_reference`).
+**Against an API model.** On the 500-record Banking77 subset, every CAPS-Brier run at N 5000 scores .926 to .936 from 5000 correctness bits, against gpt-4.1-mini's .918, with no paired interval (RESULTS_v3 section 7, `S:b2_reference`).
 
-### 5.4 A second domain: emotion
+### 4.4 A second domain: emotion
 
 (RESULTS_v3 section 13, `E:`; Figure `figures/v4_emotion_n_curve.png`; Table A.7.) The emotion log domain is the dair-ai/emotion train split, 15958 messages, each a choice over all 6 labels with no `other` option. The same sft_06b logs it, at policy accuracy .542, so 8393 of the 15958 logged outcomes are negative, .526 computed from the stored counts, against 1 - .739 = .261 on Banking77 (`runs/v3_log_emotion_s0/metrics.json:accuracy`, `runs/v3_log_emotion_s0/metrics.json:negatives.negatives`, `runs/v3_log_s0/metrics.json:outcome_rate`). Evaluation is on the full emotion test split, 2000 records.
 
@@ -225,7 +222,7 @@ The phase 4 plan predicted that "predictions 1 and 2 hold on emotion from N 2000
 
 ![Emotion N-curve](figures/v4_emotion_n_curve.png)
 
-## 6. Limitations
+## 5. Limitations
 
 - **Simulated feedback.** Outcomes come from gold labels, revealed cleanly or flipped symmetrically at a known rate. Real feedback is delayed, biased towards some errors, and of unknown noise rate, and backward correction needs that rate. The learned compression towards the channel is global: in-domain ECE rises by .050 for the noisy run (RESULTS_v3 section 5).
 - **Domains and sizes.**
@@ -241,11 +238,13 @@ The phase 4 plan predicted that "predictions 1 and 2 hold on emotion from N 2000
 - **Selection.** Checkpoints every 50 steps. At N 2000 the log-score arms peaked at the first candidate, so a finer grid could favour them. At N 500, 50 interactions select (RESULTS_v3 sections 9 and 11).
 - **Coverage of the claim.** The gap to full labels does not shrink with N (RESULTS_v3 section 8). The claim is that using failures beats discarding them, not that it replaces labels.
 
-## 7. Conclusion
+## 6. Conclusion
 
-A decision head that can only see whether its chosen action was right should be fitted as the direct method with a proper score: the chosen action's probability against its own logged outcome, by the pathwise gradient. That is CAPS, OpenJev-RLCD's stage 1 restricted to the one component partial feedback reveals. With 2000 interactions it beats positive-only fine-tuning, which is positive-unlabeled learning with the negatives discarded, in accuracy, calibration and selective risk on both domains (Sections 5.3 and 5.4), and on Banking77 it needs no propensity weights (Section 5.3); under feedback flipped at a known rate it learns the noisy posterior, backward correction maps it back, and early stopping on the held-out log score of logged outcomes stops it before it memorises the single noisy draw (Section 5.3). The two negative results frame it. Scoring the sampled action's own probability as a detached REINFORCE reward is a corollary of the general rule that detaching a parameter-dependent reward drops the pathwise term, and it rewards wrong actions (Sections 3 and 5.2); this is distinct from proper-score rewards on a separately emitted confidence, and from the standard-deviation normalisation of GRPO, which our mean-only baseline does not use. With full labels, consistent with OpenJev-RLCD, no bandit objective beats cross-entropy plus one temperature, here under transfer to unseen schemas (Section 5.2). CAPS stays below full-label training on both domains (Sections 5.3 and 5.4), though on Banking77 the gap shrinks from 1.5 points at 0.6B to .6 at 1.7B (against one full-label seed), so failures are worth keeping, not a substitute for labels.
+A decision head that can only see whether its chosen action was right should be fitted as the direct method with a proper score: the chosen action's probability against its own logged outcome, by the pathwise gradient. That is CAPS, OpenJev-RLCD's stage 1 restricted to the one component partial feedback reveals. With 2000 interactions it beats positive-only fine-tuning, which is positive-unlabeled learning with the negatives discarded, in accuracy, calibration and selective risk on both domains (Sections 4.3 and 4.4), and on Banking77 it needs no propensity weights (Section 4.3); under feedback flipped at a known rate it learns the noisy posterior, backward correction maps it back, and early stopping on the held-out log score of logged outcomes stops it before it memorises the single noisy draw (Section 4.3). CAPS stays below full-label training on both domains (Sections 4.3 and 4.4), though on Banking77 the gap shrinks from 1.5 points at 0.6B to .6 at 1.7B (against one full-label seed), so failures are worth keeping, not a substitute for labels.
 
-## 8. Reproducibility
+The two negative results frame it. Scoring the sampled action's own probability as a detached REINFORCE reward is a corollary of the general rule that detaching a parameter-dependent reward drops the pathwise term, and it rewards wrong actions (Sections 3 and 4.2); this is distinct from proper-score rewards on a separately emitted confidence, and from the standard-deviation normalisation of GRPO, which our mean-only baseline does not use. With full labels, consistent with OpenJev-RLCD, no bandit objective beats cross-entropy plus one temperature, here under transfer to unseen schemas (Section 4.2).
+
+## 7. Reproducibility
 
 - **Code and data:** https://github.com/yuan-phd/jevmark, Apache-2.0.
 - **Tags:** v1, v2 and v3 for the phases, v3-final for the closing state, and v4-paper for the phase 4 experiments and this paper.
