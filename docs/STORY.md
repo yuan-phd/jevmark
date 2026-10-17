@@ -1,6 +1,6 @@
 # jevmark: the story
 
-Every number cites its source: `R1`, `R2` and `R3` are docs/RESULTS_v1.md, RESULTS_v2.md and RESULTS_v3.md; each report names the `runs/.../metrics.json` key behind its numbers. Tags `v1`, `v2` and `v3` mark the end of each phase.
+Every number cites its source: `R1`, `R2` and `R3` are docs/RESULTS_v1.md, RESULTS_v2.md and RESULTS_v3.md, and `PAPER` is docs/PAPER.md; each names the `runs/.../metrics.json` key behind its numbers. Tags `v1`, `v2` and `v3` mark the end of each phase, and `v4-paper` the end of phase 4.
 
 ## What it is, and why
 
@@ -8,7 +8,7 @@ jevmark is a decision model: a caller sends a text and typed questions (yes or n
 
 ## What was built
 
-Per-segment encoding that pins each answer slot to a token boundary and a fixed contract (docs/API_SPEC.md); CLINC150 and SST-5 for training with leak probes and a duplicate check before any GPU run; every split evaluated in full with bootstrap intervals and per-question results kept for CPU recomputation; three baselines on one committed subset; LoRA SFT, RLCD arms and, for v3, learners trained from a deployment log. Three adapters are published at https://huggingface.co/yuanphd/jevmark and load by an `hf://` reference; `scripts/demo.py` runs one support message through five questions and a confidence gate (README).
+A fixed contract (docs/API_SPEC.md); CLINC150 and SST-5 for training, behind leak probes and a duplicate check; every split evaluated in full with bootstrap intervals; three baselines on one committed subset; LoRA SFT, RLCD arms and learners trained from a deployment log. Three adapters are at https://huggingface.co/yuanphd/jevmark, and `scripts/demo.py` runs a support message through five questions and a confidence gate (README).
 
 ## v1: the supervised model works in-domain and reads the options
 
@@ -31,19 +31,30 @@ sft_06b answered 9942 Banking77 train messages once with epsilon 0.1 exploration
 
 - **Negative feedback helps once there is enough of it.** RLCD (pathwise Brier on the logged action) ties positive-only SFT at N 500, +.002 [-.006, +.009], and beats it by 2.7 and 2.4 points at N 2000 and 5000, +.026 [+.019, +.033] for the three-seed mean at N 5000 (R3 sections 2 and 3).
 - **It is the calibrated way to use the negatives.** Its ECE is .052 to .060 below positive-only SFT's at every N; positive-only SFT keeps 90 percent of its answers at the .95 confidence threshold with 93 to 94 percent accuracy (R3 sections 2 and 6).
-- **A temperature on top adds nothing.** Fitted on the logged outcomes under RLCD's own probabilities on its training records, T is .95 to 1.04 and ECE moves by at most .003, every interval containing 0: RLCD already sits at the temperature learner's ECE with its accuracy (R3 section 3).
+- **A temperature on top adds nothing.** Fitted on the logged outcomes, T is .95 to 1.04 and ECE moves by at most .003 (R3 section 3).
 - **Labels still win.** Full-label SFT stays ahead by 0.7 to 1.8 points and the gap does not shrink with N: 1.5 points [1.0, 2.0] at N 5000, seed means of both on three seeds (R3 section 3).
-- **Under noisy feedback a proper score calibrates to the channel.** With outcomes flipped at 0.2, RLCD loses less accuracy than positive-only SFT (+.017 [+.007, +.028] relative), but its ECE goes from .026 to .164, because it learns P(revealed outcome), not P(correct); a known flip rate inverts it. What is left (channel-scale ECE .058 against .014 for a channel-calibrated clean model) is the variance of one noisy draw per interaction: training on the expected outcome instead brings it to .019 to .024. Trained too long, the learner memorises those draws and falls to .813 by step 1407, so the feedback-only early stopping that picked step 250 is essential (R3 section 4).
-- **Adaptation costs the original domain.** At N 5000 RLCD loses 2.7 to 4.3 in-domain points across seeds and full-label SFT 3.6 to 5.2, positive-only SFT under 1; a fitted temperature loses nothing and has the lowest or joint-lowest Banking77 ECE, with no accuracy gain (R3 sections 2 and 5).
+- **Under noisy feedback a proper score calibrates to the channel.** With outcomes flipped at 0.2, RLCD loses less accuracy than positive-only SFT (+.017 [+.007, +.028] relative), but its ECE goes from .026 to .164, because it learns P(revealed outcome), not P(correct); a known flip rate inverts it. Trained too long, it memorises the single noisy draw and falls to .813, so early stopping on the feedback is essential (R3 section 4).
+- **Adaptation costs the original domain.** At N 5000 RLCD loses 2.7 to 4.3 in-domain points across seeds and full-label SFT 3.6 to 5.2, positive-only SFT under 1 (R3 section 5).
 
 Predictions: 1 is a tie at N 500 and holds from N 2000, 2 holds, 3 fails, 4 holds for accuracy and fails for calibration as stored (R3 section 8). A blind audit by two language-model judges, no human, finds a label problem in 12 to 14 percent of Banking77 test labels and none of 50 CLINC150 ones, so Banking77's ceiling sits near .96 and even the "clean" feedback carried label noise (R3 section 9, docs/audit/SUMMARY.md).
 
+## Phase 4: experiments for a paper
+
+Four experiments tested the v3 result, and a draft paper (docs/PAPER.md) and method statement (docs/METHOD.md) report it under the name Chosen-Action Proper Scoring (CAPS) for RLCD's pathwise Brier on the logged action.
+
+- **Off-policy baselines.** Propensity weights add nothing: weighted positive-only SFT is level with the unweighted one (+.000 [-.003, +.004] at N 5000), and no weighted, REINFORCE or log-score arm beats RLCD on accuracy with an interval excluding 0; a log score in place of Brier is a choice within the same family (R3 section 11).
+- **A second domain, emotion.** With a logging policy wrong on more than half the log, RLCD leads positive-only SFT at every N, by 21.7 points [19.7, 23.8] at N 5000, and stays 4.3 points [3.1, 5.6] below full labels (three RLCD seeds against one full-label seed; R3 section 13).
+- **Scale, with seeds.** At 1.7B, three RLCD seeds against one seed of each baseline: RLCD leads positive-only SFT by 3.4 points [2.6, 4.1], and the gap to full labels shrinks from 1.5 points at 0.6B to .6 [.2, 1.1] (R3 section 12).
+- **A noise-rate sweep.** At flip rates 0.1, 0.2 and 0.3, backward correction brings ECE to .020, .051 and .068 against the clean run's .026, as the 1 / (1 - 2f) amplification predicts; the smaller accuracy loss than positive-only SFT holds at 0.1 and 0.2 and is gone at 0.3 (R3 section 4).
+- **A concurrent reconstruction, and the claims repositioned.** OpenJev-RLCD (Gao and Wang 2026) rebuilt the Jev concept independently and reached the same recipe and the same full-label result, so the paper states the broken REINFORCE reward as a corollary of a known rule, the full-label result as a replication under a stricter protocol, and the logged-feedback result as its core (PAPER section 1).
+- **The direct-method lineage.** CAPS is the direct method of logged bandit feedback (Dudík, Langford and Li 2011) and the regression-oracle objective (Foster et al. 2018), OpenJev-RLCD's full-label stage 1 restricted to the one action partial feedback reveals; positive-only SFT is positive-unlabeled learning. What is new is its use for LoRA decision heads, with the noisy channel and label-free checkpoint selection, not the objective (PAPER sections 2 and 3).
+
 ## Five lessons about data and pipelines
 
-1. **A model uses the surface form when that is enough:** sft_06b answered a domain question and its negation the same way in 89 percent of pairs, so phrasing-only accuracy is now a build check.
-2. **Question order can leak a label:** a sentiment noul before the score revealed "not neutral" (+5.0 points over the majority baseline in the v1.2 leak probe, docs/DATA.md section 8), so a record holds one gold-dependent question, after the choice or score (decision 42).
+1. **A model uses the surface form when that is enough:** sft_06b answered a question and its negation alike in 89 percent of pairs, so phrasing-only accuracy is a build check.
+2. **Question order can leak a label:** a sentiment noul before the score revealed "not neutral" (+5.0 points in the v1.2 leak probe, docs/DATA.md section 8), so a record holds one gold-dependent question, last.
 3. **A fast GPU cycle pays only if its sample is right:** the first 300 records of a file covered 3 to 16 intents, so the sampler is stratified.
-4. **Check memory on the worst case first:** a run that ran out of memory at step 392 now fails in its first minute on a pre-flight pass.
+4. **Check memory on the worst case first:** a pre-flight pass now catches in a minute what once failed at step 392.
 5. **A file in git is history, not state:** a committed summary let a step-200 adapter pass as `sft_06b`, so training refuses to start over old run files.
 
 ## Questions and answers
@@ -52,12 +63,12 @@ Predictions: 1 is a tie at N 500 and holds from N 2000, 2 holds, 3 fails, 4 hold
 
 **From distilling a generative model?** Nothing is generated: the answer is a distribution over the request's options from one forward pass, trained with cross-entropy on the option letters. It cannot fail to parse; same-size JSON generation fails on up to 14.7 percent of questions (R1 section 4).
 
-**From prompting an LLM?** At 0.6B it is 16 times faster than gpt-4.1-mini's median and about 1/76 of its cost per request, and more accurate in-domain (.944 against .908). Zero-shot it is less accurate on all four unseen schemas at 0.6B; the cascade, low-confidence answers to the LLM, is the design for that gap (R1 section 4). After v3 adaptation from 5000 logged correctness bits and no labels, every clean RLCD run at N 5000 scores .926 to .936 on the Banking77 subset against gpt-4.1-mini's .918, on 500 records and without a paired interval (R3 section 7).
+**From prompting an LLM?** At 0.6B it is 16 times faster than gpt-4.1-mini and more accurate in-domain (.944 against .908), less accurate zero-shot on all four unseen schemas, which the cascade covers (R1 section 4). After adaptation from 5000 logged correctness bits, every RLCD run at N 5000 scores .926 to .936 on the Banking77 subset against gpt-4.1-mini's .918, without a paired interval (R3 section 7).
 
-**When should RLCD help, and when can it not?** Not with deterministic gold labels, where a bandit outcome carries less than the label and a temperature fixes overconfidence better (R2). It helps when only the chosen action's correctness is observed: from 2000 logged interactions it beats training on the confirmed answers alone and is far better calibrated, though full labels stay ahead, and under noisy feedback it calibrates to the noise, which can be undone only at a known noise rate, and memorises single noisy draws unless stopped early on the feedback (R3 sections 2 to 4).
+**When should RLCD help, and when can it not?** Not with deterministic gold labels, where a bandit outcome carries less than the label and a temperature fixes overconfidence better (R2). It helps when only the chosen action's correctness is observed: from 2000 logged interactions on Banking77 and from 500 on emotion it beats training on the confirmed answers alone and is far better calibrated, at 0.6B and 1.7B and without propensity weights. Full labels stay ahead, by 1.5 points at 0.6B, .6 at 1.7B and 4.3 on emotion. Under noisy feedback it calibrates to the noise, which can be undone only at a known noise rate, and memorises single noisy draws unless stopped early on the feedback (R3 sections 2 to 4 and 11 to 13).
 
-**What do cost and latency assume?** Batch-1 median on one T4: 47.7 ms (sft_06b) and 74.8 ms (sft_17b), against about 3 s for B1 and 777 ms for B2; 0.0032 and 0.0072 USD per 1000 requests assuming a T4 at 0.35 USD per hour at full batch-16 use, an assumption rather than a measured price, against 0.2431 USD for B2 (R1 section 4).
+**What do cost and latency assume?** Batch-1 median on one T4: 47.7 ms (sft_06b) and 74.8 ms (sft_17b), against 777 ms for gpt-4.1-mini; the cost assumes a T4 at 0.35 USD per hour at full use, not a measured price (R1 section 4).
 
 ## Closed, and what remains
 
-The project closed at tag v3-final. Stage 2b was not run, V-c was designed and not run, and the optional improvements (ranked probability score reward, permutation averaging, marker-token head) were not built.
+The project closed at tag v3-final, reopened for phase 4, and closed again at tag v4-paper with the paper as a draft. Not done: real deployment feedback (all feedback is simulated from gold labels), a counterfactual-risk policy learner (POEM or BanditNet), a doubly robust arm and an off-policy value estimate, more full-label and positive-only seeds on emotion and at 1.7B, and a second logging policy per domain (PAPER section 6). From the earlier phases, stage 2b was not run, V-c was designed and not run, and the optional improvements (ranked probability score reward, permutation averaging, marker-token head) were not built.

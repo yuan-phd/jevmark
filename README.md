@@ -6,7 +6,7 @@ jevmark is not affiliated with or endorsed by TypeSafe AI. Their Jev model is th
 
 ## Results
 
-Three phases, each with its own report; every number there is cited to a committed `metrics.json`. In one line: the supervised model works in-domain and reads options it never saw; RLCD adds nothing on full labels; it helps when the only feedback is whether the model's own answer was right. Decision numbers in the reports refer to the author's private working log; every number and conclusion in the reports is backed by the cited metrics files and does not depend on that log.
+Three phases, each with its own report, and a fourth that tests the v3 result for a paper; every number there is cited to a committed `metrics.json`. In one line: the supervised model works in-domain and reads options it never saw; RLCD adds nothing on full labels; it helps when the only feedback is whether the model's own answer was right, on two domains and at both sizes. The paper draft is docs/PAPER.md. Decision numbers in the reports refer to the author's private working log; every number and conclusion in the reports is backed by the cited metrics files and does not depend on that log.
 
 ### v1: the supervised model (docs/RESULTS_v1.md)
 
@@ -65,7 +65,18 @@ The learning curve: the table above as a figure, with 95 percent intervals and, 
 
 The cascade at N 5000: as the confidence threshold rises, each learner answers fewer questions and the answers it keeps are more accurate. Wherever their curves overlap, RLCD's kept answers are more accurate than positive-only SFT's and zero-shot's, and less accurate than full-label SFT's.
 
-**Limits.** v2 and v3 ran on 0.6B only; v3 used one domain, one logging policy and simulated feedback. Together with v2, the claim that survives is narrow: RLCD adds value over positive-only SFT when feedback is partial, and nowhere else tested.
+### Phase 4: experiments for a paper (docs/PAPER.md)
+
+The paper names the v3 learner Chosen-Action Proper Scoring (CAPS): the direct method of logged bandit feedback with a proper score on the chosen action (docs/METHOD.md). Four experiments, reported in docs/RESULTS_v3.md sections 4 and 11 to 13:
+
+- **Off-policy baselines:** propensity weights add nothing, and no weighted, REINFORCE or log-score arm beats RLCD on accuracy with an interval excluding 0.
+- **A second domain, emotion:** with a logging policy wrong on more than half the log, RLCD leads positive-only SFT at every N, by 21.7 points [19.7, 23.8] at N 5000, and stays 4.3 points [3.1, 5.6] below full labels.
+- **1.7B:** over three RLCD seeds, it leads positive-only SFT by 3.4 points [2.6, 4.1], and the gap to full labels shrinks from 1.5 points at 0.6B to 0.6 [0.2, 1.1] (one full-label seed at 1.7B).
+- **Noise rates 0.1 to 0.3:** a known flip rate undoes the calibration to the noise, to ECE 0.020, 0.051 and 0.068 against 0.026 clean; the accuracy advantage under noise is gone at 0.3.
+
+![0.6B against 1.7B at N 5000: accuracy, ECE and in-domain forgetting](docs/figures/v4_scale.png)
+
+**Limits.** v2 ran on 0.6B only; all feedback is simulated from gold labels, with one logging policy per domain; at 1.7B and on emotion the baselines have one seed. Together with v2, the claim that survives is narrow: RLCD adds value over positive-only SFT when feedback is partial, and nowhere else tested.
 
 ## Install
 
@@ -252,8 +263,10 @@ Every run's `metrics.json`, config and training log are committed under `runs/`.
 | v3 | the noise inversion | `uv run python scripts/invert_noisy.py runs/v3_06b_<arm>_n5000_s0_noisy --clean runs/v3_06b_<arm>_n5000_s0` | `runs/v3_06b_<arm>_n5000_s0_noisy_inverted/` |
 | v3 | where a log's negatives fall (top option or other, and the uniform term's share) | `uv run python scripts/log_stats.py runs/v3_log_s0 runs/v3_log_s1 runs/v3_log_17b_s0 runs/v3_log_emotion_s0` (needs each `log.jsonl`) | the `negatives` block of each `runs/<log>/metrics.json` |
 | v3 | every v3 table | `uv run python scripts/compare_v3.py` | `runs/v3_stage_06b/` |
-| v3 | the flip-rate sweep: sibling logs, inversions, table | `uv run python scripts/derive_flip_log.py --log-dir runs/v3_log_s0 --flip-rate <f>` for f 0.1 and 0.3 (needs the seed 0 `log.jsonl`); `uv run python scripts/invert_noisy.py runs/v3_06b_<arm>_n5000_s0_noisy_flip<f> --flip <f> --clean runs/v3_06b_<arm>_n5000_s0`; then `uv run python scripts/compare_noise.py` | `runs/v3_log_s0_flip<f>/`, `runs/<run>_inverted/`, `runs/v3_noise_sweep_06b/` |
-| v3 | the 1.7B tables | `uv run python scripts/compare_v3.py --size 17b`; `uv run python scripts/paired_deltas.py --pair runs/v3_17b_<x> runs/v3_06b_<x> ...` for zeroshot and the three learners at N 5000 `--out runs/paired_v3_17b_vs_06b/metrics.json` | `runs/v3_stage_17b/`, `runs/paired_v3_17b_vs_06b/` |
+| phase 4 | the flip-rate sweep: sibling logs, inversions, table | `uv run python scripts/derive_flip_log.py --log-dir runs/v3_log_s0 --flip-rate <f>` for f 0.1 and 0.3 (needs the seed 0 `log.jsonl`); `uv run python scripts/invert_noisy.py runs/v3_06b_<arm>_n5000_s0_noisy_flip<f> --flip <f> --clean runs/v3_06b_<arm>_n5000_s0`; then `uv run python scripts/compare_noise.py` | `runs/v3_log_s0_flip<f>/`, `runs/<run>_inverted/`, `runs/v3_noise_sweep_06b/` |
+| phase 4 | the emotion tables | `uv run python scripts/compare_v3.py --domain emotion` | `runs/v3_stage_emotion_06b/` |
+| phase 4 | the emotion label-noise audit summary | `uv run python scripts/summarise_label_audit.py --domain emotion` | `docs/audit/emotion_summary.json` |
+| phase 4 | the 1.7B tables, with the direct_brier seeds | `uv run python scripts/compare_v3.py --size 17b`; `uv run python scripts/paired_deltas.py --pair runs/v3_17b_<x> runs/v3_06b_<x> ...` for zeroshot and the three learners at N 5000 `--out runs/paired_v3_17b_vs_06b/metrics.json` | `runs/v3_stage_17b/`, `runs/paired_v3_17b_vs_06b/` |
 | v3 | the label-noise audit summary | `uv run python scripts/summarise_label_audit.py` | `docs/audit/summary.json` |
 | all | every report figure | `uv run python scripts/make_figures.py` (committed metrics files only) | `docs/figures/` |
 
@@ -266,7 +279,8 @@ Training and evaluation themselves (`make train-sft`, `scripts/train_rlcd.py`, `
 - docs/API_SPEC.md: the request and response contract.
 - docs/DATA.md, docs/KAGGLE.md: data, and how to run on Kaggle.
 - docs/MODEL_CARD.md: the card of the adapters on the Hugging Face Hub.
-- docs/audit/SUMMARY.md: the Banking77 label-noise audit.
+- docs/audit/SUMMARY.md, docs/audit/EMOTION_SUMMARY.md: the Banking77 and emotion label-noise audits.
+- docs/PAPER.md: the paper draft (phase 4), every number cited to a `metrics.json`; docs/METHOD.md: the method statement; docs/references.bib: its references, each checked against a primary source except one the paper does not cite, marked NOT FOUND.
 
 ## License
 
