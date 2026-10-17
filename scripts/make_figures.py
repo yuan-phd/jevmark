@@ -545,8 +545,8 @@ def v4_scale(runs: Path, out: Path, written: list[Path]) -> None:
     fig.suptitle("Scale, Banking77 at N 5000: the ordering holds at 1.7B, direct_brier close to full_sft", x=0.01, ha="left", fontsize=10)
     fig.tight_layout(rect=(0, 0.09, 1, 0.95))
     caption(fig, "Source: runs/v3_stage_06b/metrics.json and runs/v3_stage_17b/metrics.json: n_curve.5000.<learner>, seeds.training_seeds and seeds.full_sft.training_seeds "
-                 "(0.6B direct_brier and full_sft: mean of training seeds 0, 1, 2 with their range; everything else seed 0), forgetting.test_indomain.minus_zero_shot. "
-                 "1.7B: one training seed; its seed ranges appear when the stage file holds more. v3_banking77_test_full and test_indomain.")
+                 "(direct_brier at both sizes and 0.6B full_sft: mean of training seeds 0, 1, 2 with their range; everything else seed 0), "
+                 "forgetting.test_indomain.minus_zero_shot. v3_banking77_test_full and test_indomain.")
     save(fig, out, "v4_scale.png", written)
 
 
@@ -588,9 +588,7 @@ FIGURES = (v1_full_splits, v1_subset, v2_cascade, v2_reliability, v2_arm_ece, v3
 EXPECTED = ("v1_full_splits.png", "v1_subset.png", "v2_cascade.png", "v2_reliability.png", "v2_arm_ece.png", "v3_n_curve.png", "v3_coverage.png", "v3_noise.png",
             "v4_offpolicy.png", "v4_noise_sweep.png", "v4_scale.png", "v4_emotion_n_curve.png")
 # Figures waiting for runs, not drawn: the file each would read and what it waits for.
-PENDING = {
-    "v4_scale.png, 1.7B seed ranges": ("runs/v3_stage_17b/metrics.json", "direct_brier seeds 1 and 2 at 1.7B; drawn by v4_scale without a code change once present"),
-}
+PENDING: dict[str, tuple[str, str]] = {}
 
 
 def main(argv: Sequence[str] | None = None) -> int:

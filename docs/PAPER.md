@@ -15,7 +15,7 @@ The abstract's numbers are cited where they recur in Section 5 and the appendix.
 A decision head reads a state and a list of options and returns a probability for each option in one forward pass; a caller answers when the top probability clears a threshold and escalates otherwise. Once deployed, it usually observes only whether the option it chose was right: logged bandit feedback. We adapt such a head, a LoRA adapter on Qwen3-0.6B-Base and 1.7B-Base, from that feedback, and report three results.
 1. **A proper score of the sampled action's own probability is not a usable REINFORCE reward.** That a detached, parameter-dependent reward drops the pathwise term of the gradient is known; we give the corollary for this reward. Against a group-mean baseline every wrong action earns at least the gold action's reward, the lowest-probability wrong action sampled gets the largest advantage, and at K = 2 the signal is exactly zero. In practice it cut one score task's accuracy from .636 to .111.
 2. **With full labels, no bandit objective beat cross-entropy plus one temperature on calibration under label-space shift.** This replicates a concurrent finding under a stricter protocol: transfer to unseen label schemas, a continued cross-entropy control, and four bandit arms under one temperature. The best arm was level, -.002 [-.006, +.004].
-3. **From logged bandit feedback alone, Chosen-Action Proper Scoring (CAPS) works.** CAPS is the direct method with a proper score: it fits the chosen action's probability to its logged outcome by the pathwise gradient. On Banking77 it beats fine-tuning on confirmed answers only, which is positive-unlabeled learning with the negatives discarded, by +2.6 points [1.9, 3.3] in accuracy, .053 in ECE and .0095 in AURC. It stays 1.5 points [1.0, 2.0] below full-label training at 0.6B and .4 points [-1.0, +.2] below it at 1.7B. Propensity weights add nothing, as expected of a well-specified regression. Under feedback flipped at a known rate, CAPS calibrates to the noisy channel without any correction, backward correction maps it back, and early stopping on the held-out log-likelihood of logged outcomes prevents the memorisation of the single noisy draw.
+3. **From logged bandit feedback alone, Chosen-Action Proper Scoring (CAPS) works.** CAPS is the direct method with a proper score: it fits the chosen action's probability to its logged outcome by the pathwise gradient. On Banking77 it beats fine-tuning on confirmed answers only, which is positive-unlabeled learning with the negatives discarded, by +2.6 points [1.9, 3.3] in accuracy, .053 in ECE and .0095 in AURC. It stays 1.5 points [1.0, 2.0] below full-label training at 0.6B and .6 points [.2, 1.1] below it at 1.7B, so the gap shrinks with scale (three CAPS seeds, one full-label seed at 1.7B). Propensity weights add nothing, as expected of a well-specified regression. Under feedback flipped at a known rate, CAPS calibrates to the noisy channel without any correction, backward correction maps it back, and early stopping on the held-out log-likelihood of logged outcomes prevents the memorisation of the single noisy draw.
 
 ## 1. Introduction
 
@@ -35,7 +35,7 @@ A decision head reads a state and a list of options and returns a probability fo
 **What the paper does not show.**
 - The feedback is simulated from gold labels, cleanly or with symmetric flips at a known rate.
 - Two adaptation domains, Banking77 and emotion, with one log each.
-- 1.7B is one seed [pending session L].
+- At 1.7B, CAPS has three training seeds and the baselines one.
 - No counterfactual-risk policy learner (POEM or BanditNet), no doubly robust arm and no off-policy value estimate of the learned policy (Section 6).
 - The gap to full labels does not shrink as the log grows (RESULTS_v3 section 8).
 
@@ -192,11 +192,12 @@ The residual is therefore the variance of one noisy draw per interaction, not a 
 
 ![Noise-rate sweep](figures/v4_noise_sweep.png)
 
-**Scale** (RESULTS_v3 section 12, `L:n_curve.5000`; Figure `figures/v4_scale.png`; Table A.5). At 1.7B, with its own log:
-- CAPS-Brier reaches .949 against full_sft's .953, -.004 [-.010, +.002] on one seed, and AURC .0066 against .0053, +.0013 [+.0004, +.0022]; Cov@.05 is level, -.002 [-.015, +.001] (`L:n_curve.5000.direct_brier_minus_full_sft`);
-- it leads positive_sft by +.036 [+.028, +.045] in accuracy, -.0111 [-.0145, -.0083] in AURC and +.093 [+.065, +.115] in Cov@.05 (`L:n_curve.5000.direct_brier_minus_positive_sft`).
+**Scale** (RESULTS_v3 section 12, `L:n_curve.5000`, `L:seeds`; Figure `figures/v4_scale.png`; Table A.5). At 1.7B, with its own log, CAPS-Brier on three training seeds against one seed of each baseline:
+- *Seeds:* accuracy .947 (.942, .949), ECE .016 (.013, .021), AURC .0073 (.0066, .0085) (`L:seeds.training_seeds`).
+- *Against full_sft:* .6 points below, -.006 [-.011, -.002], with ECE -.007 [-.011, +.000], AURC +.0021 [+.0012, +.0030] and Cov@.05 -.0068 [-.0187, -.0002] (`L:seeds.training_seed_mean_minus_full_sft`). Seed 0 alone had given -.004 [-.010, +.002] (`L:n_curve.5000.direct_brier_minus_full_sft`).
+- *Against positive_sft:* +.034 [+.026, +.041] in accuracy, -.0104 [-.0135, -.0078] in AURC and +.088 [+.062, +.108] in Cov@.05 (`L:seeds.training_seed_mean_minus_positive_sft`).
 
-The larger model helps the learner from logged bandit feedback most (RESULTS_v3 section 12). The 1.7B seed ranges are [pending session L].
+The gap to full-label training shrinks with scale, from 1.5 points [1.0, 2.0] at 0.6B (seed means of both) to .6 points [.2, 1.1] at 1.7B, against a single full_sft seed there. The larger model helps the learner from logged bandit feedback most: every 1.7B CAPS-Brier seed is above every 0.6B one (RESULTS_v3 section 12).
 
 ![Scale](figures/v4_scale.png)
 
@@ -230,7 +231,7 @@ The phase 4 plan predicted that "predictions 1 and 2 hold on emotion from N 2000
 - **Domains and sizes.**
   - Two adaptation domains with one log each; on emotion, positive_sft and full_sft have one seed.
   - One logging policy per domain at epsilon 0.1: .836 accurate on Banking77, .542 on emotion.
-  - Two sizes, with 1.7B on one seed [pending session L].
+  - Two sizes; at 1.7B, CAPS-Brier has three training seeds and positive_sft and full_sft one each, so the 1.7B gaps carry no baseline seed variance.
   - The noise sweep has one seed per rate.
 - **Missing off-policy arms.** The propensity-weighted arms reweight the direct-method loss; there is no counterfactual-risk policy learner (POEM or BanditNet; Swaminathan and Joachims 2015a; Joachims, Swaminathan and de Rijke 2018), no doubly robust arm (Dudík, Langford and Li 2011), and no self-normalised off-policy estimate of the learned policy's value from the log. The no-gain result is shown against reweighted regression, not against the methods built around the weights.
 - **Label noise, judged by two language models, no human.**
@@ -242,7 +243,7 @@ The phase 4 plan predicted that "predictions 1 and 2 hold on emotion from N 2000
 
 ## 7. Conclusion
 
-A decision head that can only see whether its chosen action was right should be fitted as the direct method with a proper score: the chosen action's probability against its own logged outcome, by the pathwise gradient. That is CAPS, OpenJev-RLCD's stage 1 restricted to the one component partial feedback reveals. With 2000 interactions it beats positive-only fine-tuning, which is positive-unlabeled learning with the negatives discarded, in accuracy, calibration and selective risk on both domains (Sections 5.3 and 5.4), and on Banking77 it needs no propensity weights (Section 5.3); under feedback flipped at a known rate it learns the noisy posterior, backward correction maps it back, and early stopping on the held-out log score of logged outcomes stops it before it memorises the single noisy draw (Section 5.3). The two negative results frame it. Scoring the sampled action's own probability as a detached REINFORCE reward is a corollary of the general rule that detaching a parameter-dependent reward drops the pathwise term, and it rewards wrong actions (Sections 3 and 5.2); this is distinct from proper-score rewards on a separately emitted confidence, and from the standard-deviation normalisation of GRPO, which our mean-only baseline does not use. With full labels, consistent with OpenJev-RLCD, no bandit objective beats cross-entropy plus one temperature, here under transfer to unseen schemas (Section 5.2). CAPS stays below full-label training on both domains (Sections 5.3 and 5.4), so failures are worth keeping, not a substitute for labels.
+A decision head that can only see whether its chosen action was right should be fitted as the direct method with a proper score: the chosen action's probability against its own logged outcome, by the pathwise gradient. That is CAPS, OpenJev-RLCD's stage 1 restricted to the one component partial feedback reveals. With 2000 interactions it beats positive-only fine-tuning, which is positive-unlabeled learning with the negatives discarded, in accuracy, calibration and selective risk on both domains (Sections 5.3 and 5.4), and on Banking77 it needs no propensity weights (Section 5.3); under feedback flipped at a known rate it learns the noisy posterior, backward correction maps it back, and early stopping on the held-out log score of logged outcomes stops it before it memorises the single noisy draw (Section 5.3). The two negative results frame it. Scoring the sampled action's own probability as a detached REINFORCE reward is a corollary of the general rule that detaching a parameter-dependent reward drops the pathwise term, and it rewards wrong actions (Sections 3 and 5.2); this is distinct from proper-score rewards on a separately emitted confidence, and from the standard-deviation normalisation of GRPO, which our mean-only baseline does not use. With full labels, consistent with OpenJev-RLCD, no bandit objective beats cross-entropy plus one temperature, here under transfer to unseen schemas (Section 5.2). CAPS stays below full-label training on both domains (Sections 5.3 and 5.4), though on Banking77 the gap shrinks from 1.5 points at 0.6B to .6 at 1.7B (against one full-label seed), so failures are worth keeping, not a substitute for labels.
 
 ## 8. Reproducibility
 
@@ -253,6 +254,7 @@ A decision head that can only see whether its chosen action was right should be 
   - b6b9e85 and 409c983: the off-policy runs;
   - 36e8ee1: the noise sweep;
   - c9e29c6: the 1.7B runs;
+  - 344019b: the 1.7B CAPS-Brier seeds 1 and 2;
   - c86d322: the emotion log and runs;
   - b9c0257: AURC and Cov@eps added to every run and stage file, earlier values unchanged.
 - **Run provenance:** every run's `metrics.json` records its commit, dirty flag, data sha256 and adapter sha256.
@@ -457,7 +459,7 @@ Source: RESULTS_v3 section 4, `N:by_rate.<f>.<arm>` and `N:clean.<arm>`. "Final 
 
 ### A.5 Scale: 1.7B against 0.6B at N 5000
 
-Source: RESULTS_v3 section 12, `L:n_curve.5000`, `S:n_curve.5000`, `S:seeds`. The 1.7B seed ranges are [pending session L].
+Source: RESULTS_v3 section 12, `L:n_curve.5000`, `L:seeds`, `S:n_curve.5000`, `S:seeds`. The 1.7B columns are seed 0; CAPS-Brier's three-seed row and differences follow the tables.
 
 | learner | 1.7B accuracy | 1.7B ECE | 1.7B Brier | 1.7B NLL | 1.7B AURC | 1.7B Cov@.05 | 0.6B accuracy, seed 0 | 0.6B accuracy, seed mean (range) | 0.6B ECE, seed mean |
 |---|---|---|---|---|---|---|---|---|---|
@@ -469,8 +471,12 @@ Source: RESULTS_v3 section 12, `L:n_curve.5000`, `S:n_curve.5000`, `S:seeds`. Th
 
 | 1.7B paired difference | accuracy | ECE | Brier | NLL | AURC | Cov@.05 |
 |---|---|---|---|---|---|---|
-| CAPS-Brier minus positive_sft | +.036 [+.028, +.045] | -.046 [-.054, -.037] | -.075 [-.088, -.061] | -.357 [-.411, -.306] | -.0111 [-.0145, -.0083] | +.093 [+.065, +.115] |
-| CAPS-Brier minus full_sft | -.004 [-.010, +.002] | -.002 [-.008, +.004] | +.007 [+.001, +.013] | +.026 [+.013, +.040] | +.0013 [+.0004, +.0022] | -.002 [-.015, +.001] |
+| CAPS-Brier seed 0 minus positive_sft | +.036 [+.028, +.045] | -.046 [-.054, -.037] | -.075 [-.088, -.061] | -.357 [-.411, -.306] | -.0111 [-.0145, -.0083] | +.093 [+.065, +.115] |
+| CAPS-Brier seed 0 minus full_sft | -.004 [-.010, +.002] | -.002 [-.008, +.004] | +.007 [+.001, +.013] | +.026 [+.013, +.040] | +.0013 [+.0004, +.0022] | -.002 [-.015, +.001] |
+| CAPS-Brier seed mean minus positive_sft | +.034 [+.026, +.041] | -.051 [-.057, -.040] | -.070 [-.083, -.057] | -.353 [-.409, -.303] | -.0104 [-.0135, -.0078] | +.088 [+.062, +.108] |
+| CAPS-Brier seed mean minus full_sft | -.006 [-.011, -.002] | -.007 [-.011, +.000] | +.012 [+.006, +.017] | +.030 [+.018, +.043] | +.0021 [+.0012, +.0030] | -.0068 [-.0187, -.0002] |
+
+CAPS-Brier at 1.7B over training seeds 0, 1 and 2, mean (range) (`L:seeds.training_seeds`): accuracy .947 (.942, .949), ECE .016 (.013, .021), Brier .084 (.079, .093), NLL .192 (.182, .205), AURC .0073 (.0066, .0085), Cov@.05 .993 (.983, .998). The differences above put the seed mean against the single seed of each baseline (`L:seeds.training_seed_mean_minus_positive_sft`, `L:seeds.training_seed_mean_minus_full_sft`).
 
 ### A.6 Full labels: unseen-schema ECE, 0.6B, three seeds
 

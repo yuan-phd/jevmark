@@ -307,7 +307,7 @@ The predictions as stated before the runs, each with its verdict.
 - **Two domains.** Banking77, with 10 options and gold always present, so `other` is never right and "never answer other" is free to learn; and emotion, with 6 options and no `other` (section 13). Other option counts or a gold-absent construction may differ.
 - **One logging policy per domain.** sft_06b at epsilon 0.1, .836 accurate on the Banking77 log domain and .542 on emotion (`runs/v3_log_s0/metrics.json:accuracy`, `runs/v3_log_emotion_s0/metrics.json:accuracy`); the emotion log shows a weaker policy changes how many negatives there are (section 13), and a more exploratory one would change which.
 - **A simulated feedback channel.** Outcomes come from gold labels, revealed perfectly or flipped symmetrically at a known rate; real deployment feedback is delayed, biased towards some errors and of unknown noise rate, which the inversion needs.
-- **Two sizes, one seed at the larger.** 0.6B for everything; 1.7B for the N 5000 comparison of three learners, on one training seed and one log (section 12).
+- **Two sizes, one seed for the baselines at the larger.** 0.6B for everything; 1.7B for the N 5000 comparison of three learners on one log, with direct_brier on three training seeds and positive_sft and full_sft on one (section 12).
 - **The checkpoint grid.** Checkpoints are every 50 steps. At N 2000 direct_log and ips_log peaked at step 50, the first candidate, so a finer grid could favour the log-score arms there (section 11).
 - **The noise sweep has one seed per rate.** The rates are paired through nested flips, which makes the trends over f firmer than independent draws would, but the learner comparison at a given rate carries training-seed variance (section 4).
 - **positive_sft has one seed.** Its side of every comparison carries no seed variance; direct_brier's and full_sft's three seeds each span .6 points on Banking77 accuracy, which suggests it is small. full_sft was run on three seeds at N 5000 (section 3); at N 500 and 2000 every learner has seed 0 only.
@@ -319,7 +319,7 @@ The predictions as stated before the runs, each with its verdict.
 
 v3 shows that when a deployed model sees only the correctness of its own actions on a new domain, training on that signal with a pathwise Brier loss beats discarding the failures, by 2.4 to 2.7 points of accuracy from 2000 logged interactions and by about .05 to .06 ECE at every N, and that it closes 69 to 91 percent of the accuracy gap between zero-shot and full-label SFT. It does not show that RLCD approaches full labels as feedback grows, since the 1.5-point gap at N 5000 (seed means of both) is no smaller than at N 500, and it does not show calibration robust to noisy feedback, where a proper score calibrates to the channel and needs a known noise rate to be undone. Together with v2, the claim that survives is narrow: RLCD adds value over positive-only SFT when the only feedback is partial, and nowhere else that was tested.
 
-Phase 4 adds four checks (sections 4, 11, 12 and 13), and they leave that claim standing. Importance weighting adds nothing on this log, and a log score in place of the Brier score is a choice within the same pathwise family, with a small lead on Brier and NLL and more in-domain forgetting. At 1.7B the ordering holds and direct_brier comes within .4 points of full-label SFT, with an interval covering 0, on one seed. Under noise, RLCD's smaller accuracy loss than positive-only SFT holds at flip rates 0.1 and 0.2 and is gone at 0.3. On a second domain, emotion, with a logging policy wrong on more than half the log, RLCD leads positive-only SFT at every N and by 21.7 points at N 5000, and the gap to full labels is larger, 4.3 points (section 13).
+Phase 4 adds four checks (sections 4, 11, 12 and 13), and they leave that claim standing. Importance weighting adds nothing on this log, and a log score in place of the Brier score is a choice within the same pathwise family, with a small lead on Brier and NLL and more in-domain forgetting. At 1.7B the ordering holds on three training seeds of direct_brier, and its gap to full-label SFT shrinks from 1.5 points at 0.6B to .6 points [.2, 1.1], against a single full_sft seed at 1.7B. Under noise, RLCD's smaller accuracy loss than positive-only SFT holds at flip rates 0.1 and 0.2 and is gone at 0.3. On a second domain, emotion, with a logging policy wrong on more than half the log, RLCD leads positive-only SFT at every N and by 21.7 points at N 5000, and the gap to full labels is larger, 4.3 points (section 13).
 
 ## 11. Off-policy baselines
 
@@ -421,12 +421,16 @@ On v3_banking77_test_full at N 5000 (`L:n_curve.5000`; 0.6B from `S:n_curve.5000
 | direct_brier | .949 [.941, .957] | .021 [.015, .028] | .079 | .188 | .929 | .931 (.929, .935) | .025 |
 | full_sft | .953 [.945, .960] | .023 [.018, .030] | .072 | .162 | .947 | .946 (.943, .949) | .022 |
 
-Paired differences at 1.7B (`L:n_curve.5000.direct_brier_minus_positive_sft`, `.direct_brier_minus_full_sft`) and the 0.6B seed-mean counterparts (`S:seeds.training_seed_mean_minus_positive_sft`, `S:seeds.training_seed_mean_minus_full_sft_seed_mean`):
+Session L (decision 69) added direct_brier at N 5000 for training seeds 1 and 2 on the same 1.7B log, at commit 344019b, not dirty, fp16 without fallback, selected steps 450 and 250 (`runs/v3_17b_direct_brier_n5000_s{1,2}/train_summary.json:best_step`). Over the three seeds (`L:seeds.training_seeds`), direct_brier's accuracy is .947 (.942, .949), ECE .016 (.013, .021), Brier .084 (.079, .093) and NLL .192 (.182, .205); the accuracy range, .7 points, is like 0.6B's .6.
+
+Paired differences at 1.7B, seed 0 (`L:n_curve.5000.direct_brier_minus_positive_sft`, `.direct_brier_minus_full_sft`) and the three-seed mean against the single seed of each baseline (`L:seeds.training_seed_mean_minus_positive_sft`, `L:seeds.training_seed_mean_minus_full_sft`), and the 0.6B seed-mean counterparts (`S:seeds.training_seed_mean_minus_positive_sft`, `S:seeds.training_seed_mean_minus_full_sft_seed_mean`):
 
 | | accuracy | ECE | Brier | NLL |
 |---|---|---|---|---|
-| 1.7B direct_brier minus positive_sft | +.036 [+.028, +.045] | -.046 [-.054, -.037] | -.075 [-.088, -.061] | -.357 [-.411, -.306] |
-| 1.7B direct_brier minus full_sft | -.004 [-.010, +.002] | -.002 [-.008, +.004] | +.007 [+.001, +.013] | +.026 [+.013, +.040] |
+| 1.7B direct_brier seed 0 minus positive_sft | +.036 [+.028, +.045] | -.046 [-.054, -.037] | -.075 [-.088, -.061] | -.357 [-.411, -.306] |
+| 1.7B direct_brier seed 0 minus full_sft | -.004 [-.010, +.002] | -.002 [-.008, +.004] | +.007 [+.001, +.013] | +.026 [+.013, +.040] |
+| 1.7B seed mean minus positive_sft | +.034 [+.026, +.041] | -.051 [-.057, -.040] | -.070 [-.083, -.057] | -.353 [-.409, -.303] |
+| 1.7B seed mean minus full_sft | -.006 [-.011, -.002] | -.007 [-.011, +.000] | +.012 [+.006, +.017] | +.030 [+.018, +.043] |
 | 0.6B seed mean minus positive_sft | +.026 [+.019, +.033] | -.053 [-.059, -.044] | -.060 [-.071, -.048] | -.389 [-.443, -.333] |
 | 0.6B seed mean minus full_sft seed mean | -.015 [-.020, -.010] | +.003 [-.001, +.008] | +.027 [+.020, +.034] | +.082 [+.061, +.101] |
 
@@ -444,25 +448,27 @@ Forgetting at 1.7B, minus its own zero-shot (test_indomain .952, test_unseen_int
 | learner | test_indomain accuracy | test_indomain ECE | test_unseen_intents accuracy | test_unseen_intents ECE |
 |---|---|---|---|---|
 | positive_sft | -.011 [-.014, -.008] | +.021 | +.027 [+.021, +.033] | -.012 |
-| direct_brier | -.040 [-.045, -.036] | +.006 [+.002, +.010] | +.012 [+.004, +.020] | -.028 |
+| direct_brier seed 0 | -.040 [-.045, -.036] | +.006 [+.002, +.010] | +.012 [+.004, +.020] | -.028 |
+| direct_brier seed 1 | -.050 [-.054, -.045] | +.006 [+.003, +.011] | +.009 [+.000, +.017] | -.028 |
+| direct_brier seed 2 | -.036 [-.040, -.032] | -.006 [-.007, +.001] | +.011 [+.003, +.019] | -.036 |
 | full_sft | -.038 [-.042, -.033] | +.025 [+.021, +.029] | +.011 [+.003, +.019] | -.014 |
 
-Coverage at .80 / .90 / .95 on v3_banking77_test_full, accuracy of the kept answers in brackets (`L:coverage`, `S:coverage`): 1.7B direct_brier .897 (.981) / .844 (.985) / .793 (.989) against .868 (.974) / .809 (.983) / .743 (.986) at 0.6B seed 0; 1.7B full_sft .940 (.978) / .907 (.986) / .868 (.990) against .947 (.973) / .918 (.979) / .888 (.982); the 1.7B temperature learner keeps .026 at .95 against .189 at 0.6B. The predicted-`other` rate is .067 for zero-shot and 0 for direct_brier and full_sft (`L:other`).
+Coverage at .80 / .90 / .95 on v3_banking77_test_full, accuracy of the kept answers in brackets (`L:coverage`, `S:coverage`): 1.7B direct_brier .897 (.981) / .844 (.985) / .793 (.989) against .868 (.974) / .809 (.983) / .743 (.986) at 0.6B seed 0, and .889 (.981) / .841 (.986) / .779 (.991) and .837 (.984) / .769 (.989) / .677 (.994) for 1.7B seeds 1 and 2; 1.7B full_sft .940 (.978) / .907 (.986) / .868 (.990) against .947 (.973) / .918 (.979) / .888 (.982); the 1.7B temperature learner keeps .026 at .95 against .189 at 0.6B. The predicted-`other` rate is .067 for zero-shot and 0 for direct_brier and full_sft (`L:other`).
 
 ![0.6B against 1.7B at N 5000: accuracy, ECE and in-domain forgetting](figures/v4_scale.png)
 
-`figures/v4_scale.png`: the 1.7B table above against 0.6B for every learner: accuracy, ECE and in-domain accuracy minus zero-shot, with the range over training seeds where a size has more than one (0.6B direct_brier and full_sft); 1.7B is one seed (`S:n_curve.5000`, `S:seeds`, `S:forgetting`, `L:n_curve.5000`, `L:forgetting`).
+`figures/v4_scale.png`: the 1.7B table above against 0.6B for every learner: accuracy, ECE and in-domain accuracy minus zero-shot, with the mean and range over training seeds where a size has more than one (direct_brier at both sizes, 0.6B full_sft); the other learners are seed 0 (`S:n_curve.5000`, `S:seeds`, `S:forgetting`, `L:n_curve.5000`, `L:seeds`, `L:forgetting`).
 
 **Selection.** Selected steps 100 (positive_sft), 250 (full_sft) and 400 (direct_brier) (`runs/v3_17b_<arm>_n5000_s0/train_summary.json:best_step`). At 1.7B positive_sft's selected adapter beats its start on the criterion (-.322 against -.358), which no positive_sft run did at 0.6B; after its best step the criterion falls to -.539 by step 1407, while direct_brier's flattens near -.165 and full_sft's keeps falling to -.249.
 
 **The prediction, reported as stated.**
-- *The ordering holds,* with direct_brier within .4 points of full_sft (-.004 [-.010, +.002], interval covering 0, one seed) and ahead of positive_sft by 3.6 points. ECE is level between direct_brier and full_sft (-.002); full_sft keeps a small lead on Brier and NLL.
-- *Every gap smaller: fails in part.* The gap to full_sft shrinks (-.015 for the 0.6B seed means, -.004 at 1.7B), and the gap over positive_sft grows (+.026 to +.036).
-- *The premise failed.* On v3_banking77_test_full the 1.7B zero-shot start is level with 0.6B's (.848 against .851, -.003 [-.014, +.008]) and less calibrated (ECE .089 against .063); .852 is the test_banking77 figure. What changes with size is how much each learner gains: direct_brier at 1.7B is +.020 [+.011, +.028] above its 0.6B seed 0 run and above all three 0.6B seeds, while full_sft (+.006) and positive_sft (+.008) gain amounts with intervals covering 0. The larger model helps the outcome-only learner most.
+- *The ordering holds* on all three direct_brier seeds. Its seed mean is .6 points below full_sft's single seed, -.006 [-.011, -.002], an interval that excludes 0 where seed 0 alone gave -.004 [-.010, +.002], and 3.4 points ahead of positive_sft. ECE is level or slightly lower than full_sft's (-.007 [-.011, +.000]); full_sft keeps a small lead on Brier and NLL.
+- *Every gap smaller: fails in part.* The gap to full_sft shrinks from 1.5 points (-.015, the 0.6B seed means) to .6 (-.006, the 1.7B seed mean against one full_sft seed), and the gap over positive_sft grows (+.026 to +.034).
+- *The premise failed.* On v3_banking77_test_full the 1.7B zero-shot start is level with 0.6B's (.848 against .851, -.003 [-.014, +.008]) and less calibrated (ECE .089 against .063); .852 is the test_banking77 figure. What changes with size is how much each learner gains: direct_brier at 1.7B is +.020 [+.011, +.028] above its 0.6B seed 0 run, and all three 1.7B seeds (.942 to .949) are above all three 0.6B seeds (.929 to .935), while full_sft (+.006) and positive_sft (+.008) gain amounts with intervals covering 0. The larger model helps the outcome-only learner most.
 
-**Forgetting at both sizes.** direct_brier keeps in-domain calibration: its in-domain ECE moves by +.006 at 1.7B against +.025 for full_sft, as at 0.6B (within .010, against .015 to .043; section 5). Its in-domain accuracy cost is like full_sft's: -.040 against -.038 at 1.7B, and seed ranges of -.027 to -.043 against -.036 to -.052 at 0.6B. Its gain on the unseen intents is smaller at 1.7B (+.012 against +.020 to +.026 at 0.6B).
+**Forgetting at both sizes.** direct_brier keeps in-domain calibration: its in-domain ECE moves by -.006 to +.006 across the three 1.7B seeds against +.025 for full_sft, as at 0.6B (within .010, against .015 to .043; section 5). Its in-domain accuracy cost is like full_sft's: -.036 to -.050 across seeds against -.038 at 1.7B, and seed ranges of -.027 to -.043 against -.036 to -.052 at 0.6B. Its gain on the unseen intents is smaller at 1.7B (+.009 to +.012 against +.020 to +.026 at 0.6B).
 
-Everything at 1.7B is one training seed on one log. The direct_brier and full_sft comparison and the forgetting figures rest on that one seed; direct_brier's gain from the larger model is the firmest result, with its interval above 0 and the 1.7B value above every 0.6B seed.
+Everything at 1.7B is one log, and positive_sft and full_sft are one training seed each, so the 1.7B gaps carry direct_brier's seed variance but not theirs. direct_brier's gain from the larger model is the firmest result, with its paired interval above 0 and every 1.7B seed above every 0.6B seed.
 
 ## 13. A second domain: emotion
 
