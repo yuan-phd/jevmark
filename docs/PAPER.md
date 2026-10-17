@@ -39,26 +39,23 @@ Third, from logged bandit feedback alone, Chosen-Action Proper Scoring (CAPS), t
 
 ## 2. Related work
 
-**Calibrated decision heads for agents.** A small model that answers typed questions about a state in one forward pass, with a confidence its caller thresholds, is the setting of Jev (TypeSafe AI 2026) and of the other published reconstruction, OpenJev-RLCD (Gao and Wang 2026). Its use is the cascade: a cheap model answers what it is sure of and defers the rest to a larger model or a person (Chen, Zaharia and Zou 2023; Ong et al. 2025; Belcak et al. 2025), and routing work that trains the confidence into the small model finds that calibrated confidence gives the better deferral trade-off (Chuang et al. 2025; Hao et al. 2026). Thresholding the top posterior is selective classification (Chow 1970; Geifman and El-Yaniv 2017), and we evaluate the caller by its risk-coverage curve. Reading option-letter logits in one forward pass is the multiple-choice convention (Hendrycks et al. 2021; Robinson, Rytting and Wingate 2023; Kadavath et al. 2022), with known selection bias toward option letters and sensitivity to option order (Zheng et al. 2024; Pezeshkpour and Hruschka 2024; Zhao et al. 2021); we randomise option order in every split and report accuracy by gold letter position (RESULTS_v1 section 3). Language models can also state a confidence in words (Lin, Hilton and Evans 2022; Tian et al. 2023; Xiong et al. 2024); our head never generates text, and its confidence is the distribution over the options it read.
+**Calibrated decision heads for agents.** Jev (TypeSafe AI 2026) and the other published reconstruction, OpenJev-RLCD (Gao and Wang 2026), answer typed questions about a state in one forward pass, with a confidence the caller thresholds. Their use is the cascade, in which a cheap model answers what it is sure of and defers the rest (Chen, Zaharia and Zou 2023), and confidence trained into the small model gives the better deferral trade-off (Chuang et al. 2025). Thresholding the top posterior is selective classification (Geifman and El-Yaniv 2017), so we evaluate the caller by its risk-coverage curve. Option-letter readout has known position and order biases (Zheng et al. 2024), so we randomise option order in every split and report accuracy by gold letter position (RESULTS_v1 section 3); unlike a confidence stated in words (Xiong et al. 2024), ours is the distribution over the options the head read, with no text generated.
 
-**Learning from logged bandit feedback.** CAPS is the direct method of logged bandit feedback (Dudík, Langford and Li 2011), the regression-oracle objective (Foster et al. 2018; Foster and Rakhlin 2020), which the bake-off of Bietti, Agarwal and Langford (2021) found competitive without propensity weights. The other family, counterfactual risk minimisation, weights the policy objective by inverse propensities, with variance penalties, self-normalisation and clipping (Swaminathan and Joachims 2015a; Swaminathan and Joachims 2015b; Joachims, Swaminathan and de Rijke 2018; Bottou et al. 2013); doubly robust estimators combine the two (Dudík, Langford and Li 2011). Simulating bandit feedback from a labelled multiclass dataset is the field's standard protocol (Beygelzimer and Langford 2009; Dudík, Langford and Li 2011). OpenJev-RLCD's stage 1 scores the whole readout distribution against the one-hot label, with full information; CAPS scores one component, the chosen action's probability against its own outcome, because partial feedback reveals nothing else. Importance weights are unnecessary for a well-specified conditional model (Shimodaira 2000) and have little effect on deep networks trained to convergence (Byrd and Lipton 2019). Fine-tuning on confirmed answers only is positive-unlabeled learning, which recovers the posterior only up to a constant (Elkan and Noto 2008), and is the decision-head form of self-training on filtered successes (Zelikman et al. 2022; Yuan et al. 2023; Gulcehre et al. 2023); unlikelihood training is its counterpart that keeps the negatives (Welleck et al. 2020). We add the instantiation for LoRA-adapted LLM decision heads at 2000 interactions, the comparison with positive-only fine-tuning, the noisy channel and label-free checkpoint selection.
+**Learning from logged bandit feedback.** CAPS is the direct method of logged bandit feedback (Dudík, Langford and Li 2011) and the regression-oracle objective (Foster et al. 2018; Foster and Rakhlin 2020), which a contextual-bandit bake-off found competitive without propensity weights (Bietti, Agarwal and Langford 2021). Counterfactual risk minimisation instead weights the policy objective by inverse propensities, with variance penalties, self-normalisation and clipping (Swaminathan and Joachims 2015a; Swaminathan and Joachims 2015b; Joachims, Swaminathan and de Rijke 2018); doubly robust estimators combine the two (Dudík, Langford and Li 2011), and simulating bandit feedback from a labelled multiclass dataset is the standard protocol (Beygelzimer and Langford 2009). Importance weights are unnecessary for a well-specified conditional model (Shimodaira 2000) and have little effect on deep networks trained to convergence (Byrd and Lipton 2019). Fine-tuning on confirmed answers only is positive-unlabeled learning, which recovers the posterior only up to a constant (Elkan and Noto 2008), and the decision-head form of self-training on filtered successes (Zelikman et al. 2022).
 
-**Proper scoring rules as losses and as rewards.** A strictly proper score is minimised in expectation by the true probability (Brier 1950; Gneiting and Raftery 2007), which makes it a calibration-respecting loss and, when the forecast is a separately emitted probability, a sound reward. As losses, the Brier and log scores train calibrated networks (Lakshminarayanan, Pritzel and Blundell 2017), and square loss matches cross-entropy for classification (Hui and Belkin 2021); the two trade within one family through the reliability and resolution decomposition (Murphy 1973; Bröcker 2009). Calibration is summarised by binned ECE (Pakdaman Naeini, Cooper and Hauskrecht 2015), whose bias is why we report Brier and NLL beside it (Nixon et al. 2019; Kumar, Liang and Ma 2019; Ferrer and Ramos 2024), and repaired post hoc by one temperature (Guo et al. 2017). As RL rewards on a verbalized or token-level confidence, proper scores yield calibrated models (Band et al. 2024; Bani-Harouni et al. 2025; Damani et al. 2026), and Bereket and Leskovec (2025) show that the estimator, not the score, then decides calibration: an unbiased group baseline gives calibrated forecasts and GRPO's standard-deviation normalisation drives them to the extremes. Our group baseline is the mean only (Section 3), so that failure does not arise here.
+**Proper scoring rules as losses and as rewards.** A strictly proper score is minimised in expectation by the true probability (Brier 1950; Gneiting and Raftery 2007), which makes it a calibration-respecting loss and, when the forecast is a separately emitted probability, a sound reward. Binned ECE (Pakdaman Naeini, Cooper and Hauskrecht 2015) is biased, which is why we report Brier and NLL beside it (Nixon et al. 2019), and one temperature repairs calibration post hoc (Guo et al. 2017). As RL rewards on a verbalized confidence, proper scores yield calibrated models (Damani et al. 2026), and Bereket and Leskovec (2025) show that the estimator, not the score, then decides calibration: an unbiased group baseline gives calibrated forecasts and GRPO's standard-deviation normalisation drives them to the extremes.
 
-**Calibration in RL for language models and the gradient question.** That a detached, parameter-dependent reward drops the pathwise term of the gradient is the general rule of stochastic computation graphs (Schulman et al. 2015; Mohamed et al. 2020), and our first result is its corollary for a proper score of the sampled action's own probability. REINFORCE (Williams 1992) with a group baseline is the estimator of GRPO (Shao et al. 2024) and, leave-one-out, of RLOO (Ahmadian et al. 2024). Outcome-only rewards degrade calibration (OpenAI 2023; Kalai et al. 2025; Damani et al. 2026), and routing the calibration signal through a separate path repairs it (Ma et al. 2026); error-penalised RL with an abstention gate can saturate both the reward gradient and the KL anchor (Che et al. 2026). OpenJev-RLCD (Gao and Wang 2026) optimises the readout distribution by the pathwise gradient of a proper score, which it calls the deterministic policy gradient with respect to the reported distribution, measures the score-function term at 7 to 12 times the pathwise term's gradient norm and finds more of it monotonically worse; that term acts on a sampled rationale. Its direct-scorer ablation reports that proper-score RL never beat cross-entropy on CLINC150 (94.6 against 96.3) and that RLVR collapsed to the mode. Our second result agrees under a transfer protocol with a continued cross-entropy control.
+**Calibration in RL for language models and the gradient question.** That a detached, parameter-dependent reward drops the pathwise term of the gradient is the general rule of stochastic computation graphs (Schulman et al. 2015; Mohamed et al. 2020); our first result is its corollary for a proper score of the sampled action's own probability under REINFORCE (Williams 1992) with the group baseline of GRPO (Shao et al. 2024), and outcome-only rewards degrade calibration (Damani et al. 2026). OpenJev-RLCD (Gao and Wang 2026) optimises the readout distribution by the pathwise gradient of a proper score, its deterministic policy gradient with respect to the reported distribution, and finds the score-function term, which acts on a sampled rationale, at 7 to 12 times the pathwise term's gradient norm and more of it monotonically worse. Its direct-scorer ablation reports that proper-score RL never beat cross-entropy on CLINC150 (94.6 against 96.3) and that RLVR collapsed to the mode; our second result agrees under a transfer protocol with a continued cross-entropy control.
 
-**Noisy feedback.** Feedback flipped at a known rate f is random classification noise on the outcome (Angluin and Laird 1988), and the observed outcome rate f + (1 - 2f) P(correct) that CAPS fits is the symmetric case of the class-conditional identity (Natarajan et al. 2013), with the clean posterior an affine transform of the corrupted one (Menon et al. 2015). Inverting it is backward correction with a known transition matrix (Patrini et al. 2017), whose error grows by the 1 / (1 - 2f) factor of Angluin and Laird; the same correction appears for noisy preferences (Chowdhury, Kini and Natarajan 2024). Agarwal and Manwani (2021) study flipped bandit feedback with a known rate for an online linear learner. Networks memorise noisy labels given enough passes (Zhang et al. 2017; Arpit et al. 2017), and early stopping is the provable remedy (Li, Soltanolkotabi and Oymak 2020). We add that a pathwise proper score on noisy chosen-action feedback learns the noisy posterior without any correction, which is what makes backward correction possible, that the residual is the variance of one draw per interaction, and that early stopping can be driven by the held-out log score of logged outcomes.
+**Noisy feedback.** Feedback flipped at a known rate f is random classification noise on the outcome (Angluin and Laird 1988); the observed outcome rate f + (1 - 2f) P(correct) that CAPS fits is the symmetric case of the class-conditional identity, with the clean posterior an affine transform of the corrupted one (Natarajan et al. 2013; Menon et al. 2015), and inverting it is backward correction with a known transition matrix (Patrini et al. 2017), whose error grows by the 1 / (1 - 2f) factor of Angluin and Laird. Agarwal and Manwani (2021) study flipped bandit feedback with a known rate for an online linear learner; networks memorise noisy labels given enough passes (Zhang et al. 2017), and early stopping is the provable remedy (Li, Soltanolkotabi and Oymak 2020).
 
-**Calibration under shift and after fine-tuning.** A single temperature is strong in-domain and fragile under shift (Ovadia et al. 2019; Desai and Durrett 2020; Chen et al. 2023), and our second result says the bandit alternatives are no less fragile on unseen label schemas. Domain-dependent temperatures address the shift directly (Yu, Bates, Ma and Jordan 2022). Post-training degrades calibration (OpenAI 2023; Zhu et al. 2023; Leng et al. 2025), while a small amount of fine-tuning on graded examples can teach calibration that transfers (Kapoor et al. 2024). Adaptation costs in-domain accuracy, as LoRA forgets less than full fine-tuning but still forgets (Biderman et al. 2024; Kumar et al. 2022).
+**Calibration under shift and after fine-tuning.** A single temperature is strong in-domain and fragile under shift (Ovadia et al. 2019). Our second result says the bandit alternatives are no less fragile on unseen label schemas. LoRA forgets less than full fine-tuning but still forgets (Biderman et al. 2024), so we report forgetting on the original domain.
 
-**Dataset quality and evaluation hygiene.** Our leak probes are leakage detection by exploratory models on non-target features (Kaufman et al. 2012) against a permutation null (Ojala and Garriga 2010) and a control task (Hewitt and Liang 2019), the guard the annotation-artifact and shortcut literature calls for (Gururangan et al. 2018; Poliak et al. 2018; Geirhos et al. 2020); the duplicate check addresses train-test overlap (Elangovan, He and Verspoor 2021; Lewis, Stenetorp and Riedel 2021). Benchmark test sets contain label errors (Northcutt, Athalye and Mueller 2021; Northcutt, Jiang and Chuang 2021). For Banking77, Ying and Thomas (2022) flag about 1,400 of 13,083 utterances, about 11 percent, in line with our audit's .12 and .14. The emotion dataset is distantly supervised from hashtags (Saravia et al. 2018), which human validation puts at about 90 percent label accuracy (Abdul-Mageed and Ungar 2017); our audit finds a problem in a third of a uniform sample.
+**Dataset quality and evaluation hygiene.** Our leak probes are leakage detection by exploratory models on non-target features (Kaufman et al. 2012) against a permutation null (Ojala and Garriga 2010). Benchmark test sets contain label errors (Northcutt, Athalye and Mueller 2021); for Banking77, Ying and Thomas (2022) flag about 1,400 of 13,083 utterances, about 11 percent, in line with our audit's .12 and .14. The emotion dataset is distantly supervised from hashtags (Saravia et al. 2018), which human validation puts at about 90 percent label accuracy (Abdul-Mageed and Ungar 2017); our audit finds a problem in a third of a uniform sample.
 
 ## 3. Method: Chosen-Action Proper Scoring
 
-**Setting.** A logged interaction is (x, O, a, q(a | x), r):
-- x is a state and O its K options;
-- a is the action the logging policy q chose, and q(a | x) its logging propensity, recorded exactly;
-- r in {0, 1} records whether a was right.
+**Setting.** A logged interaction is (x, O, a, q(a | x), r): x is a state and O its K options, a is the action the logging policy q chose and q(a | x) its logging propensity, recorded exactly, and r in {0, 1} records whether a was right.
 
 The learner starts from a general decision head p_theta and sees only the log. In our experiments q = 0.9 p_0 + 0.1 / K, epsilon-greedy over the starting model p_0, so every option has support (RESULTS_v3 section 1, `runs/v3_log_s0/metrics.json`).
 
@@ -70,13 +67,11 @@ with S a strictly proper binary score: Brier, (r - p)^2, by default, or the log 
 
 **Identity.** CAPS is the direct method of Dudík, Langford and Li (2011), with a proper score as the regression loss on the chosen action's outcome and the argmax of the fitted head as the policy, and it is OpenJev-RLCD's stage 1 specialised to partial feedback: where stage 1 scores the whole readout distribution against the one-hot label, CAPS scores the one component the log reveals, the chosen action's probability against its own outcome.
 
-**Why no propensity weight.** For each (x, a) with q(a | x) > 0, the inner term is minimised at p(a | x) = P(r = 1 | x, a), whatever q is. The regression target does not depend on the logging policy as long as it has support, so the unweighted fit is consistent for a well-specified model (Shimodaira 2000). The propensity only sets how a finite model trades errors between actions, and L makes that trade as the deployed policy acts. A weight 1 / q would retarget it to a uniform average over options.
+**Why no propensity weight.** For each (x, a) with q(a | x) > 0, the inner term is minimised at p(a | x) = P(r = 1 | x, a), whatever q is. The target does not depend on the logging policy as long as it has support, so the unweighted fit is consistent for a well-specified model (Shimodaira 2000). The propensity only sets how a finite model trades errors between actions, and L makes that trade as the deployed policy acts. A weight 1 / q would retarget it to a uniform average over options.
 
-Accuracy is a consequence, not the objective: moving right actions up and wrong ones down moves the argmax. A negative on an option other than the logger's top choice arises only from the logger's randomness. On our main log, 1514 of 2593 negatives (.584) fall on such options, and about .545 of those come from the uniform exploration term (docs/METHOD.md section 2, `runs/v3_log_s0/metrics.json:negatives`). Options the logger never takes are unconstrained by the objective.
+Accuracy is a consequence, not the objective: moving right actions up and wrong ones down moves the argmax, and options the logger never takes are unconstrained. A negative on an option other than the logger's top choice arises only from the logger's randomness; on our main log, 1514 of 2593 negatives (.584) fall on such options, and about .545 of those come from the uniform exploration term (docs/METHOD.md section 2, `runs/v3_log_s0/metrics.json:negatives`).
 
-**Corollary (a proper score of the sampled action's probability as a detached reward).** Take K options, gold g, and a proper score used as the reward of the sampled action:
-- Brier: R(a) = 1 - (r_a - p_a)^2;
-- log score: R(a) = r_a log p_a + (1 - r_a) log(1 - p_a).
+**Corollary (a proper score of the sampled action's probability as a detached reward).** Take K options, gold g, and a proper score used as the reward of the sampled action: Brier, R(a) = 1 - (r_a - p_a)^2, or the log score, R(a) = r_a log p_a + (1 - r_a) log(1 - p_a).
 
 The gradient of the expected reward, sum_a p_a R(a), has a score-function term, sum_a R(a) dp_a, and a pathwise term, sum_a p_a dR(a). Detaching R keeps only the first (Schulman et al. 2015). Form REINFORCE advantages against the mean of a sampled group, the sample itself included and not divided by the group standard deviation.
 
@@ -84,12 +79,9 @@ The gradient of the expected reward, sum_a p_a R(a), has a score-function term, 
 
 (ii) If K = 2, all rewards in every group are equal, and the gradient is zero.
 
-*Proof.* A wrong action w has r_w = 0 and p_w <= 1 - p_g.
-- Under Brier, R(w) = 1 - p_w^2 and R(g) = 1 - (1 - p_g)^2. Under the log score, R(w) = log(1 - p_w) and R(g) = log p_g.
-- Both rewards decrease in p_w and equal R(g) at p_w = 1 - p_g. Hence R(w) >= R(g), and the smallest sampled p_w gives the group maximum.
-- At K = 2, p_w = 1 - p_g exactly, so R(w) = R(g). ∎
+*Proof.* A wrong action w has r_w = 0 and p_w <= 1 - p_g. Under Brier, R(w) = 1 - p_w^2 and R(g) = 1 - (1 - p_g)^2; under the log score, R(w) = log(1 - p_w) and R(g) = log p_g. Both rewards decrease in p_w and equal R(g) at p_w = 1 - p_g. Hence R(w) >= R(g), and the smallest sampled p_w gives the group maximum. At K = 2, p_w = 1 - p_g exactly, so R(w) = R(g). ∎
 
-The score grades p_a as a forecast of r_a, and a low probability on a wrong option is always a good forecast. CAPS uses the same score as a loss on p_a by its pathwise gradient, not as a reward on a. Neither statement depends on the standard-deviation normalisation that Bereket and Leskovec (2025) identify as GRPO's source of overconfidence: our full-label runs use a group of 4 and subtract its mean only (`rlcd.normalize_std: false` in `configs/rlcd_06b.yaml` and in the `config.yaml` of all 31 full-label runs), and the logged-feedback REINFORCE arm subtracts the batch mean only. Nor does the corollary contradict the proper-score rewards of Damani et al. (2026) and Bereket and Leskovec (2025), which score a confidence the model emits separately, not the probability with which it sampled the action being rewarded.
+The score grades p_a as a forecast of r_a, and a low probability on a wrong option is always a good forecast; CAPS uses the same score as a loss on p_a by its pathwise gradient, not as a reward on a. Neither statement depends on the standard-deviation normalisation that Bereket and Leskovec (2025) identify as GRPO's source of overconfidence, since our group of 4 and the logged-feedback REINFORCE arm subtract the mean only (Appendix B), and the corollary does not contradict proper-score rewards on a confidence the model emits separately (Damani et al. 2026; Bereket and Leskovec 2025), only on the probability with which it sampled the rewarded action.
 
 **Selection.** Train on the first 0.9 N interactions. Keep the checkpoint, from a 50-step grid, with the highest mean Bernoulli log-likelihood of the logged outcomes under p(logged action) on the last 0.1 N: early stopping on the held-out log score of logged outcomes. No gold label is read (RESULTS_v3 section 1). Under noisy feedback this is what prevents memorisation (Section 4.3).
 
@@ -97,146 +89,58 @@ The score grades p_a as a forecast of r_a, and a low probability on a wrong opti
 
 ### 4.1 Setup
 
-**Model and data.**
-- Qwen3-0.6B-Base and 1.7B-Base with LoRA (r 16, alpha 32, attention projections) (Hu et al. 2022; Qwen Team 2025). Answers are read from the letter logits at each question's answer slot in one forward pass.
-- Supervised training uses CLINC150 intents (Larson et al. 2019) and SST-5 sentiment (Socher et al. 2013). Options are sampled per record, with negated yes-or-no phrasings.
-- Evaluation covers 20 held-out intents and four schemas never trained on: AG News, Yelp (Zhang, Zhao and LeCun 2015), emotion (Saravia et al. 2018) and Banking77 (Casanueva et al. 2020) (RESULTS_v1 section 1).
+**Model and data.** The decision head is Qwen3-0.6B-Base or 1.7B-Base with LoRA (Hu et al. 2022; Qwen Team 2025), read from the letter logits at each question's answer slot. It is trained with supervision on CLINC150 intents (Larson et al. 2019) and SST-5 sentiment (Socher et al. 2013) and evaluated on 20 held-out intents and four schemas never trained on: AG News, Yelp (Zhang, Zhao and LeCun 2015), emotion (Saravia et al. 2018) and Banking77 (Casanueva et al. 2020) (RESULTS_v1 section 1). Training details and the data gates are in Appendix B.
 
-**Leak and duplicate gates.** Before any GPU run, the data must pass two CPU checks (RESULTS_v1 section 3):
-- state-free leak probes: classifiers on phrasing, question text and structure, which must not beat chance by more than a fixed margin and a shuffled-target null;
-- train-test duplicate rules.
+**Adaptation protocol.** The 0.6B model logs every message of the Banking77 train split once, 9942 messages, each a 10-option choice with gold always present, sampling from q = 0.9 p + 0.1 / K and recording only the correctness of its action; policy accuracy is .836 and the outcome rate .739 (RESULTS_v3 section 1, `runs/v3_log_s0/metrics.json`). Learners see the first N in {500, 2000, 5000} interactions at equal steps; at N 5000, CAPS-Brier, CAPS-log and full_sft each have three training seeds, and CAPS-Brier also has a second log draw. Evaluation is on the full Banking77 test split (3080 records), plus test_indomain and test_unseen_intents for forgetting, with paired 95 percent record-bootstrap intervals (Efron 1979; Efron and Tibshirani 1993).
 
-The Banking77 log domain drops 30 messages that match the test split and 31 repeats (RESULTS_v3 section 1, `data/v3_manifest.json`).
+**Learners.** The temperature learner fits one temperature to the logged outcomes and changes no argmax; positive_sft is cross-entropy on confirmed actions, positive-unlabeled learning with the negatives discarded, and what practitioners do; full_sft is cross-entropy on gold for every logged interaction, the upper bound. Three off-policy forms on the same log use the propensities, outcome_minus_p_log, ips_log and ips_positive (Appendix B); they are not counterfactual risk minimisation, which weights the policy objective itself and was not run (Section 5). In tables, CAPS with the Brier score is the run name direct_brier, and with the log score direct_log.
 
-**Adaptation protocol** (RESULTS_v3 section 1). Supervised-to-bandit conversion with a decision head as the logger.
-- The 0.6B model logs every message of the Banking77 train split once: 9942 messages, each a 10-option choice with gold always present. It samples from q = 0.9 p + 0.1 / K and records only the correctness of its action. Policy accuracy is .836 and the outcome rate .739 (`runs/v3_log_s0/metrics.json`).
-- Learners see the first N in {500, 2000, 5000} interactions. All trained learners take the same number of steps, max(200, ceil(10 x 0.9 N / 32)), at lr 5e-5.
-- Evaluation is on the full Banking77 test split (3080 records), plus test_indomain and test_unseen_intents for forgetting.
-- Intervals are 95 percent bootstrap over records (Efron 1979; Efron and Tibshirani 1993), 1000 resamples, paired across runs.
-- At N 5000, CAPS-Brier, CAPS-log and full_sft each have three training seeds, and CAPS-Brier also has a second log draw.
+**Metrics.** Accuracy, ECE with 15 equal-width bins, Brier and NLL, and two selective-classification metrics for the caller who thresholds (Geifman and El-Yaniv 2017), with questions ranked by top-1 probability: AURC, the area under the risk-coverage curve, and Cov@eps, the largest share of questions a top-1 threshold keeps with error at most eps (Appendix B). Lower AURC and higher Cov@eps are better, and the tables show Cov@.05.
 
-**Learners.**
-- **Temperature** fitted to the logged outcomes: post-hoc and global, and it changes no argmax.
-- **positive_sft**: cross-entropy on confirmed actions, positive-unlabeled learning with the negatives discarded, not unobserved. What practitioners do.
-- **full_sft**: cross-entropy on gold for every logged interaction. The upper bound, at one label per interaction.
-- **Off-policy forms**, all on the same log:
-  - REINFORCE with reward r - p_a, detached, a batch-mean baseline and the importance weight min(p / q, 5) (outcome_minus_p_log);
-  - CAPS with the log score and inverse propensity weighting of the direct-method loss, min(1 / q, 5) divided by its mean over the training prefix (ips_log), which is importance-weighted regression;
-  - positive_sft with the same weights (ips_positive).
-
-The weighted forms reweight the direct-method loss. They are not counterfactual risk minimisation, which weights the policy objective itself; that arm was not run (Section 5). In tables, CAPS with the Brier score is the run name direct_brier, and with the log score direct_log.
-
-**Metrics.** Accuracy, ECE with 15 equal-width bins, Brier and NLL, and two selective-classification metrics for the caller who thresholds (Geifman and El-Yaniv 2017). Questions are ranked by top-1 probability. AURC is the area under the risk-coverage curve, the mean error of the kept answers over all coverages; Cov@eps is the largest share of questions a top-1 threshold keeps with error at most eps, for eps in {.05, .10, .20}, with ties in top-1 kept or dropped together. Lower AURC and higher Cov@eps are better. Every trained learner reaches Cov@.20 = 1, and from N 2000 Cov@.10 = 1 as well, so the tables show Cov@.05. The same metrics ranked by the response's confidence field, 1 - H / ln K, are stored under `_entropy` keys.
-
-A temperature changes the level of the probabilities and only slightly their ranking: one temperature is monotone within a question but can reorder top-1 probabilities across questions. At N 5000 the temperature learner cuts zero-shot ECE from .063 to .020 but moves AURC only from .0333 to .0328 and Cov@.05 from .756 to .765 (`S:n_curve.5000.{zero_shot,temperature}`); on CAPS-Brier, whose fitted temperature is near 1, it moves AURC by under .0001 (`S:n_curve.5000.direct_brier_temp_minus_direct_brier.aurc`).
+A temperature changes the level of the probabilities and only slightly their ranking: at N 5000 the temperature learner cuts zero-shot ECE from .063 to .020 but moves AURC only from .0333 to .0328 (`S:n_curve.5000.{zero_shot,temperature}`; Table A.1; details in Appendix A.1).
 
 ### 4.2 Full labels: the negative results (v2)
 
-**The broken reward.** A first run used Brier as a detached REINFORCE reward on fully labelled in-domain data, group of 4, mean baseline without standard-deviation normalisation (RESULTS_v2 section 2, `runs/sft_06b/metrics.json` and `runs/rlcd_06b_brier_s0/metrics.json:splits.<split>.score.accuracy`; `runs/rlcd_06b_brier_s0/config.yaml:rlcd.normalize_std`).
-- Score accuracy fell from .636 to .111 on SST-5 and from .505 to .044 on Yelp.
-- A simulation of the sampler on the SFT model lowered the gold logit in 24.0 percent of questions and raised it in 1.8 percent (`runs/advantage_simulation_06b/metrics.json:rewards`).
+A first run used Brier as a detached REINFORCE reward on fully labelled in-domain data, with a group of 4 and a mean baseline without standard-deviation normalisation (RESULTS_v2 section 2, `runs/rlcd_06b_brier_s0/config.yaml:rlcd.normalize_std`). Score accuracy fell from .636 to .111 on SST-5 and from .505 to .044 on Yelp (`runs/sft_06b/metrics.json`, `runs/rlcd_06b_brier_s0/metrics.json:splits.<split>.score.accuracy`), and a simulation of the sampler on the SFT model lowered the gold logit in 24.0 percent of questions and raised it in 1.8 percent (`runs/advantage_simulation_06b/metrics.json:rewards`): the corollary of Section 3 at work. Five arms, from continued cross-entropy to CAPS with the log score, then ran three seeds each at 0.6B on full labels (Table A.6). Against SFT plus one in-domain temperature, at unseen-schema mean ECE .121, every arm's unseen-schema ECE is higher, by +.031 to +.127, and given its own temperature the best arm and the control are only level (RESULTS_v2 section 3, `runs/rlcd_stage2a_06b/metrics.json:unseen_schemas`, `runs/rlcd_stage2a_06b/metrics.json:temperature_ablation`; Figure `figures/v2_arm_ece.png`). When gold is known, whether a sampled answer was right carries no more than the label itself, and one temperature is the strongest cheap fix. OpenJev-RLCD reports the same direction on CLINC150 with a different training setup; the transfer to unseen schemas and the continued cross-entropy control are ours.
 
-This is the corollary of Section 3 at work.
-
-**No gain from bandit objectives on full labels.** Five arms (RESULTS_v2 section 3, `runs/rlcd_stage2a_06b/metrics.json:unseen_schemas`, `:temperature_ablation`):
-- continued cross-entropy (the control);
-- two REINFORCE arms with detached rewards, outcome and r - p;
-- CAPS with Brier and with the log score, by the pathwise gradient.
-
-Each ran three seeds at 0.6B. Against SFT plus one in-domain temperature (unseen-schema mean ECE .121, `runs/rlcd_stage2a_06b/metrics.json:unseen_schemas.mean_ece.sft_temp`):
-- every arm's unseen-schema ECE is higher, by +.031 to +.127 (`runs/rlcd_stage2a_06b/metrics.json:unseen_schemas.arms.<arm>`);
-- given its own temperature, the best arm is level, -.002 [-.006, +.004], and so is the control, +.002 [-.001, +.009] (`runs/rlcd_stage2a_06b/metrics.json:temperature_ablation.arms.<arm>`).
-
-When gold is known, whether a sampled answer was right carries no more than the label itself, and one temperature is the strongest cheap fix. OpenJev-RLCD reports the same direction on CLINC150 with a different training setup; the transfer to unseen schemas and the continued cross-entropy control are ours. Figure `figures/v2_arm_ece.png` shows the arms.
+![Unseen-schema mean ECE per full-label arm](figures/v2_arm_ece.png)
 
 ### 4.3 Logged bandit feedback only (v3, Banking77)
 
-**The N-curve** (RESULTS_v3 section 2, `S:n_curve.<N>`; Figure `figures/v3_n_curve.png`; Table A.1).
-- *Against positive_sft:* CAPS-Brier ties on accuracy at N 500, +.002 [-.006, +.009]. It leads by +.027 [+.019, +.035] at N 2000 and +.024 [+.016, +.031] at N 5000. Its ECE is lower by .052 to .060 and its AURC by .0035 to .0099 at every N; its Cov@.05 is level at N 500 and higher by +.065 [+.048, +.093] and +.069 [+.046, +.094] at N 2000 and 5000 (`S:n_curve.<N>.direct_brier_minus_positive_sft`).
-- *Against full_sft:* it stays 0.7 to 1.8 points below in accuracy and .0026 to .0047 above in AURC.
-- *Gap closed:* it closes 69, 91 and 81 percent of the accuracy gap between zero-shot and full_sft at N 500, 2000 and 5000, computed from the stored accuracies (`S:n_curve.<N>.<learner>.accuracy`).
-- *The temperature learner* keeps zero-shot accuracy (.851) and has the lowest or joint-lowest ECE (.020 at N 5000; `S:n_curve.<N>.temperature`). Its Brier, NLL and AURC stay far above every trained learner's.
+**The N-curve.** From 2000 interactions CAPS-Brier beats positive_sft: it ties at N 500, +.002 [-.006, +.009], and leads by +.027 [+.019, +.035] at N 2000 and +.024 [+.016, +.031] at N 5000, with ECE lower by .052 to .060 and AURC by .0035 to .0099 at every N, and Cov@.05 level at N 500 and higher by +.065 [+.048, +.093] and +.069 [+.046, +.094] at N 2000 and 5000 (RESULTS_v3 section 2, `S:n_curve.<N>.direct_brier_minus_positive_sft`; Figure `figures/v3_n_curve.png`; Table A.1). It stays 0.7 to 1.8 points below full_sft in accuracy and .0026 to .0047 above it in AURC. The temperature learner keeps zero-shot accuracy (.851) and has the lowest or joint-lowest ECE, .020 at N 5000, but its Brier, NLL and AURC stay far above every trained learner's (`S:n_curve.<N>.temperature`).
 
 ![Accuracy and ECE against N](figures/v3_n_curve.png)
 
-**Seeds** (RESULTS_v3 section 3, `S:seeds`; Table A.2).
-- Over three training seeds at N 5000, CAPS-Brier is +.026 [+.019, +.033] over positive_sft in accuracy and -.0095 [-.0121, -.0070] in AURC, and -.015 [-.020, -.010] below full_sft's seed mean, with ECE level, +.003 [-.001, +.008].
-- Training seeds and the second log draw move accuracy by at most .6 points.
-- A temperature fitted on CAPS-Brier's own training interactions comes out near 1 (.951 to 1.039) and moves ECE by at most .003 (`S:direct_brier_temperatures`).
+**Seeds.** Over three training seeds at N 5000, CAPS-Brier is +.026 [+.019, +.033] over positive_sft in accuracy and -.0095 [-.0121, -.0070] in AURC, and -.015 [-.020, -.010] below full_sft's seed mean, with ECE level, +.003 [-.001, +.008] (RESULTS_v3 section 3, `S:seeds`; Table A.2). Training seeds and the second log draw move accuracy by at most .6 points, and a temperature fitted on CAPS-Brier's own training interactions comes out near 1 and moves ECE by at most .003 (Appendix A.2).
 
-**Off-policy baselines** (RESULTS_v3 section 11, `S:n_curve.<N>.off_policy`; Figure `figures/v4_offpolicy.png`; Table A.3).
-- Every arm that keeps the negatives leads positive_sft, by +.016 to +.028 in accuracy.
-- ips_positive equals positive_sft: +.002 [-.001, +.005] in accuracy at N 2000 and +.000 [-.003, +.004] at N 5000, and +.0003 [-.0003, +.0009] and +.0002 [-.0005, +.0010] in AURC (`S:n_curve.<N>.off_policy.ips_positive.minus_positive_sft`). At N 5000, only 25 of the 3342 positives it trains on are clipped (`runs/v3_06b_ips_positive_n5000_s0/train_summary.json:ips`). With full support and a well-specified regression target, this is the expected result.
-- No arm beats CAPS-Brier on accuracy with an interval excluding 0.
-- At N 5000, ips_log beats CAPS-Brier on Brier and NLL, but the unweighted CAPS-log beats it by more, so the gain is the log score's, not the weight's.
-- Over three seeds, CAPS-log against CAPS-Brier at N 5000 is +.002 [-.001, +.005] in accuracy, -.005 [-.008, -.001] in Brier, -.020 [-.029, -.010] in NLL and -.0008 [-.0016, +.0000] in AURC (`S:seeds.direct_log_seed_mean_minus_direct_brier_seed_mean`).
-- CAPS-log forgets more in-domain (-.038 to -.046 against -.027 to -.043) and is behind at N 2000 on one seed (-.010 [-.016, -.004]).
+**Off-policy baselines.** Propensity weights add nothing: ips_positive equals positive_sft, +.000 [-.003, +.004] in accuracy at N 5000, and no off-policy arm beats CAPS-Brier on accuracy with an interval excluding 0 (RESULTS_v3 section 11, `S:n_curve.<N>.off_policy`; Table A.3). With full support and a well-specified regression target, this is the expected result. The log score in place of Brier is a choice within the same family: over three seeds CAPS-log is +.002 [-.001, +.005] in accuracy and -.020 [-.029, -.010] in NLL against CAPS-Brier (`S:seeds.direct_log_seed_mean_minus_direct_brier_seed_mean`), but it forgets more in-domain and is behind at N 2000 on one seed, so Brier stays the default (Appendix A.3).
 
-Brier stays the default.
-
-![Off-policy baselines](figures/v4_offpolicy.png)
-
-**Noisy feedback** (RESULTS_v3 section 4, `N:by_rate`; Figure `figures/v4_noise_sweep.png`; Table A.4). Outcomes are flipped at f in {0.1, 0.2, 0.3}, with nested draws.
-- *CAPS learns the noisy posterior without correction,* p = f + (1 - 2f) P(correct). The selected run at f 0.2 has mean top-1 .743 against a channel line of .744.
-- *Its excess over a channel-calibrated copy of the clean run grows with f:* .017, .044 and .060 (`N:by_rate.<f>.direct_brier.channel.channel_scale.channel_ece_minus_reference`).
-- *Backward correction,* (p - f) / (1 - 2f) on the top-1 probability, gives ECE against correctness of .020, .051 and .068 at f 0.1, 0.2 and 0.3, against the clean run's .026; the amplification 1 / (1 - 2f) is 1.25, 1.67 and 2.5 (`N:by_rate.<f>.direct_brier.channel.inverted_top1_ece`, `N:by_rate.<f>.amplification`, `N:clean.direct_brier.ece`).
-- *Its accuracy loss grows with f:* -.006, -.022 and -.041.
-- *Against positive_sft's loss:* smaller at 0.1 and 0.2 (+.009 [+.000, +.018], +.017 [+.007, +.028]), level at 0.3 (-.003 [-.014, +.007]), one seed per rate (`N:by_rate.<f>.direct_brier_loss_minus_positive_sft_loss.accuracy`).
-- *Trained to the end,* CAPS memorises the single flip draw. At 0.3 it falls to .734, below zero-shot's .851, while early stopping on the held-out log score of logged outcomes picks steps before the collapse every time (`N:by_rate.0.3.direct_brier.last.accuracy`, `N:zero_shot.accuracy`, `N:by_rate.<f>.direct_brier.selection.best_step`).
-- *A soft-target diagnostic* removes most of the residual. It needs the clean outcome, so it is a diagnostic, not a learner: channel-scale ECE .019 to .024 against a reference of .014 (RESULTS_v3 section 4).
-
-The residual is therefore the variance of one noisy draw per interaction, not a limit of the objective (RESULTS_v3 section 4).
+**Noisy feedback.** With outcomes flipped at f in {0.1, 0.2, 0.3}, with nested draws, CAPS learns the noisy posterior p = f + (1 - 2f) P(correct) without correction: the selected run at f 0.2 has mean top-1 .743 against a channel line of .744 (RESULTS_v3 section 4, `N:by_rate`; Figure `figures/v4_noise_sweep.png`; Table A.4). Backward correction, (p - f) / (1 - 2f) on the top-1 probability, gives ECE against correctness of .020, .051 and .068 at f 0.1, 0.2 and 0.3, against the clean run's .026; the amplification 1 / (1 - 2f) is 1.25, 1.67 and 2.5 (`N:by_rate.<f>.direct_brier.channel.inverted_top1_ece`, `N:by_rate.<f>.amplification`, `N:clean.direct_brier.ece`). Its accuracy loss grows with f, -.006, -.022 and -.041, and is smaller than positive_sft's at 0.1 and 0.2 and level at 0.3, -.003 [-.014, +.007], one seed per rate (`N:by_rate.<f>.direct_brier_loss_minus_positive_sft_loss.accuracy`). Trained to the end, CAPS memorises the single flip draw and falls to .734 at 0.3, below zero-shot's .851, while early stopping on the held-out log score of logged outcomes picks steps before the collapse every time (`N:by_rate.0.3.direct_brier.last.accuracy`, `N:zero_shot.accuracy`, `N:by_rate.<f>.direct_brier.selection.best_step`). A soft-target diagnostic shows that the residual is the variance of one noisy draw per interaction, not a limit of the objective (Appendix A.4).
 
 ![Noise-rate sweep](figures/v4_noise_sweep.png)
 
-**Scale** (RESULTS_v3 section 12, `L:n_curve.5000`, `L:seeds`; Figure `figures/v4_scale.png`; Table A.5). At 1.7B, with its own log, CAPS-Brier on three training seeds against one seed of each baseline:
-- *Seeds:* accuracy .947 (.942, .949), ECE .016 (.013, .021), AURC .0073 (.0066, .0085) (`L:seeds.training_seeds`).
-- *Against full_sft:* .6 points below, -.006 [-.011, -.002], with ECE -.007 [-.011, +.000], AURC +.0021 [+.0012, +.0030] and Cov@.05 -.0068 [-.0187, -.0002] (`L:seeds.training_seed_mean_minus_full_sft`). Seed 0 alone had given -.004 [-.010, +.002] (`L:n_curve.5000.direct_brier_minus_full_sft`).
-- *Against positive_sft:* +.034 [+.026, +.041] in accuracy, -.0104 [-.0135, -.0078] in AURC and +.088 [+.062, +.108] in Cov@.05 (`L:seeds.training_seed_mean_minus_positive_sft`).
-
-The gap to full-label training shrinks with scale, from 1.5 points [1.0, 2.0] at 0.6B (seed means of both) to .6 points [.2, 1.1] at 1.7B, against a single full_sft seed there. The larger model helps the learner from logged bandit feedback most: every 1.7B CAPS-Brier seed is above every 0.6B one (RESULTS_v3 section 12).
+**Scale.** At 1.7B, with its own log, CAPS-Brier on three training seeds reaches accuracy .947 (.942, .949) and leads positive_sft by +.034 [+.026, +.041], and against a single full_sft seed its gap to full-label training shrinks to .6 points [.2, 1.1], -.006 [-.011, -.002], from 1.5 points [1.0, 2.0] at 0.6B (RESULTS_v3 section 12, `L:seeds`; Figure `figures/v4_scale.png`; Table A.5). Every 1.7B CAPS-Brier seed is above every 0.6B one, so the larger model helps the learner from logged bandit feedback most.
 
 ![Scale](figures/v4_scale.png)
 
-**Forgetting and selective prediction** (RESULTS_v3 sections 5 and 6, `S:forgetting`, `S:coverage`).
-- *In-domain accuracy cost at N 5000:* 2.7 to 4.3 points for CAPS-Brier and 3.6 to 5.2 for full_sft across seeds; positive_sft costs under 1.
-- *In-domain ECE:* CAPS-Brier keeps it within .010 of zero-shot.
-- *At a fixed confidence threshold of .95:* positive_sft keeps .916 of answers at .942 accuracy, so it passes on about 6 percent errors as confident. CAPS-Brier keeps .743 at .986 (`S:coverage.positive_sft_n5000_s0.0.95`, `S:coverage.direct_brier_n5000_s0.0.95`). At a fixed error budget of .05 instead, CAPS-Brier keeps .957 of answers against positive_sft's .888 (`S:n_curve.5000.{direct_brier,positive_sft}.coverage_at_0.05`).
-
-**Against an API model.** On the 500-record Banking77 subset, every CAPS-Brier run at N 5000 scores .926 to .936 from 5000 correctness bits, against gpt-4.1-mini's .918, with no paired interval (RESULTS_v3 section 7, `S:b2_reference`).
+**Forgetting and selective prediction.** At N 5000, CAPS-Brier costs 2.7 to 4.3 points of in-domain accuracy across seeds and full_sft 3.6 to 5.2, positive_sft under 1, and CAPS-Brier keeps in-domain ECE within .010 of zero-shot (RESULTS_v3 sections 5 and 6, `S:forgetting`). At a fixed confidence threshold of .95, positive_sft keeps .916 of answers at .942 accuracy, so it passes on about 6 percent errors as confident, while CAPS-Brier keeps .743 at .986 (`S:coverage.positive_sft_n5000_s0.0.95`, `S:coverage.direct_brier_n5000_s0.0.95`); at a fixed error budget of .05, CAPS-Brier keeps .957 of answers against positive_sft's .888. On the 500-record Banking77 subset, every CAPS-Brier run at N 5000 scores .926 to .936 from 5000 correctness bits, against gpt-4.1-mini's .918, with no paired interval (RESULTS_v3 section 7, `S:b2_reference`).
 
 ### 4.4 A second domain: emotion
 
-(RESULTS_v3 section 13, `E:`; Figure `figures/v4_emotion_n_curve.png`; Table A.7.) The emotion log domain is the dair-ai/emotion train split, 15958 messages, each a choice over all 6 labels with no `other` option. The same sft_06b logs it, at policy accuracy .542, so 8393 of the 15958 logged outcomes are negative, .526 computed from the stored counts, against 1 - .739 = .261 on Banking77 (`runs/v3_log_emotion_s0/metrics.json:accuracy`, `runs/v3_log_emotion_s0/metrics.json:negatives.negatives`, `runs/v3_log_s0/metrics.json:outcome_rate`). Evaluation is on the full emotion test split, 2000 records.
+The emotion log domain is the dair-ai/emotion train split, 15958 messages, each a choice over all 6 labels with no `other` option. The same sft_06b logs it at policy accuracy .542, so 8393 of the 15958 logged outcomes are negative, .526 computed from the stored counts, against 1 - .739 = .261 on Banking77; evaluation is on the full emotion test split, 2000 records (RESULTS_v3 section 13, `runs/v3_log_emotion_s0/metrics.json:accuracy`, `runs/v3_log_emotion_s0/metrics.json:negatives.negatives`, `runs/v3_log_s0/metrics.json:outcome_rate`). CAPS-Brier leads positive_sft at every N, by +.043 [+.027, +.060], +.126 [+.109, +.144] and +.217 [+.197, +.238] in accuracy at N 500, 2000 and 5000, with ECE lower by .186 to .276 (`E:n_curve.<N>.direct_brier_minus_positive_sft`; Figure `figures/v4_emotion_n_curve.png`; Table A.7). Over three seeds at N 5000 it is -.043 [-.056, -.031] below full_sft's one seed in accuracy, with ECE level, +.006 [-.005, +.018] (`E:seeds.training_seed_mean_minus_full_sft`). The per-N details, CAPS-log, the temperature learner, forgetting, the label ceiling and the API reference are in Appendix A.7.
 
-- *Against positive_sft:* CAPS-Brier leads at every N, by +.043 [+.027, +.060], +.126 [+.109, +.144] and +.217 [+.197, +.238] in accuracy at N 500, 2000 and 5000, with ECE lower by .186 to .276 and AURC by .050 to .174; at N 5000 its Cov@.05 is .595 against .032 (`E:n_curve.<N>.direct_brier_minus_positive_sft`, `E:n_curve.5000.<learner>.coverage_at_0.05`). positive_sft trains on 206 to 2151 confirmed answers (`runs/v3_emotion_06b_positive_sft_n<N>_s0/train_summary.json:n_used`) and is worse calibrated than zero-shot at every N (ECE .256 to .363 against .251; `E:n_curve.<N>.{positive_sft,zero_shot}.ece`).
-- *Against full_sft:* 3.8 to 4.6 points below on seed 0; over three seeds at N 5000, -.043 [-.056, -.031] in accuracy against full_sft's one seed, with ECE level, +.006 [-.005, +.018] (`E:seeds.training_seed_mean_minus_full_sft`). It closes 68, 79 and 88 percent of the accuracy gap between zero-shot (.540) and full_sft, computed from the stored accuracies (`E:n_curve.<N>.<learner>.accuracy`).
-- *Seeds:* accuracy .821 to .832, ECE .031 to .070 (`E:seeds.training_seeds`).
-- *CAPS-log* at N 5000 is -.021 [-.030, -.012] below CAPS-Brier's seed mean in accuracy, with higher Brier and NLL (`E:seeds.direct_log_seed_mean_minus_direct_brier_seed_mean`); Brier stays the default.
-- *The temperature learner* (T about 2.3) has the lowest ECE, .024 at N 5000, and leaves AURC at .294 against zero-shot's .295 (`E:n_curve.5000.{zero_shot,temperature}`): it fixes the level, not the ranking.
-- *Forgetting:* at N 5000, CAPS-Brier costs 1.9 to 2.6 points of in-domain accuracy across seeds and full_sft 3.4, both with in-domain ECE within .004 of zero-shot (`E:forgetting.test_indomain.minus_zero_shot`).
-- *Label ceiling:* the audit finds a label problem in .32 and .40 of a uniform sample, mostly a labelling convention that follows emotion words (.20), and no plainly wrong label; the ceiling is .93 or higher if the convention is learnable and near .80 if it is not (`docs/audit/emotion_summary.json:groups`). full_sft and every CAPS-Brier seed are above .80.
-- *Against an API model:* on the 500-record emotion subset, gpt-4.1-mini scores .598 and CAPS-Brier at N 5000 .842 to .858, with no paired interval (`E:b2_reference`).
-
-The phase 4 plan predicted that "predictions 1 and 2 hold on emotion from N 2000 as on Banking77": held, and prediction 1 holds from N 500, where Banking77 tied. It predicted that "the gap to full_sft at N 5000 is larger than on Banking77 because the task is harder and the logging policy wrong more often": held, -.039 [-.052, -.027] against -.018 [-.025, -.011] on seed 0 and -.043 against -.015 for the seed means (`E:n_curve.5000.direct_brier_minus_full_sft`, `S:n_curve.5000.direct_brier_minus_full_sft`, `E:seeds.training_seed_mean_minus_full_sft`, `S:seeds.training_seed_mean_minus_full_sft_seed_mean`); the stated cause is consistent with the result but not isolated by it, since task and logging policy change together. What it did not predict is the size of the lead over positive_sft, nine times Banking77's at N 5000: with fewer than half the outcomes positive, discarding the negatives discards most of the log.
+Both predictions stated before these runs held. CAPS beats positive_sft in accuracy and ECE on emotion from N 2000, as on Banking77, and in accuracy from N 500, where Banking77 tied; and the gap to full_sft at N 5000 is larger than on Banking77, -.039 [-.052, -.027] against -.018 [-.025, -.011] on seed 0 and -.043 against -.015 for the seed means (`E:n_curve.5000.direct_brier_minus_full_sft`, `S:n_curve.5000.direct_brier_minus_full_sft`, `S:seeds.training_seed_mean_minus_full_sft_seed_mean`), as predicted from a harder task and a logging policy wrong more often, though the two change together, so the cause is not isolated. Not predicted was the size of the lead over positive_sft, nine times Banking77's at N 5000: with fewer than half the outcomes positive, discarding the negatives discards most of the log.
 
 ![Emotion N-curve](figures/v4_emotion_n_curve.png)
 
 ## 5. Limitations
 
-- **Simulated feedback.** Outcomes come from gold labels, revealed cleanly or flipped symmetrically at a known rate. Real feedback is delayed, biased towards some errors, and of unknown noise rate, and backward correction needs that rate. The learned compression towards the channel is global: in-domain ECE rises by .050 for the noisy run (RESULTS_v3 section 5).
-- **Domains and sizes.**
-  - Two adaptation domains with one log each; on emotion, positive_sft and full_sft have one seed.
-  - One logging policy per domain at epsilon 0.1: .836 accurate on Banking77, .542 on emotion.
-  - Two sizes; at 1.7B, CAPS-Brier has three training seeds and positive_sft and full_sft one each, so the 1.7B gaps carry no baseline seed variance.
-  - The noise sweep has one seed per rate.
-- **Missing off-policy arms.** The propensity-weighted arms reweight the direct-method loss; there is no counterfactual-risk policy learner (POEM or BanditNet; Swaminathan and Joachims 2015a; Joachims, Swaminathan and de Rijke 2018), no doubly robust arm (Dudík, Langford and Li 2011), and no self-normalised off-policy estimate of the learned policy's value from the log. The no-gain result is shown against reweighted regression, not against the methods built around the weights.
-- **Label noise, judged by two language models, no human.**
-  - *Banking77* (docs/audit/SUMMARY.md, `docs/audit/summary.json:groups`): some label problem in .12 and .14 of a uniform sample, and a clearly wrong label in .04. Of 100 questions both full_sft and CAPS-Brier miss, the judges find a problem in .66 and .62. The ceiling is plausibly near .96.
-  - *Emotion* (docs/audit/EMOTION_SUMMARY.md, `docs/audit/emotion_summary.json:groups`): a problem in .32 and .40 of a uniform sample, mostly a labelling convention that follows emotion words (.20 for both judges).
-  - *Both:* the clean feedback inherits these labels.
-- **Selection.** Checkpoints every 50 steps. At N 2000 the log-score arms peaked at the first candidate, so a finer grid could favour them. At N 500, 50 interactions select (RESULTS_v3 sections 9 and 11).
-- **Coverage of the claim.** The gap to full labels does not shrink with N (RESULTS_v3 section 8). The claim is that using failures beats discarding them, not that it replaces labels.
+- **Simulated feedback.** Outcomes come from gold labels, cleanly or flipped symmetrically at a known rate, while real feedback is delayed, biased towards some errors and of unknown noise rate, which backward correction needs; the compression towards the channel is global, with in-domain ECE up by .050 for the noisy run (RESULTS_v3 section 5, `S:forgetting.test_indomain.minus_zero_shot.direct_brier_n5000_s0_noisy.ece`).
+- **Domains and sizes.** There are two adaptation domains with one log each and one logging policy per domain at epsilon 0.1, .836 accurate on Banking77 and .542 on emotion; positive_sft and full_sft have one seed on emotion and at 1.7B, where CAPS-Brier has three, so those gaps carry no baseline seed variance; and the noise sweep has one seed per rate.
+- **Missing off-policy arms.** The weighted arms reweight the direct-method loss; with no counterfactual-risk policy learner (POEM or BanditNet; Swaminathan and Joachims 2015a; Joachims, Swaminathan and de Rijke 2018), doubly robust arm (Dudík, Langford and Li 2011) or self-normalised estimate of the learned policy's value, the no-gain result is shown against reweighted regression, not against the methods built around the weights.
+- **Label noise, judged by two language models, no human.** The judges find a label problem in .12 and .14 of a uniform Banking77 sample and in .32 and .40 of an emotion sample, and the clean feedback inherits these labels (Appendix B).
+- **Selection.** Checkpoints are every 50 steps, so at N 2000, where the log-score arms peaked at the first candidate, a finer grid could favour them, and at N 500 only 50 interactions select (RESULTS_v3 sections 9 and 11).
+- **Coverage of the claim.** The gap to full labels does not shrink with N (RESULTS_v3 section 8), so the claim is that using failures beats discarding them, not that it replaces labels.
 
 ## 6. Conclusion
 
@@ -246,21 +150,7 @@ The two negative results frame it. Scoring the sampled action's own probability 
 
 ## 7. Reproducibility
 
-- **Code and data:** https://github.com/yuan-phd/jevmark, Apache-2.0.
-- **Tags:** v1, v2 and v3 for the phases, v3-final for the closing state, and v4-paper for the phase 4 experiments and this paper.
-- **Commits of the runs:**
-  - b5913ef: the v3 logs and the phase 3 runs;
-  - b6b9e85 and 409c983: the off-policy runs;
-  - 36e8ee1: the noise sweep;
-  - c9e29c6: the 1.7B runs;
-  - 344019b: the 1.7B CAPS-Brier seeds 1 and 2;
-  - c86d322: the emotion log and runs;
-  - b9c0257: AURC and Cov@eps added to every run and stage file, earlier values unchanged.
-- **Run provenance:** every run's `metrics.json` records its commit, dirty flag, data sha256 and adapter sha256.
-- **Adapters on the Hugging Face Hub** (`yuanphd/jevmark`):
-  - sft_06b and sft_17b, the general decision head;
-  - rlcd_banking77_06b, CAPS-Brier adapted to Banking77.
-- **Tables and figures:** every table is regenerated on CPU from committed files by `scripts/compare_v3.py`, `scripts/compare_noise.py`, `scripts/compare_rlcd.py`, `scripts/paired_deltas.py` and `scripts/log_stats.py`. Every figure is regenerated by `scripts/make_figures.py`. The training scripts (`scripts/train_sft.py`, `scripts/train_rlcd.py`) fit one Kaggle T4 session per run (docs/KAGGLE.md).
+Code and data are at https://github.com/yuan-phd/jevmark (Apache-2.0), with tags v1, v2 and v3 for the phases, v3-final for the closing state, and v4-paper for the phase 4 experiments and this paper; the adapters sft_06b and sft_17b (the general decision head) and rlcd_banking77_06b (CAPS-Brier adapted to Banking77) are on the Hugging Face Hub (`yuanphd/jevmark`). Every run's `metrics.json` records its commit, dirty flag, data sha256 and adapter sha256, and every table and figure is regenerated on CPU from committed files (Appendix B).
 
 ## References
 
@@ -268,80 +158,42 @@ Full entries, with identifiers, are in `docs/references.bib`.
 
 - Abdul-Mageed and Ungar (2017). EmoNet: fine-grained emotion detection with gated recurrent neural networks. ACL. ACL Anthology P17-1067.
 - Agarwal and Manwani (2021). Learning multiclass classifier under noisy bandit feedback. PAKDD, LNCS. arXiv:2006.03545.
-- Ahmadian, A., et al. (2024). Back to basics: revisiting REINFORCE-style optimization for learning from human feedback in LLMs. ACL. arXiv:2402.14740.
 - Angluin, D., and Laird, P. (1988). Learning from noisy examples. Machine Learning 2(4).
-- Arpit, D., et al. (2017). A closer look at memorization in deep networks. ICML. arXiv:1706.05394.
-- Band, N., Li, X., Ma, T., and Hashimoto, T. (2024). Linguistic calibration of long-form generations. ICML. arXiv:2404.00474.
-- Bani-Harouni, D., Pellegrini, C., Stangel, P., Özsoy, E., Zaripova, K., Navab, N., and Keicher, M. (2025). Rewarding doubt: a reinforcement learning approach to calibrated confidence expression of large language models. arXiv:2503.02623.
-- Belcak, P., et al. (2025). Small language models are the future of agentic AI. arXiv:2506.02153.
 - Bereket and Leskovec (2025). Uncalibrated reasoning: GRPO induces overconfidence for stochastic outcomes. arXiv:2508.11800.
 - Beygelzimer and Langford (2009). The offset tree for learning with partial labels. KDD. arXiv:0812.4044.
 - Biderman et al. (2024). LoRA learns less and forgets less. TMLR. arXiv:2405.09673.
 - Bietti, Agarwal and Langford (2021). A contextual bandit bake-off. JMLR 22(133). arXiv:1802.04064.
-- Bottou, L., et al. (2013). Counterfactual reasoning and learning systems: the example of computational advertising. JMLR 14. arXiv:1209.2355.
 - Brier, G. W. (1950). Verification of forecasts expressed in terms of probability. Monthly Weather Review 78(1).
-- Bröcker, J. (2009). Reliability, sufficiency, and the decomposition of proper scores. QJRMS 135(643).
 - Byrd, J., and Lipton, Z. C. (2019). What is the effect of importance weighting in deep learning? ICML. arXiv:1812.03372.
 - Casanueva, I., Temčinas, T., Gerz, D., Henderson, M., and Vulić, I. (2020). Efficient intent detection with dual sentence encoders. NLP4ConvAI workshop, ACL. arXiv:2003.04807.
-- Che, X., Yuan, Y., Zhao, W., and Yu, C. (2026). Abstention as an action can kill both the reward gradient and the KL anchor: collapse law and repair for error-penalized reinforcement learning. arXiv:2608.00301.
 - Chen, L., Zaharia, M., and Zou, J. (2023). FrugalGPT: how to use large language models while reducing cost and improving performance. arXiv:2305.05176.
-- Chen, Y., Yuan, L., Cui, G., Liu, Z., and Ji, H. (2023). A close look into the calibration of pre-trained language models. ACL. arXiv:2211.00151.
-- Chow, C. (1970). On optimum recognition error and reject tradeoff. IEEE Transactions on Information Theory 16(1).
-- Chowdhury, S. R., Kini, A., and Natarajan, N. (2024). Provably robust DPO: aligning language models with noisy feedback. ICML. arXiv:2403.00409.
 - Chuang et al. (2025). Learning to route LLMs with confidence tokens. ICML. arXiv:2410.13284.
 - Damani, Puri, Slocum, Shenfeld, Choshen, Kim and Andreas (2026). Beyond binary rewards: training LMs to reason about their uncertainty. ICLR 2026. arXiv:2507.16806.
-- Desai and Durrett (2020). Calibration of pre-trained transformers. EMNLP. arXiv:2003.07892.
 - Dudík, Langford and Li (2011). Doubly robust policy evaluation and learning. ICML. arXiv:1103.4601.
 - Efron, B. (1979). Bootstrap methods: another look at the jackknife. Annals of Statistics 7(1).
 - Efron, B., and Tibshirani, R. J. (1993). An introduction to the bootstrap. Springer.
-- Elangovan, A., He, J., and Verspoor, K. (2021). Memorization vs. generalization: quantifying data leakage in NLP performance evaluation. EACL. arXiv:2102.01818.
 - Elkan, C., and Noto, K. (2008). Learning classifiers from only positive and unlabeled data. KDD.
-- Ferrer and Ramos (2024). Evaluating posterior probabilities: decision theory, proper scoring rules, and calibration. arXiv:2408.02841.
 - Foster, D. J., Agarwal, A., Dudík, M., Luo, H., and Schapire, R. E. (2018). Practical contextual bandits with regression oracles. ICML. arXiv:1803.01088.
 - Foster, D. J., and Rakhlin, A. (2020). Beyond UCB: optimal and efficient contextual bandits with regression oracles. ICML. arXiv:2002.04926.
 - Gao and Wang (2026). OpenJev-RLCD: a working RLCD implementation. arXiv:2609.38850.
 - Geifman, Y., and El-Yaniv, R. (2017). Selective classification for deep neural networks. NeurIPS. arXiv:1705.08500.
-- Geirhos, R., et al. (2020). Shortcut learning in deep neural networks. Nature Machine Intelligence 2. arXiv:2004.07780.
 - Gneiting, T., and Raftery, A. E. (2007). Strictly proper scoring rules, prediction, and estimation. JASA 102(477).
-- Gulcehre, C., et al. (2023). Reinforced self-training (ReST) for language modeling. arXiv:2308.08998.
 - Guo, C., Pleiss, G., Sun, Y., and Weinberger, K. Q. (2017). On calibration of modern neural networks. ICML. arXiv:1706.04599.
-- Gururangan, S., et al. (2018). Annotation artifacts in natural language inference data. NAACL. arXiv:1803.02324.
-- Hao, C., Lu, W., Ishiwaka, Y., Li, Z., Wan, W., and Chen, Y. (2026). When models know when they do not know: calibration, cascading, and cleaning. arXiv:2601.07965.
-- Hendrycks, D., et al. (2021). Measuring massive multitask language understanding. ICLR. arXiv:2009.03300.
-- Hewitt, J., and Liang, P. (2019). Designing and interpreting probes with control tasks. EMNLP. arXiv:1909.03368.
 - Hu, E. J., et al. (2022). LoRA: low-rank adaptation of large language models. ICLR. arXiv:2106.09685.
-- Hui, L., and Belkin, M. (2021). Evaluation of neural architectures trained with square loss vs cross-entropy in classification tasks. ICLR. arXiv:2006.07322.
 - Joachims, Swaminathan and de Rijke (2018). Deep learning with logged bandit feedback. ICLR.
-- Kadavath, S., et al. (2022). Language models (mostly) know what they know. arXiv:2207.05221.
-- Kalai, Nachum, Vempala and Zhang (2025). Why language models hallucinate. arXiv:2509.04664.
-- Kapoor, S., et al. (2024). Large language models must be taught to know what they don't know. NeurIPS. arXiv:2406.08391.
 - Kaufman, S., Rosset, S., Perlich, C., and Stitelman, O. (2012). Leakage in data mining: formulation, detection, and avoidance. ACM TKDD 6(4).
-- Kumar, A., Liang, P., and Ma, T. (2019). Verified uncertainty calibration. NeurIPS. arXiv:1909.10155.
-- Kumar, A., Raghunathan, A., Jones, R., Ma, T., and Liang, P. (2022). Fine-tuning can distort pretrained features and underperform out-of-distribution. ICLR. arXiv:2202.10054.
-- Lakshminarayanan, B., Pritzel, A., and Blundell, C. (2017). Simple and scalable predictive uncertainty estimation using deep ensembles. NeurIPS. arXiv:1612.01474.
 - Larson, S., et al. (2019). An evaluation dataset for intent classification and out-of-scope prediction. EMNLP-IJCNLP. arXiv:1909.02027.
-- Leng, J., et al. (2025). Taming overconfidence in LLMs: reward calibration in RLHF. ICLR. arXiv:2410.09724.
-- Lewis, P., Stenetorp, P., and Riedel, S. (2021). Question and answer test-train overlap in open-domain question answering datasets. EACL. arXiv:2008.02637.
 - Li, M., Soltanolkotabi, M., and Oymak, S. (2020). Gradient descent with early stopping is provably robust to label noise for overparameterized neural networks. AISTATS. arXiv:1903.11680.
-- Lin, S., Hilton, J., and Evans, O. (2022). Teaching models to express their uncertainty in words. TMLR. arXiv:2205.14334.
-- Ma, Wen, Cao, Lu, Lin, Yang, He, Han and Sun (2026). Decoupling reasoning and confidence: resurrecting calibration in reinforcement learning from verifiable rewards. ICML. arXiv:2603.09117.
 - Menon, A. K., van Rooyen, B., Ong, C. S., and Williamson, B. (2015). Learning from corrupted binary labels via class-probability estimation. ICML.
 - Mohamed, Rosca, Figurnov and Mnih (2020). Monte Carlo gradient estimation in machine learning. JMLR 21(132). arXiv:1906.10652.
-- Murphy, A. H. (1973). A new vector partition of the probability score. Journal of Applied Meteorology 12.
 - Natarajan, N., Dhillon, I. S., Ravikumar, P. K., and Tewari, A. (2013). Learning with noisy labels. NeurIPS.
 - Nixon, J., Dusenberry, M. W., Zhang, L., Jerfel, G., and Tran, D. (2019). Measuring calibration in deep learning. CVPR Workshops. arXiv:1904.01685.
 - Northcutt, C. G., Athalye, A., and Mueller, J. (2021). Pervasive label errors in test sets destabilize machine learning benchmarks. NeurIPS Datasets and Benchmarks. arXiv:2103.14749.
-- Northcutt, C. G., Jiang, L., and Chuang, I. L. (2021). Confident learning: estimating uncertainty in dataset labels. JAIR 70. arXiv:1911.00068.
 - Ojala, M., and Garriga, G. C. (2010). Permutation tests for studying classifier performance. JMLR 11.
-- Ong, I., et al. (2025). RouteLLM: learning to route LLMs from preference data. ICLR 2025. arXiv:2406.18665.
-- OpenAI (2023). GPT-4 technical report. arXiv:2303.08774.
 - Ovadia, Y., et al. (2019). Can you trust your model's uncertainty? Evaluating predictive uncertainty under dataset shift. NeurIPS. arXiv:1906.02530.
 - Pakdaman Naeini, M., Cooper, G. F., and Hauskrecht, M. (2015). Obtaining well calibrated probabilities using Bayesian binning. AAAI.
 - Patrini, G., Rozza, A., Menon, A. K., Nock, R., and Qu, L. (2017). Making deep neural networks robust to label noise: a loss correction approach. CVPR. arXiv:1609.03683.
-- Pezeshkpour, P., and Hruschka, E. (2024). Large language models sensitivity to the order of options in multiple-choice questions. NAACL Findings. arXiv:2308.11483.
-- Poliak, A., Naradowsky, J., Haldar, A., Rudinger, R., and Van Durme, B. (2018). Hypothesis only baselines in natural language inference. StarSEM. arXiv:1805.01042.
 - Qwen Team (2025). Qwen3 technical report. arXiv:2505.09388.
-- Robinson, J., Rytting, C. M., and Wingate, D. (2023). Leveraging large language models for multiple choice question answering. ICLR. arXiv:2210.12353.
 - Saravia, E., Liu, H.-C. T., Huang, Y.-H., Wu, J., and Chen, Y.-S. (2018). CARER: contextualized affect representations for emotion recognition. EMNLP.
 - Schulman, J., Heess, N., Weber, T., and Abbeel, P. (2015). Gradient estimation using stochastic computation graphs. NeurIPS. arXiv:1506.05254.
 - Shao, Z., et al. (2024). DeepSeekMath: pushing the limits of mathematical reasoning in open language models. arXiv:2402.03300.
@@ -349,20 +201,14 @@ Full entries, with identifiers, are in `docs/references.bib`.
 - Socher, R., et al. (2013). Recursive deep models for semantic compositionality over a sentiment treebank. EMNLP.
 - Swaminathan and Joachims (2015a). Counterfactual risk minimization: learning from logged bandit feedback. ICML. arXiv:1502.02362.
 - Swaminathan, A., and Joachims, T. (2015b). The self-normalized estimator for counterfactual learning. NeurIPS.
-- Tian, K., et al. (2023). Just ask for calibration: strategies for eliciting calibrated confidence scores from language models fine-tuned with human feedback. EMNLP. arXiv:2305.14975.
 - TypeSafe AI (2026). Introducing System One Models and Jev. Company blog, 15 September 2026. https://typesafe.ai/blog/introducing-system-one-models-and-jev, accessed 15 October 2026.
-- Welleck, S., et al. (2020). Neural text generation with unlikelihood training. ICLR. arXiv:1908.04319.
 - Williams, R. J. (1992). Simple statistical gradient-following algorithms for connectionist reinforcement learning. Machine Learning 8.
 - Xiong, M., et al. (2024). Can LLMs express their uncertainty? An empirical evaluation of confidence elicitation in LLMs. ICLR. arXiv:2306.13063.
 - Ying and Thomas (2022). Label errors in BANKING77. Workshop on Insights from Negative Results in NLP, ACL. ACL Anthology 2022.insights-1.19.
-- Yu, Bates, Ma and Jordan (2022). Robust calibration with multi-domain temperature scaling. NeurIPS. arXiv:2206.02757.
-- Yuan, Z., et al. (2023). Scaling relationship on learning mathematical reasoning with large language models. arXiv:2308.01825.
 - Zelikman, E., Wu, Y., Mu, J., and Goodman, N. D. (2022). STaR: bootstrapping reasoning with reasoning. NeurIPS. arXiv:2203.14465.
 - Zhang, C., Bengio, S., Hardt, M., Recht, B., and Vinyals, O. (2017). Understanding deep learning requires rethinking generalization. ICLR. arXiv:1611.03530.
 - Zhang, X., Zhao, J., and LeCun, Y. (2015). Character-level convolutional networks for text classification. NeurIPS. arXiv:1509.01626.
-- Zhao, Z., Wallace, E., Feng, S., Klein, D., and Singh, S. (2021). Calibrate before use: improving few-shot performance of language models. ICML. arXiv:2102.09690.
 - Zheng, C., Zhou, H., Meng, F., Zhou, J., and Huang, M. (2024). Large language models are not robust multiple choice selectors. ICLR. arXiv:2309.03882.
-- Zhu, C., et al. (2023). On the calibration of large language models and alignment. EMNLP Findings. arXiv:2311.13240.
 
 ## Appendix A. Full tables
 
@@ -404,6 +250,8 @@ Paired differences, CAPS-Brier minus the other learner (`S:n_curve.<N>.direct_br
 | 2000 | full_sft | -.007 [-.014, +.000] | +.005 [-.002, +.011] | +.013 [+.007, +.019] | +.062 [+.046, +.078] | +.0026 [+.0011, +.0043] | -.024 [-.035, -.002] |
 | 5000 | full_sft | -.018 [-.025, -.011] | -.004 [-.010, +.003] | +.029 [+.020, +.038] | +.062 [+.037, +.086] | +.0047 [+.0031, +.0063] | -.039 [-.051, -.024] |
 
+CAPS-Brier closes 69, 91 and 81 percent of the accuracy gap between zero-shot and full_sft at N 500, 2000 and 5000, computed from the stored accuracies (`S:n_curve.<N>.<learner>.accuracy`). One temperature is monotone within a question but can reorder top-1 probabilities across questions: at N 5000 the temperature learner moves Cov@.05 from .756 to .765, and on CAPS-Brier, whose fitted temperature is near 1, it moves AURC by under .0001 (`S:n_curve.5000.{zero_shot,temperature}`, `S:n_curve.5000.direct_brier_temp_minus_direct_brier.aurc`).
+
 ### A.2 Training seeds at N 5000
 
 Source: RESULTS_v3 sections 3 and 11, `S:seeds`.
@@ -419,6 +267,8 @@ Source: RESULTS_v3 sections 3 and 11, `S:seeds`.
 | CAPS-Brier minus positive_sft | +.026 [+.019, +.033] | -.053 [-.059, -.044] | -.060 [-.071, -.048] | -.389 [-.443, -.333] | -.0095 [-.0121, -.0070] | +.074 [+.052, +.098] |
 | CAPS-Brier minus full_sft (seed means) | -.015 [-.020, -.010] | +.003 [-.001, +.008] | +.027 [+.020, +.034] | +.082 [+.061, +.101] | +.0040 [+.0026, +.0053] | -.032 [-.041, -.019] |
 | CAPS-log minus CAPS-Brier (seed means) | +.002 [-.001, +.005] | -.003 [-.006, +.000] | -.005 [-.008, -.001] | -.020 [-.029, -.010] | -.0008 [-.0016, +.0000] | +.004 [-.001, +.010] |
+
+Training seeds and the second log draw move CAPS-Brier's accuracy by at most .6 points (`S:seeds`). A temperature fitted on CAPS-Brier's own training interactions comes out at .951 to 1.039 and moves ECE by at most .003 (`S:direct_brier_temperatures`).
 
 ### A.3 Off-policy baselines, seed 0
 
@@ -441,6 +291,10 @@ Source: RESULTS_v3 section 11, `S:n_curve.<N>.<arm>` and `S:n_curve.<N>.off_poli
 | 5000 | CAPS-Brier | .929 [.920, .938] | .026 | .111 | .274 | .0110 | .957 | |
 | 5000 | full_sft | .947 [.938, .955] | .030 | .082 | .212 | .0063 | .996 | |
 
+Every arm that keeps the negatives leads positive_sft, by +.016 to +.028 in accuracy. ips_positive equals positive_sft: +.002 [-.001, +.005] in accuracy at N 2000 and +.000 [-.003, +.004] at N 5000, and +.0003 [-.0003, +.0009] and +.0002 [-.0005, +.0010] in AURC (`S:n_curve.<N>.off_policy.ips_positive.minus_positive_sft`); at N 5000, only 25 of the 3342 positives it trains on are clipped (`runs/v3_06b_ips_positive_n5000_s0/train_summary.json:ips`). At N 5000, ips_log beats CAPS-Brier on Brier and NLL, but the unweighted CAPS-log beats it by more, so the gain is the log score's, not the weight's. CAPS-log forgets more in-domain (-.038 to -.046 against -.027 to -.043 for CAPS-Brier) and is behind at N 2000 on one seed (-.010 [-.016, -.004]).
+
+![Off-policy baselines](figures/v4_offpolicy.png)
+
 ### A.4 Noise-rate sweep, N 5000, seed 0
 
 Source: RESULTS_v3 section 4, `N:by_rate.<f>.<arm>` and `N:clean.<arm>`. "Final step" is step 1407, the end of the budget.
@@ -455,6 +309,8 @@ Source: RESULTS_v3 section 4, `N:by_rate.<f>.<arm>` and `N:clean.<arm>`. "Final 
 | 0.1 | positive_sft | .890 [.880, .901] | -.015 [-.021, -.008] | .124 [.118, .133] | .063 | .935 | .812 | | 1.244 |
 | 0.2 | positive_sft | .866 [.855, .878] | -.039 [-.048, -.031] | .196 [.190, .203] | .047 | .915 | .720 | | 2.216 |
 | 0.3 | positive_sft | .867 [.856, .879] | -.038 [-.046, -.030] | .251 [.247, .256] | .031 | .896 | .647 | | 2.916 |
+
+CAPS-Brier's excess channel-scale ECE over a channel-calibrated copy of the clean run grows with f: .017, .044 and .060 (`N:by_rate.<f>.direct_brier.channel.channel_scale.channel_ece_minus_reference`). Its accuracy loss against positive_sft's is +.009 [+.000, +.018] at 0.1 and +.017 [+.007, +.028] at 0.2 (`N:by_rate.<f>.direct_brier_loss_minus_positive_sft_loss.accuracy`). A soft-target diagnostic removes most of the residual; it needs the clean outcome, so it is a diagnostic, not a learner: channel-scale ECE .019 to .024 against a reference of .014 (RESULTS_v3 section 4). The residual is therefore the variance of one noisy draw per interaction, not a limit of the objective.
 
 ### A.5 Scale: 1.7B against 0.6B at N 5000
 
@@ -475,7 +331,7 @@ Source: RESULTS_v3 section 12, `L:n_curve.5000`, `L:seeds`, `S:n_curve.5000`, `S
 | CAPS-Brier seed mean minus positive_sft | +.034 [+.026, +.041] | -.051 [-.057, -.040] | -.070 [-.083, -.057] | -.353 [-.409, -.303] | -.0104 [-.0135, -.0078] | +.088 [+.062, +.108] |
 | CAPS-Brier seed mean minus full_sft | -.006 [-.011, -.002] | -.007 [-.011, +.000] | +.012 [+.006, +.017] | +.030 [+.018, +.043] | +.0021 [+.0012, +.0030] | -.0068 [-.0187, -.0002] |
 
-CAPS-Brier at 1.7B over training seeds 0, 1 and 2, mean (range) (`L:seeds.training_seeds`): accuracy .947 (.942, .949), ECE .016 (.013, .021), Brier .084 (.079, .093), NLL .192 (.182, .205), AURC .0073 (.0066, .0085), Cov@.05 .993 (.983, .998). The differences above put the seed mean against the single seed of each baseline (`L:seeds.training_seed_mean_minus_positive_sft`, `L:seeds.training_seed_mean_minus_full_sft`).
+CAPS-Brier at 1.7B over training seeds 0, 1 and 2, mean (range) (`L:seeds.training_seeds`): accuracy .947 (.942, .949), ECE .016 (.013, .021), Brier .084 (.079, .093), NLL .192 (.182, .205), AURC .0073 (.0066, .0085), Cov@.05 .993 (.983, .998). The differences above put the seed mean against the single seed of each baseline (`L:seeds.training_seed_mean_minus_positive_sft`, `L:seeds.training_seed_mean_minus_full_sft`). Every 1.7B CAPS-Brier seed is above every 0.6B one (.942 to .949 against .929 to .935).
 
 ### A.6 Full labels: unseen-schema ECE, 0.6B, three seeds
 
@@ -492,6 +348,8 @@ Source: RESULTS_v2 section 3, `runs/rlcd_stage2a_06b/metrics.json:unseen_schemas
 | CAPS-log | .170 (.181, .172, .156) | +.048 [+.043, +.055] | +.005 [+.001, +.011] |
 
 ### A.7 Emotion, 0.6B
+
+AURC is lower for CAPS-Brier than for positive_sft by .050 to .174, and at N 5000 its Cov@.05 is .595 against .032 (`E:n_curve.<N>.direct_brier_minus_positive_sft`, `E:n_curve.5000.<learner>.coverage_at_0.05`). positive_sft trains on 206 to 2151 confirmed answers (`runs/v3_emotion_06b_positive_sft_n<N>_s0/train_summary.json:n_used`) and is worse calibrated than zero-shot at every N (ECE .256 to .363 against .251). Against full_sft, CAPS-Brier is 3.8 to 4.6 points below on seed 0 and closes 68, 79 and 88 percent of the accuracy gap between zero-shot (.540) and full_sft, computed from the stored accuracies (`E:n_curve.<N>.<learner>.accuracy`). Its seeds span accuracy .821 to .832 and ECE .031 to .070 (`E:seeds.training_seeds`). CAPS-log at N 5000 is -.021 [-.030, -.012] below CAPS-Brier's seed mean in accuracy, with higher Brier and NLL (`E:seeds.direct_log_seed_mean_minus_direct_brier_seed_mean`), so Brier stays the default. The temperature learner (T about 2.3) has the lowest ECE, .024 at N 5000, and leaves AURC at .294 against zero-shot's .295: it fixes the level, not the ranking (`E:n_curve.5000.{zero_shot,temperature}`). At N 5000, CAPS-Brier costs 1.9 to 2.6 points of in-domain accuracy across seeds and full_sft 3.4, both with in-domain ECE within .004 of zero-shot (`E:forgetting.test_indomain.minus_zero_shot`). The label audit finds a problem in .32 and .40 of a uniform sample, mostly a labelling convention that follows emotion words (.20), and no plainly wrong label; the ceiling is .93 or higher if the convention is learnable and near .80 if it is not, and full_sft and every CAPS-Brier seed are above .80 (`docs/audit/emotion_summary.json:groups`). On the 500-record emotion subset, gpt-4.1-mini scores .598 and CAPS-Brier at N 5000 .842 to .858, with no paired interval (`E:b2_reference`).
 
 Source: RESULTS_v3 section 13, `E:n_curve.<N>.<learner>` (CAPS-Brier seed 0). Brackets are 95 percent record-bootstrap intervals; AURC and Cov@.05 rank by top-1 probability.
 
@@ -551,3 +409,40 @@ Forgetting at N 5000, minus zero-shot (test_indomain .956, test_unseen_intents .
 | CAPS-Brier seed 2 | -.024 [-.027, -.020] | -.003 [-.007, +.004] | -.034 [-.042, -.026] | +.000 [-.008, +.007] |
 | CAPS-log | -.022 [-.026, -.019] | -.001 [-.006, +.003] | -.011 [-.018, -.004] | -.013 [-.020, -.007] |
 | full_sft | -.034 [-.038, -.029] | -.002 [-.007, +.001] | -.040 [-.048, -.032] | +.011 [+.003, +.018] |
+
+## Appendix B. Setup and reproducibility details
+
+**Model and training.** LoRA has r 16 and alpha 32 on the attention projections, and answers are read from the letter logits at each question's answer slot in one forward pass. Supervised training samples options per record, with negated yes-or-no phrasings. In adaptation, all trained learners take the same number of steps, max(200, ceil(10 x 0.9 N / 32)), at lr 5e-5, and bootstrap intervals use 1000 resamples over records, paired across runs (RESULTS_v3 section 1).
+
+**Group baselines.** `rlcd.normalize_std: false` is set in `configs/rlcd_06b.yaml` and in the `config.yaml` of all 31 full-label runs, so the full-label group baseline subtracts the group mean only; the logged-feedback REINFORCE arm subtracts the batch mean only.
+
+**Learners.**
+- Temperature fitted to the logged outcomes: post-hoc and global, and it changes no argmax.
+- positive_sft: cross-entropy on confirmed actions, positive-unlabeled learning with the negatives discarded, not unobserved. What practitioners do.
+- full_sft: cross-entropy on gold for every logged interaction. The upper bound, at one label per interaction.
+
+**Leak and duplicate gates** (RESULTS_v1 section 3). Before any GPU run, the data must pass two CPU checks:
+- state-free leak probes: classifiers on phrasing, question text and structure, which must not beat chance by more than a fixed margin and a shuffled-target null;
+- train-test duplicate rules.
+
+The Banking77 log domain drops 30 messages that match the test split and 31 repeats (RESULTS_v3 section 1, `data/v3_manifest.json`).
+
+**Off-policy forms**, all on the same log:
+- REINFORCE with reward r - p_a, detached, a batch-mean baseline and the importance weight min(p / q, 5) (outcome_minus_p_log);
+- CAPS with the log score and inverse propensity weighting of the direct-method loss, min(1 / q, 5) divided by its mean over the training prefix (ips_log), which is importance-weighted regression;
+- positive_sft with the same weights (ips_positive).
+
+**Metrics.** AURC is the mean error of the kept answers over all coverages; Cov@eps is computed for eps in {.05, .10, .20}, with ties in top-1 kept or dropped together. Every trained learner reaches Cov@.20 = 1, and from N 2000 Cov@.10 = 1 as well, so the tables show Cov@.05. The same metrics ranked by the response's confidence field, 1 - H / ln K, are stored under `_entropy` keys.
+
+**Label audits.** Two language-model judges, no human, audited the labels. On Banking77 they find some label problem in .12 and .14 of a uniform sample and a clearly wrong label in .04, and a problem in .66 and .62 of 100 questions both full_sft and CAPS-Brier miss, so the ceiling is plausibly near .96 (docs/audit/SUMMARY.md, `docs/audit/summary.json:groups`). On emotion they find a problem in .32 and .40 of a uniform sample, mostly a labelling convention that follows emotion words (.20 for both judges) (docs/audit/EMOTION_SUMMARY.md, `docs/audit/emotion_summary.json:groups`).
+
+**Commits of the runs:**
+- b5913ef: the v3 logs and the phase 3 runs;
+- b6b9e85 and 409c983: the off-policy runs;
+- 36e8ee1: the noise sweep;
+- c9e29c6: the 1.7B runs;
+- 344019b: the 1.7B CAPS-Brier seeds 1 and 2;
+- c86d322: the emotion log and runs;
+- b9c0257: AURC and Cov@eps added to every run and stage file, earlier values unchanged.
+
+**Tables and figures:** every table is regenerated on CPU from committed files by `scripts/compare_v3.py`, `scripts/compare_noise.py`, `scripts/compare_rlcd.py`, `scripts/paired_deltas.py` and `scripts/log_stats.py`. Every figure is regenerated by `scripts/make_figures.py`. The training scripts (`scripts/train_sft.py`, `scripts/train_rlcd.py`) fit one Kaggle T4 session per run (docs/KAGGLE.md).

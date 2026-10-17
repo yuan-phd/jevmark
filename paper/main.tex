@@ -16,7 +16,10 @@
 \usepackage{longtable}
 \usepackage{float}
 \usepackage{array}
-\usepackage[parfill]{parskip}
+\setlength{\parskip}{2pt plus 1pt}
+\usepackage{enumitem}
+\usepackage[font=small]{caption}
+\setlist{nosep,leftmargin=*}
 \usepackage{natbib}
 \usepackage{url}
 \usepackage[hidelinks]{hyperref}
@@ -28,6 +31,8 @@
 \author{NAME\\ \texttt{EMAIL}\\ AFFILIATION}
 \date{}
 
+\setlength{\textfloatsep}{10pt plus 2pt minus 4pt}
+\setlength{\intextsep}{8pt plus 2pt minus 2pt}
 \begin{document}
 \maketitle
 \begin{abstract}
@@ -62,28 +67,23 @@ Third, from logged bandit feedback alone, Chosen-Action Proper Scoring (CAPS), t
 
 \section{Related work}\label{sec:2}
 
-\textbf{Calibrated decision heads for agents.} A small model that answers typed questions about a state in one forward pass, with a confidence its caller thresholds, is the setting of Jev \citep{typesafe2026jev} and of the other published reconstruction, OpenJev-RLCD \citep{gao2026openjev}. Its use is the cascade: a cheap model answers what it is sure of and defers the rest to a larger model or a person \citep{chen2023frugalgpt,ong2024routellm,belcak2025slm}, and routing work that trains the confidence into the small model finds that calibrated confidence gives the better deferral trade-off \citep{chuang2025selfref,hao2026cascading}. Thresholding the top posterior is selective classification \citep{chow1970reject,geifman2017selective}, and we evaluate the caller by its risk-coverage curve. Reading option-letter logits in one forward pass is the multiple-choice convention \citep{hendrycks2021mmlu,robinson2023mcq,kadavath2022know}, with known selection bias toward option letters and sensitivity to option order \citep{zheng2024selectors,pezeshkpour2024order,zhao2021calibrate}; we randomise option order in every split and report accuracy by gold letter position (R1, Section~3). Language models can also state a confidence in words \citep{lin2022teaching,tian2023justask,xiong2024uncertainty}; our head never generates text, and its confidence is the distribution over the options it read.
+\textbf{Calibrated decision heads for agents.} Jev \citep{typesafe2026jev} and the other published reconstruction, OpenJev-RLCD \citep{gao2026openjev}, answer typed questions about a state in one forward pass, with a confidence the caller thresholds. Their use is the cascade, in which a cheap model answers what it is sure of and defers the rest \citep{chen2023frugalgpt}, and confidence trained into the small model gives the better deferral trade-off \citep{chuang2025selfref}. Thresholding the top posterior is selective classification \citep{geifman2017selective}, so we evaluate the caller by its risk-coverage curve. Option-letter readout has known position and order biases \citep{zheng2024selectors}, so we randomise option order in every split and report accuracy by gold letter position (R1, Section~3); unlike a confidence stated in words \citep{xiong2024uncertainty}, ours is the distribution over the options the head read, with no text generated.
 
-\textbf{Learning from logged bandit feedback.} CAPS is the direct method of logged bandit feedback \citep{dudik2011doubly}, the regression-oracle objective \citep{foster2018regcb,foster2020squarecb}, which the bake-off of \citet{bietti2021bakeoff} found competitive without propensity weights. The other family, counterfactual risk minimisation, weights the policy objective by inverse propensities, with variance penalties, self-normalisation and clipping \citep{swaminathan2015crm,swaminathan2015selfnormalized,joachims2018banditnet,bottou2013counterfactual}; doubly robust estimators combine the two \citep{dudik2011doubly}. Simulating bandit feedback from a labelled multiclass dataset is the field's standard protocol \citep{beygelzimer2009offset,dudik2011doubly}. OpenJev-RLCD's stage 1 scores the whole readout distribution against the one-hot label, with full information; CAPS scores one component, the chosen action's probability against its own outcome, because partial feedback reveals nothing else. Importance weights are unnecessary for a well-specified conditional model \citep{shimodaira2000covariate} and have little effect on deep networks trained to convergence \citep{byrd2019importance}. Fine-tuning on confirmed answers only is positive-unlabeled learning, which recovers the posterior only up to a constant \citep{elkan2008pu}, and is the decision-head form of self-training on filtered successes \citep{zelikman2022star,yuan2023rft,gulcehre2023rest}; unlikelihood training is its counterpart that keeps the negatives \citep{welleck2020unlikelihood}. We add the instantiation for LoRA-adapted LLM decision heads at 2000 interactions, the comparison with positive-only fine-tuning, the noisy channel and label-free checkpoint selection.
+\textbf{Learning from logged bandit feedback.} CAPS is the direct method of logged bandit feedback \citep{dudik2011doubly} and the regression-oracle objective \citep{foster2018regcb,foster2020squarecb}, which a contextual-bandit bake-off found competitive without propensity weights \citep{bietti2021bakeoff}. Counterfactual risk minimisation instead weights the policy objective by inverse propensities, with variance penalties, self-normalisation and clipping \citep{swaminathan2015crm,swaminathan2015selfnormalized,joachims2018banditnet}; doubly robust estimators combine the two \citep{dudik2011doubly}, and simulating bandit feedback from a labelled multiclass dataset is the standard protocol \citep{beygelzimer2009offset}. Importance weights are unnecessary for a well-specified conditional model \citep{shimodaira2000covariate} and have little effect on deep networks trained to convergence \citep{byrd2019importance}. Fine-tuning on confirmed answers only is positive-unlabeled learning, which recovers the posterior only up to a constant \citep{elkan2008pu}, and the decision-head form of self-training on filtered successes \citep{zelikman2022star}.
 
-\textbf{Proper scoring rules as losses and as rewards.} A strictly proper score is minimised in expectation by the true probability \citep{brier1950verification,gneiting2007proper}, which makes it a calibration-respecting loss and, when the forecast is a separately emitted probability, a sound reward. As losses, the Brier and log scores train calibrated networks \citep{lakshminarayanan2017ensembles}, and square loss matches cross-entropy for classification \citep{hui2021square}; the two trade within one family through the reliability and resolution decomposition \citep{murphy1973partition,brocker2009decomposition}. Calibration is summarised by binned ECE \citep{naeini2015ece}, whose bias is why we report Brier and NLL beside it \citep{nixon2019measuring,kumar2019verified,ferrer2024posteriors}, and repaired post hoc by one temperature \citep{guo2017calibration}. As RL rewards on a verbalized or token-level confidence, proper scores yield calibrated models \citep{band2024linguistic,baniharouni2025doubt,damani2025rlcr}, and \citet{bereket2025uncalibrated} show that the estimator, not the score, then decides calibration: an unbiased group baseline gives calibrated forecasts and GRPO's standard-deviation normalisation drives them to the extremes. Our group baseline is the mean only (Section~\ref{sec:3}), so that failure does not arise here.
+\textbf{Proper scoring rules as losses and as rewards.} A strictly proper score is minimised in expectation by the true probability \citep{brier1950verification,gneiting2007proper}, which makes it a calibration-respecting loss and, when the forecast is a separately emitted probability, a sound reward. Binned ECE \citep{naeini2015ece} is biased, which is why we report Brier and NLL beside it \citep{nixon2019measuring}, and one temperature repairs calibration post hoc \citep{guo2017calibration}. As RL rewards on a verbalized confidence, proper scores yield calibrated models \citep{damani2025rlcr}, and \citet{bereket2025uncalibrated} show that the estimator, not the score, then decides calibration: an unbiased group baseline gives calibrated forecasts and GRPO's standard-deviation normalisation drives them to the extremes.
 
-\textbf{Calibration in RL for language models and the gradient question.} That a detached, parameter-dependent reward drops the pathwise term of the gradient is the general rule of stochastic computation graphs \citep{schulman2015scg,mohamed2020montecarlo}, and our first result is its corollary for a proper score of the sampled action's own probability. REINFORCE \citep{williams1992reinforce} with a group baseline is the estimator of GRPO \citep{shao2024deepseekmath} and, leave-one-out, of RLOO \citep{ahmadian2024rloo}. Outcome-only rewards degrade calibration \citep{openai2023gpt4,kalai2025hallucinate,damani2025rlcr}, and routing the calibration signal through a separate path repairs it \citep{ma2026dcpo}; error-penalised RL with an abstention gate can saturate both the reward gradient and the KL anchor \citep{che2026abstention}. OpenJev-RLCD \citep{gao2026openjev} optimises the readout distribution by the pathwise gradient of a proper score, which it calls the deterministic policy gradient with respect to the reported distribution, measures the score-function term at 7 to 12 times the pathwise term's gradient norm and finds more of it monotonically worse; that term acts on a sampled rationale. Its direct-scorer ablation reports that proper-score RL never beat cross-entropy on CLINC150 (94.6 against 96.3) and that RLVR collapsed to the mode. Our second result agrees under a transfer protocol with a continued cross-entropy control.
+\textbf{Calibration in RL for language models and the gradient question.} That a detached, parameter-dependent reward drops the pathwise term of the gradient is the general rule of stochastic computation graphs \citep{schulman2015scg,mohamed2020montecarlo}; our first result is its corollary for a proper score of the sampled action's own probability under REINFORCE \citep{williams1992reinforce} with the group baseline of GRPO \citep{shao2024deepseekmath}, and outcome-only rewards degrade calibration \citep{damani2025rlcr}. OpenJev-RLCD \citep{gao2026openjev} optimises the readout distribution by the pathwise gradient of a proper score, its deterministic policy gradient with respect to the reported distribution, and finds the score-function term, which acts on a sampled rationale, at 7 to 12 times the pathwise term's gradient norm and more of it monotonically worse. Its direct-scorer ablation reports that proper-score RL never beat cross-entropy on CLINC150 (94.6 against 96.3) and that RLVR collapsed to the mode; our second result agrees under a transfer protocol with a continued cross-entropy control.
 
-\textbf{Noisy feedback.} Feedback flipped at a known rate $f$ is random classification noise on the outcome \citep{angluin1988noisy}, and the observed outcome rate $f + (1-2f)\,P(\mathrm{correct})$ that CAPS fits is the symmetric case of the class-conditional identity \citep{natarajan2013noisy}, with the clean posterior an affine transform of the corrupted one \citep{menon2015corrupted}. Inverting it is backward correction with a known transition matrix \citep{patrini2017losscorrection}, whose error grows by the $1/(1-2f)$ factor of \citeauthor{angluin1988noisy}; the same correction appears for noisy preferences \citep{chowdhury2024robustdpo}. \citet{agarwal2021noisybandit} study flipped bandit feedback with a known rate for an online linear learner. Networks memorise noisy labels given enough passes \citep{zhang2017rethinking,arpit2017memorization}, and early stopping is the provable remedy \citep{li2020earlystopping}. We add that a pathwise proper score on noisy chosen-action feedback learns the noisy posterior without any correction, which is what makes backward correction possible, that the residual is the variance of one draw per interaction, and that early stopping can be driven by the held-out log score of logged outcomes.
+\textbf{Noisy feedback.} Feedback flipped at a known rate $f$ is random classification noise on the outcome \citep{angluin1988noisy}; the observed outcome rate $f + (1-2f)\,P(\mathrm{correct})$ that CAPS fits is the symmetric case of the class-conditional identity, with the clean posterior an affine transform of the corrupted one \citep{natarajan2013noisy,menon2015corrupted}, and inverting it is backward correction with a known transition matrix \citep{patrini2017losscorrection}, whose error grows by the $1/(1-2f)$ factor of \citeauthor{angluin1988noisy}. \citet{agarwal2021noisybandit} study flipped bandit feedback with a known rate for an online linear learner; networks memorise noisy labels given enough passes \citep{zhang2017rethinking}, and early stopping is the provable remedy \citep{li2020earlystopping}.
 
-\textbf{Calibration under shift and after fine-tuning.} A single temperature is strong in-domain and fragile under shift \citep{ovadia2019shift,desai2020calibration,chen2023closelook}, and our second result says the bandit alternatives are no less fragile on unseen label schemas. Domain-dependent temperatures address the shift directly \citep{yu2022multidomain}. Post-training degrades calibration \citep{openai2023gpt4,zhu2023alignment,leng2025taming}, while a small amount of fine-tuning on graded examples can teach calibration that transfers \citep{kapoor2024taught}. Adaptation costs in-domain accuracy, as LoRA forgets less than full fine-tuning but still forgets \citep{biderman2024lora,kumar2022distort}.
+\textbf{Calibration under shift and after fine-tuning.} A single temperature is strong in-domain and fragile under shift \citep{ovadia2019shift}. Our second result says the bandit alternatives are no less fragile on unseen label schemas. LoRA forgets less than full fine-tuning but still forgets \citep{biderman2024lora}, so we report forgetting on the original domain.
 
-\textbf{Dataset quality and evaluation hygiene.} Our leak probes are leakage detection by exploratory models on non-target features \citep{kaufman2012leakage} against a permutation null \citep{ojala2010permutation} and a control task \citep{hewitt2019control}, the guard the annotation-artifact and shortcut literature calls for \citep{gururangan2018artifacts,poliak2018hypothesis,geirhos2020shortcut}; the duplicate check addresses train-test overlap \citep{elangovan2021leakage,lewis2021overlap}. Benchmark test sets contain label errors \citep{northcutt2021pervasive,northcutt2021confident}. For Banking77, \citet{ying2022banking77errors} flag about 1,400 of 13,083 utterances, about 11 percent, in line with our audit's .12 and .14. The emotion dataset is distantly supervised from hashtags \citep{saravia2018carer}, which human validation puts at about 90 percent label accuracy \citep{abdulmageed2017emonet}; our audit finds a problem in a third of a uniform sample.
+\textbf{Dataset quality and evaluation hygiene.} Our leak probes are leakage detection by exploratory models on non-target features \citep{kaufman2012leakage} against a permutation null \citep{ojala2010permutation}. Benchmark test sets contain label errors \citep{northcutt2021pervasive}; for Banking77, \citet{ying2022banking77errors} flag about 1,400 of 13,083 utterances, about 11 percent, in line with our audit's .12 and .14. The emotion dataset is distantly supervised from hashtags \citep{saravia2018carer}, which human validation puts at about 90 percent label accuracy \citep{abdulmageed2017emonet}; our audit finds a problem in a third of a uniform sample.
 
 \section{Method: Chosen-Action Proper Scoring}\label{sec:3}
 
-\textbf{Setting.} A logged interaction is $(x, O, a, q(a \mid x), r)$:
-\begin{itemize}
-  \item $x$ is a state and $O$ its $K$ options;
-  \item $a$ is the action the logging policy $q$ chose, and $q(a \mid x)$ its logging propensity, recorded exactly;
-  \item $r \in \{0, 1\}$ records whether $a$ was right.
-\end{itemize}
+\textbf{Setting.} A logged interaction is $(x, O, a, q(a \mid x), r)$: $x$ is a state and $O$ its $K$ options, $a$ is the action the logging policy $q$ chose and $q(a \mid x)$ its logging propensity, recorded exactly, and $r \in \{0, 1\}$ records whether $a$ was right.
 
 The learner starts from a general decision head $p_\theta$ and sees only the log. In our experiments $q = 0.9\, p_0 + 0.1/K$, epsilon-greedy over the starting model $p_0$, so every option has support.
 
@@ -95,15 +95,11 @@ with $S$ a strictly proper binary score: Brier, $(r - p)^2$, by default, or the 
 
 \textbf{Identity.} CAPS is the direct method of \citet{dudik2011doubly}, with a proper score as the regression loss on the chosen action's outcome and the argmax of the fitted head as the policy, and it is OpenJev-RLCD's stage 1 specialised to partial feedback: where stage 1 scores the whole readout distribution against the one-hot label, CAPS scores the one component the log reveals, the chosen action's probability against its own outcome.
 
-\textbf{Why no propensity weight.} For each $(x, a)$ with $q(a \mid x) > 0$, the inner term is minimised at $p(a \mid x) = P(r = 1 \mid x, a)$, whatever $q$ is. The regression target does not depend on the logging policy as long as it has support, so the unweighted fit is consistent for a well-specified model \citep{shimodaira2000covariate}. The propensity only sets how a finite model trades errors between actions, and $L$ makes that trade as the deployed policy acts. A weight $1/q$ would retarget it to a uniform average over options.
+\textbf{Why no propensity weight.} For each $(x, a)$ with $q(a \mid x) > 0$, the inner term is minimised at $p(a \mid x) = P(r = 1 \mid x, a)$, whatever $q$ is. The target does not depend on the logging policy as long as it has support, so the unweighted fit is consistent for a well-specified model \citep{shimodaira2000covariate}. The propensity only sets how a finite model trades errors between actions, and $L$ makes that trade as the deployed policy acts. A weight $1/q$ would retarget it to a uniform average over options.
 
-Accuracy is a consequence, not the objective: moving right actions up and wrong ones down moves the argmax. A negative on an option other than the logger's top choice arises only from the logger's randomness. On our main log, 1514 of 2593 negatives (.584) fall on such options, and about .545 of those come from the uniform exploration term. Options the logger never takes are unconstrained by the objective.
+Accuracy is a consequence, not the objective: moving right actions up and wrong ones down moves the argmax, and options the logger never takes are unconstrained. A negative on an option other than the logger's top choice arises only from the logger's randomness; on our main log, 1514 of 2593 negatives (.584) fall on such options, and about .545 of those come from the uniform exploration term.
 
-\textbf{Corollary (a proper score of the sampled action's probability as a detached reward).} Take $K$ options, gold $g$, and a proper score used as the reward of the sampled action:
-\begin{itemize}
-  \item Brier: $R(a) = 1 - (r_a - p_a)^2$;
-  \item log score: $R(a) = r_a \log p_a + (1 - r_a) \log(1 - p_a)$.
-\end{itemize}
+\textbf{Corollary (a proper score of the sampled action's probability as a detached reward).} Take $K$ options, gold $g$, and a proper score used as the reward of the sampled action: Brier, $R(a) = 1 - (r_a - p_a)^2$, or the log score, $R(a) = r_a \log p_a + (1 - r_a) \log(1 - p_a)$.
 
 The gradient of the expected reward, $\sum_a p_a R(a)$, has a score-function term, $\sum_a R(a)\, \nabla p_a$, and a pathwise term, $\sum_a p_a \nabla R(a)$. Detaching $R$ keeps only the first \citep{schulman2015scg}. Form REINFORCE advantages against the mean of a sampled group, the sample itself included and not divided by the group standard deviation.
 
@@ -112,15 +108,10 @@ The gradient of the expected reward, $\sum_a p_a R(a)$, has a score-function ter
 (ii) If $K = 2$, all rewards in every group are equal, and the gradient is zero.
 
 \begin{proof}
-A wrong action $w$ has $r_w = 0$ and $p_w \le 1 - p_g$.
-\begin{itemize}
-  \item Under Brier, $R(w) = 1 - p_w^2$ and $R(g) = 1 - (1 - p_g)^2$. Under the log score, $R(w) = \log(1 - p_w)$ and $R(g) = \log p_g$.
-  \item Both rewards decrease in $p_w$ and equal $R(g)$ at $p_w = 1 - p_g$. Hence $R(w) \ge R(g)$, and the smallest sampled $p_w$ gives the group maximum.
-  \item At $K = 2$, $p_w = 1 - p_g$ exactly, so $R(w) = R(g)$. \qedhere
-\end{itemize}
+A wrong action $w$ has $r_w = 0$ and $p_w \le 1 - p_g$. Under Brier, $R(w) = 1 - p_w^2$ and $R(g) = 1 - (1 - p_g)^2$; under the log score, $R(w) = \log(1 - p_w)$ and $R(g) = \log p_g$. Both rewards decrease in $p_w$ and equal $R(g)$ at $p_w = 1 - p_g$. Hence $R(w) \ge R(g)$, and the smallest sampled $p_w$ gives the group maximum. At $K = 2$, $p_w = 1 - p_g$ exactly, so $R(w) = R(g)$.
 \end{proof}
 
-The score grades $p_a$ as a forecast of $r_a$, and a low probability on a wrong option is always a good forecast. CAPS uses the same score as a loss on $p_a$ by its pathwise gradient, not as a reward on $a$. Neither statement depends on the standard-deviation normalisation that \citet{bereket2025uncalibrated} identify as GRPO's source of overconfidence: our full-label runs use a group of 4 and subtract its mean only (\texttt{rlcd.normalize\_std: false} in \texttt{configs/rlcd\_06b.yaml} and in the \texttt{config.yaml} of all 31 full-label runs), and the logged-feedback REINFORCE arm subtracts the batch mean only. Nor does the corollary contradict the proper-score rewards of \citet{damani2025rlcr} and \citet{bereket2025uncalibrated}, which score a confidence the model emits separately, not the probability with which it sampled the action being rewarded.
+The score grades $p_a$ as a forecast of $r_a$, and a low probability on a wrong option is always a good forecast; CAPS uses the same score as a loss on $p_a$ by its pathwise gradient, not as a reward on $a$. Neither statement depends on the standard-deviation normalisation that \citet{bereket2025uncalibrated} identify as GRPO's source of overconfidence, since our group of 4 and the logged-feedback REINFORCE arm subtract the mean only (Appendix~\ref{sec:setup}), and the corollary does not contradict proper-score rewards on a confidence the model emits separately \citep{damani2025rlcr,bereket2025uncalibrated}, only on the probability with which it sampled the rewarded action.
 
 \textbf{Selection.} Train on the first $0.9N$ interactions. Keep the checkpoint, from a 50-step grid, with the highest mean Bernoulli log-likelihood of the logged outcomes under $p(\text{logged action})$ on the last $0.1N$: early stopping on the held-out log score of logged outcomes. No gold label is read. Under noisy feedback this is what prevents memorisation (Section~\ref{sec:4.3}).
 
@@ -128,207 +119,79 @@ The score grades $p_a$ as a forecast of $r_a$, and a low probability on a wrong 
 
 \subsection{Setup}\label{sec:4.1}
 
-\textbf{Model and data.}
-\begin{itemize}
-  \item Qwen3-0.6B-Base and 1.7B-Base with LoRA (r 16, alpha 32, attention projections) \citep{hu2022lora,qwen2025qwen3}. Answers are read from the letter logits at each question's answer slot in one forward pass.
-  \item Supervised training uses CLINC150 intents \citep{larson2019clinc} and SST-5 sentiment \citep{socher2013sst}. Options are sampled per record, with negated yes-or-no phrasings.
-  \item Evaluation covers 20 held-out intents and four schemas never trained on: AG News, Yelp \citep{zhang2015charcnn}, emotion \citep{saravia2018carer} and Banking77 \citep{casanueva2020banking77}.
-\end{itemize}
+\textbf{Model and data.} The decision head is Qwen3-0.6B-Base or 1.7B-Base with LoRA \citep{hu2022lora,qwen2025qwen3}, read from the letter logits at each question's answer slot. It is trained with supervision on CLINC150 intents \citep{larson2019clinc} and SST-5 sentiment \citep{socher2013sst} and evaluated on 20 held-out intents and four schemas never trained on: AG News, Yelp \citep{zhang2015charcnn}, emotion \citep{saravia2018carer} and Banking77 \citep{casanueva2020banking77}. Training details and the data gates are in Appendix~\ref{sec:setup}.
 
-\textbf{Leak and duplicate gates.} Before any GPU run, the data must pass two CPU checks:
-\begin{itemize}
-  \item state-free leak probes: classifiers on phrasing, question text and structure, which must not beat chance by more than a fixed margin and a shuffled-target null;
-  \item train-test duplicate rules.
-\end{itemize}
+\textbf{Adaptation protocol.} The 0.6B model logs every message of the Banking77 train split once, 9942 messages, each a 10-option choice with gold always present, sampling from $q = 0.9\,p + 0.1/K$ and recording only the correctness of its action; policy accuracy is .836 and the outcome rate .739. Learners see the first $N \in \{500, 2000, 5000\}$ interactions at equal steps; at N 5000, CAPS-Brier, CAPS-log and \texttt{full\_sft} each have three training seeds, and CAPS-Brier also has a second log draw. Evaluation is on the full Banking77 test split (3080 records), plus \texttt{test\_indomain} and \texttt{test\_unseen\_intents} for forgetting, with paired 95 percent record-bootstrap intervals \citep{efron1979bootstrap,efron1993introduction}.
 
-The Banking77 log domain drops 30 messages that match the test split and 31 repeats.
+\textbf{Learners.} The temperature learner fits one temperature to the logged outcomes and changes no argmax; \texttt{positive\_sft} is cross-entropy on confirmed actions, positive-unlabeled learning with the negatives discarded, and what practitioners do; \texttt{full\_sft} is cross-entropy on gold for every logged interaction, the upper bound. Three off-policy forms on the same log use the propensities, \texttt{outcome\_minus\_p\_log}, \texttt{ips\_log} and \texttt{ips\_positive} (Appendix~\ref{sec:setup}); they are not counterfactual risk minimisation, which weights the policy objective itself and was not run (Section~\ref{sec:5}). In tables, CAPS with the Brier score is the run name \texttt{direct\_brier}, and with the log score \texttt{direct\_log}.
 
-\textbf{Adaptation protocol.} Supervised-to-bandit conversion with a decision head as the logger.
-\begin{itemize}
-  \item The 0.6B model logs every message of the Banking77 train split once: 9942 messages, each a 10-option choice with gold always present. It samples from $q = 0.9\,p + 0.1/K$ and records only the correctness of its action. Policy accuracy is .836 and the outcome rate .739.
-  \item Learners see the first $N \in \{500, 2000, 5000\}$ interactions. All trained learners take the same number of steps, $\max(200, \lceil 10 \times 0.9 N / 32 \rceil)$, at lr 5e-5.
-  \item Evaluation is on the full Banking77 test split (3080 records), plus \texttt{test\_indomain} and \texttt{test\_unseen\_intents} for forgetting.
-  \item Intervals are 95 percent bootstrap over records \citep{efron1979bootstrap,efron1993introduction}, 1000 resamples, paired across runs.
-  \item At N 5000, CAPS-Brier, CAPS-log and \texttt{full\_sft} each have three training seeds, and CAPS-Brier also has a second log draw.
-\end{itemize}
+\textbf{Metrics.} Accuracy, ECE with 15 equal-width bins, Brier and NLL, and two selective-classification metrics for the caller who thresholds \citep{geifman2017selective}, with questions ranked by top-1 probability: AURC, the area under the risk-coverage curve, and Cov@eps, the largest share of questions a top-1 threshold keeps with error at most eps (Appendix~\ref{sec:setup}). Lower AURC and higher Cov@eps are better, and the tables show Cov@.05.
 
-\textbf{Learners.}
-\begin{itemize}
-  \item \textbf{Temperature} fitted to the logged outcomes: post-hoc and global, and it changes no argmax.
-  \item \textbf{\texttt{positive\_sft}}: cross-entropy on confirmed actions, positive-unlabeled learning with the negatives discarded, not unobserved. What practitioners do.
-  \item \textbf{\texttt{full\_sft}}: cross-entropy on gold for every logged interaction. The upper bound, at one label per interaction.
-  \item \textbf{Off-policy forms}, all on the same log:
-  \begin{itemize}
-    \item REINFORCE with reward $r - p_a$, detached, a batch-mean baseline and the importance weight $\min(p/q, 5)$ (\texttt{outcome\_minus\_p\_log});
-    \item CAPS with the log score and inverse propensity weighting of the direct-method loss, $\min(1/q, 5)$ divided by its mean over the training prefix (\texttt{ips\_log}), which is importance-weighted regression;
-    \item \texttt{positive\_sft} with the same weights (\texttt{ips\_positive}).
-  \end{itemize}
-\end{itemize}
-
-The weighted forms reweight the direct-method loss. They are not counterfactual risk minimisation, which weights the policy objective itself; that arm was not run (Section~\ref{sec:5}). In tables, CAPS with the Brier score is the run name \texttt{direct\_brier}, and with the log score \texttt{direct\_log}.
-
-\textbf{Metrics.} Accuracy, ECE with 15 equal-width bins, Brier and NLL, and two selective-classification metrics for the caller who thresholds \citep{geifman2017selective}. Questions are ranked by top-1 probability. AURC is the area under the risk-coverage curve, the mean error of the kept answers over all coverages; Cov@eps is the largest share of questions a top-1 threshold keeps with error at most eps, for eps in \{.05, .10, .20\}, with ties in top-1 kept or dropped together. Lower AURC and higher Cov@eps are better. Every trained learner reaches Cov@.20 = 1, and from N 2000 Cov@.10 = 1 as well, so the tables show Cov@.05. The same metrics ranked by the response's confidence field, $1 - H/\ln K$, are stored under \texttt{\_entropy} keys.
-
-A temperature changes the level of the probabilities and only slightly their ranking: one temperature is monotone within a question but can reorder top-1 probabilities across questions. At N 5000 the temperature learner cuts zero-shot ECE from .063 to .020 but moves AURC only from .0333 to .0328 and Cov@.05 from .756 to .765; on CAPS-Brier, whose fitted temperature is near 1, it moves AURC by under .0001.
+A temperature changes the level of the probabilities and only slightly their ranking: at N 5000 the temperature learner cuts zero-shot ECE from .063 to .020 but moves AURC only from .0333 to .0328 (Table~\ref{tab:A1}; details in Appendix~\ref{sec:A1}).
 
 \subsection{Full labels: the negative results (v2)}\label{sec:4.2}
 
-\textbf{The broken reward.} A first run used Brier as a detached REINFORCE reward on fully labelled in-domain data, group of 4, mean baseline without standard-deviation normalisation.
-\begin{itemize}
-  \item Score accuracy fell from .636 to .111 on SST-5 and from .505 to .044 on Yelp.
-  \item A simulation of the sampler on the SFT model lowered the gold logit in 24.0 percent of questions and raised it in 1.8 percent.
-\end{itemize}
-
-This is the corollary of Section~\ref{sec:3} at work.
-
-\textbf{No gain from bandit objectives on full labels.} Five arms:
-\begin{itemize}
-  \item continued cross-entropy (the control);
-  \item two REINFORCE arms with detached rewards, outcome and $r - p$;
-  \item CAPS with Brier and with the log score, by the pathwise gradient.
-\end{itemize}
-
-Each ran three seeds at 0.6B. Against SFT plus one in-domain temperature (unseen-schema mean ECE .121):
-\begin{itemize}
-  \item every arm's unseen-schema ECE is higher, by +.031 to +.127;
-  \item given its own temperature, the best arm is level, $-$.002 [$-$.006, +.004], and so is the control, +.002 [$-$.001, +.009].
-\end{itemize}
-
-When gold is known, whether a sampled answer was right carries no more than the label itself, and one temperature is the strongest cheap fix. OpenJev-RLCD reports the same direction on CLINC150 with a different training setup; the transfer to unseen schemas and the continued cross-entropy control are ours. Figure~\ref{fig:v2_arm_ece} shows the arms.
+A first run used Brier as a detached REINFORCE reward on fully labelled in-domain data, with a group of 4 and a mean baseline without standard-deviation normalisation. Score accuracy fell from .636 to .111 on SST-5 and from .505 to .044 on Yelp, and a simulation of the sampler on the SFT model lowered the gold logit in 24.0 percent of questions and raised it in 1.8 percent: the corollary of Section~\ref{sec:3} at work. Five arms, from continued cross-entropy to CAPS with the log score, then ran three seeds each at 0.6B on full labels (Table~\ref{tab:A6}). Against SFT plus one in-domain temperature, at unseen-schema mean ECE .121, every arm's unseen-schema ECE is higher, by +.031 to +.127, and given its own temperature the best arm and the control are only level (Figure~\ref{fig:v2_arm_ece}). When gold is known, whether a sampled answer was right carries no more than the label itself, and one temperature is the strongest cheap fix. OpenJev-RLCD reports the same direction on CLINC150 with a different training setup; the transfer to unseen schemas and the continued cross-entropy control are ours.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\textwidth]{figures/v2_arm_ece.png}
+\includegraphics[width=0.6\textwidth]{figures/v2_arm_ece.png}
 \caption{Unseen-schema mean ECE per full-label arm, 0.6B, mean of three seeds with their range, raw and with its own temperature, against SFT and SFT plus one temperature. Provenance: Table~\ref{tab:prov}, F1.}\label{fig:v2_arm_ece}
 \end{figure}
 
 \subsection{Logged bandit feedback only (v3, Banking77)}\label{sec:4.3}
 
-\textbf{The N-curve} (Figure~\ref{fig:v3_n_curve}; Table~\ref{tab:A1}).
-\begin{itemize}
-  \item \emph{Against \texttt{positive\_sft}:} CAPS-Brier ties on accuracy at N 500, +.002 [$-$.006, +.009]. It leads by +.027 [+.019, +.035] at N 2000 and +.024 [+.016, +.031] at N 5000. Its ECE is lower by .052 to .060 and its AURC by .0035 to .0099 at every N; its Cov@.05 is level at N 500 and higher by +.065 [+.048, +.093] and +.069 [+.046, +.094] at N 2000 and 5000.
-  \item \emph{Against \texttt{full\_sft}:} it stays 0.7 to 1.8 points below in accuracy and .0026 to .0047 above in AURC.
-  \item \emph{Gap closed:} it closes 69, 91 and 81 percent of the accuracy gap between zero-shot and \texttt{full\_sft} at N 500, 2000 and 5000, computed from the stored accuracies.
-  \item \emph{The temperature learner} keeps zero-shot accuracy (.851) and has the lowest or joint-lowest ECE (.020 at N 5000). Its Brier, NLL and AURC stay far above every trained learner's.
-\end{itemize}
+\textbf{The N-curve.} From 2000 interactions CAPS-Brier beats \texttt{positive\_sft}: it ties at N 500, +.002 [$-$.006, +.009], and leads by +.027 [+.019, +.035] at N 2000 and +.024 [+.016, +.031] at N 5000, with ECE lower by .052 to .060 and AURC by .0035 to .0099 at every N, and Cov@.05 level at N 500 and higher by +.065 [+.048, +.093] and +.069 [+.046, +.094] at N 2000 and 5000 (Figure~\ref{fig:v3_n_curve}; Table~\ref{tab:A1}). It stays 0.7 to 1.8 points below \texttt{full\_sft} in accuracy and .0026 to .0047 above it in AURC. The temperature learner keeps zero-shot accuracy (.851) and has the lowest or joint-lowest ECE, .020 at N 5000, but its Brier, NLL and AURC stay far above every trained learner's.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\textwidth]{figures/v3_n_curve.png}
+\includegraphics[width=0.6\textwidth]{figures/v3_n_curve.png}
 \caption{Accuracy and ECE against N on the Banking77 test split, 0.6B: every learner at seed 0 with 95 percent record-bootstrap intervals, and at N 5000 the range over three training seeds for CAPS-Brier (\texttt{direct\_brier}) and \texttt{full\_sft}. Provenance: Table~\ref{tab:prov}, F2.}\label{fig:v3_n_curve}
 \end{figure}
 
-\textbf{Seeds} (Table~\ref{tab:A2}).
-\begin{itemize}
-  \item Over three training seeds at N 5000, CAPS-Brier is +.026 [+.019, +.033] over \texttt{positive\_sft} in accuracy and $-$.0095 [$-$.0121, $-$.0070] in AURC, and $-$.015 [$-$.020, $-$.010] below \texttt{full\_sft}'s seed mean, with ECE level, +.003 [$-$.001, +.008].
-  \item Training seeds and the second log draw move accuracy by at most .6 points.
-  \item A temperature fitted on CAPS-Brier's own training interactions comes out near 1 (.951 to 1.039) and moves ECE by at most .003.
-\end{itemize}
+\textbf{Seeds.} Over three training seeds at N 5000, CAPS-Brier is +.026 [+.019, +.033] over \texttt{positive\_sft} in accuracy and $-$.0095 [$-$.0121, $-$.0070] in AURC, and $-$.015 [$-$.020, $-$.010] below \texttt{full\_sft}'s seed mean, with ECE level, +.003 [$-$.001, +.008] (Table~\ref{tab:A2}). Training seeds and the second log draw move accuracy by at most .6 points, and a temperature fitted on CAPS-Brier's own training interactions comes out near 1 and moves ECE by at most .003 (Appendix~\ref{sec:A2}).
 
-\textbf{Off-policy baselines} (Figure~\ref{fig:v4_offpolicy}; Table~\ref{tab:A3}).
-\begin{itemize}
-  \item Every arm that keeps the negatives leads \texttt{positive\_sft}, by +.016 to +.028 in accuracy.
-  \item \texttt{ips\_positive} equals \texttt{positive\_sft}: +.002 [$-$.001, +.005] in accuracy at N 2000 and +.000 [$-$.003, +.004] at N 5000, and +.0003 [$-$.0003, +.0009] and +.0002 [$-$.0005, +.0010] in AURC. At N 5000, only 25 of the 3342 positives it trains on are clipped. With full support and a well-specified regression target, this is the expected result.
-  \item No arm beats CAPS-Brier on accuracy with an interval excluding 0.
-  \item At N 5000, \texttt{ips\_log} beats CAPS-Brier on Brier and NLL, but the unweighted CAPS-log beats it by more, so the gain is the log score's, not the weight's.
-  \item Over three seeds, CAPS-log against CAPS-Brier at N 5000 is +.002 [$-$.001, +.005] in accuracy, $-$.005 [$-$.008, $-$.001] in Brier, $-$.020 [$-$.029, $-$.010] in NLL and $-$.0008 [$-$.0016, +.0000] in AURC.
-  \item CAPS-log forgets more in-domain ($-$.038 to $-$.046 against $-$.027 to $-$.043) and is behind at N 2000 on one seed ($-$.010 [$-$.016, $-$.004]).
-\end{itemize}
+\textbf{Off-policy baselines.} Propensity weights add nothing: \texttt{ips\_positive} equals \texttt{positive\_sft}, +.000 [$-$.003, +.004] in accuracy at N 5000, and no off-policy arm beats CAPS-Brier on accuracy with an interval excluding 0 (Table~\ref{tab:A3}). With full support and a well-specified regression target, this is the expected result. The log score in place of Brier is a choice within the same family: over three seeds CAPS-log is +.002 [$-$.001, +.005] in accuracy and $-$.020 [$-$.029, $-$.010] in NLL against CAPS-Brier, but it forgets more in-domain and is behind at N 2000 on one seed, so Brier stays the default (Appendix~\ref{sec:A3}).
 
-Brier stays the default.
+\textbf{Noisy feedback.} With outcomes flipped at $f \in \{0.1, 0.2, 0.3\}$, with nested draws, CAPS learns the noisy posterior $p = f + (1-2f)\,P(\mathrm{correct})$ without correction: the selected run at f 0.2 has mean top-1 .743 against a channel line of .744 (Figure~\ref{fig:v4_noise_sweep}; Table~\ref{tab:A4}). Backward correction, $(p - f)/(1 - 2f)$ on the top-1 probability, gives ECE against correctness of .020, .051 and .068 at f 0.1, 0.2 and 0.3, against the clean run's .026; the amplification $1/(1 - 2f)$ is 1.25, 1.67 and 2.5. Its accuracy loss grows with f, $-$.006, $-$.022 and $-$.041, and is smaller than \texttt{positive\_sft}'s at 0.1 and 0.2 and level at 0.3, $-$.003 [$-$.014, +.007], one seed per rate. Trained to the end, CAPS memorises the single flip draw and falls to .734 at 0.3, below zero-shot's .851, while early stopping on the held-out log score of logged outcomes picks steps before the collapse every time. A soft-target diagnostic shows that the residual is the variance of one noisy draw per interaction, not a limit of the objective (Appendix~\ref{sec:A4}).
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\textwidth]{figures/v4_offpolicy.png}
-\caption{Off-policy baselines on the Banking77 log at N 2000 and 5000, 0.6B: accuracy and ECE per arm, with the range over three training seeds at N 5000 where they exist. Provenance: Table~\ref{tab:prov}, F3.}\label{fig:v4_offpolicy}
-\end{figure}
-
-\textbf{Noisy feedback} (Figure~\ref{fig:v4_noise_sweep}; Table~\ref{tab:A4}). Outcomes are flipped at $f \in \{0.1, 0.2, 0.3\}$, with nested draws.
-\begin{itemize}
-  \item \emph{CAPS learns the noisy posterior without correction,} $p = f + (1-2f)\,P(\mathrm{correct})$. The selected run at f 0.2 has mean top-1 .743 against a channel line of .744.
-  \item \emph{Its excess over a channel-calibrated copy of the clean run grows with f:} .017, .044 and .060.
-  \item \emph{Backward correction,} $(p - f)/(1 - 2f)$ on the top-1 probability, gives ECE against correctness of .020, .051 and .068 at f 0.1, 0.2 and 0.3, against the clean run's .026; the amplification $1/(1 - 2f)$ is 1.25, 1.67 and 2.5.
-  \item \emph{Its accuracy loss grows with f:} $-$.006, $-$.022 and $-$.041.
-  \item \emph{Against \texttt{positive\_sft}'s loss:} smaller at 0.1 and 0.2 (+.009 [+.000, +.018], +.017 [+.007, +.028]), level at 0.3 ($-$.003 [$-$.014, +.007]), one seed per rate.
-  \item \emph{Trained to the end,} CAPS memorises the single flip draw. At 0.3 it falls to .734, below zero-shot's .851, while early stopping on the held-out log score of logged outcomes picks steps before the collapse every time.
-  \item \emph{A soft-target diagnostic} removes most of the residual. It needs the clean outcome, so it is a diagnostic, not a learner: channel-scale ECE .019 to .024 against a reference of .014 (R3, Section~4).
-\end{itemize}
-
-The residual is therefore the variance of one noisy draw per interaction, not a limit of the objective.
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=\textwidth]{figures/v4_noise_sweep.png}
+\includegraphics[width=0.6\textwidth]{figures/v4_noise_sweep.png}
 \caption{Noise-rate sweep, N 5000, seed 0: calibration to the channel, accuracy, and the selected step against the final step. Provenance: Table~\ref{tab:prov}, F4.}\label{fig:v4_noise_sweep}
 \end{figure}
 
-\textbf{Scale} (Figure~\ref{fig:v4_scale}; Table~\ref{tab:A5}). At 1.7B, with its own log, CAPS-Brier on three training seeds against one seed of each baseline:
-\begin{itemize}
-  \item \emph{Seeds:} accuracy .947 (.942, .949), ECE .016 (.013, .021), AURC .0073 (.0066, .0085).
-  \item \emph{Against \texttt{full\_sft}:} .6 points below, $-$.006 [$-$.011, $-$.002], with ECE $-$.007 [$-$.011, +.000], AURC +.0021 [+.0012, +.0030] and Cov@.05 $-$.0068 [$-$.0187, $-$.0002]. Seed 0 alone had given $-$.004 [$-$.010, +.002].
-  \item \emph{Against \texttt{positive\_sft}:} +.034 [+.026, +.041] in accuracy, $-$.0104 [$-$.0135, $-$.0078] in AURC and +.088 [+.062, +.108] in Cov@.05.
-\end{itemize}
-
-The gap to full-label training shrinks with scale, from 1.5 points [1.0, 2.0] at 0.6B (seed means of both) to .6 points [.2, 1.1] at 1.7B, against a single \texttt{full\_sft} seed there. The larger model helps the learner from logged bandit feedback most: every 1.7B CAPS-Brier seed is above every 0.6B one.
+\textbf{Scale.} At 1.7B, with its own log, CAPS-Brier on three training seeds reaches accuracy .947 (.942, .949) and leads \texttt{positive\_sft} by +.034 [+.026, +.041], and against a single \texttt{full\_sft} seed its gap to full-label training shrinks to .6 points [.2, 1.1], $-$.006 [$-$.011, $-$.002], from 1.5 points [1.0, 2.0] at 0.6B (Figure~\ref{fig:v4_scale}; Table~\ref{tab:A5}). Every 1.7B CAPS-Brier seed is above every 0.6B one, so the larger model helps the learner from logged bandit feedback most.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\textwidth]{figures/v4_scale.png}
+\includegraphics[width=0.6\textwidth]{figures/v4_scale.png}
 \caption{Scale, Banking77 at N 5000: 0.6B against 1.7B for every learner, with the range over training seeds where a size has more than one. Provenance: Table~\ref{tab:prov}, F5.}\label{fig:v4_scale}
 \end{figure}
 
-\textbf{Forgetting and selective prediction.}
-\begin{itemize}
-  \item \emph{In-domain accuracy cost at N 5000:} 2.7 to 4.3 points for CAPS-Brier and 3.6 to 5.2 for \texttt{full\_sft} across seeds; \texttt{positive\_sft} costs under 1.
-  \item \emph{In-domain ECE:} CAPS-Brier keeps it within .010 of zero-shot.
-  \item \emph{At a fixed confidence threshold of .95:} \texttt{positive\_sft} keeps .916 of answers at .942 accuracy, so it passes on about 6 percent errors as confident. CAPS-Brier keeps .743 at .986. At a fixed error budget of .05 instead, CAPS-Brier keeps .957 of answers against \texttt{positive\_sft}'s .888.
-\end{itemize}
-
-\textbf{Against an API model.} On the 500-record Banking77 subset, every CAPS-Brier run at N 5000 scores .926 to .936 from 5000 correctness bits, against gpt-4.1-mini's .918, with no paired interval.
+\textbf{Forgetting and selective prediction.} At N 5000, CAPS-Brier costs 2.7 to 4.3 points of in-domain accuracy across seeds and \texttt{full\_sft} 3.6 to 5.2, \texttt{positive\_sft} under 1, and CAPS-Brier keeps in-domain ECE within .010 of zero-shot. At a fixed confidence threshold of .95, \texttt{positive\_sft} keeps .916 of answers at .942 accuracy, so it passes on about 6 percent errors as confident, while CAPS-Brier keeps .743 at .986; at a fixed error budget of .05, CAPS-Brier keeps .957 of answers against \texttt{positive\_sft}'s .888. On the 500-record Banking77 subset, every CAPS-Brier run at N 5000 scores .926 to .936 from 5000 correctness bits, against gpt-4.1-mini's .918, with no paired interval.
 
 \subsection{A second domain: emotion}\label{sec:4.4}
 
-The emotion log domain is the dair-ai/emotion train split, 15958 messages, each a choice over all 6 labels with no \texttt{other} option. The same \texttt{sft\_06b} logs it, at policy accuracy .542, so 8393 of the 15958 logged outcomes are negative, .526 computed from the stored counts, against $1 - .739 = .261$ on Banking77. Evaluation is on the full emotion test split, 2000 records.
+The emotion log domain is the dair-ai/emotion train split, 15958 messages, each a choice over all 6 labels with no \texttt{other} option. The same \texttt{sft\_06b} logs it at policy accuracy .542, so 8393 of the 15958 logged outcomes are negative, .526 computed from the stored counts, against $1 - .739 = .261$ on Banking77; evaluation is on the full emotion test split, 2000 records. CAPS-Brier leads \texttt{positive\_sft} at every N, by +.043 [+.027, +.060], +.126 [+.109, +.144] and +.217 [+.197, +.238] in accuracy at N 500, 2000 and 5000, with ECE lower by .186 to .276 (Figure~\ref{fig:v4_emotion_n_curve}; Table~\ref{tab:A7}). Over three seeds at N 5000 it is $-$.043 [$-$.056, $-$.031] below \texttt{full\_sft}'s one seed in accuracy, with ECE level, +.006 [$-$.005, +.018]. The per-N details, CAPS-log, the temperature learner, forgetting, the label ceiling and the API reference are in Appendix~\ref{sec:A7}.
 
-\begin{itemize}
-  \item \emph{Against \texttt{positive\_sft}:} CAPS-Brier leads at every N, by +.043 [+.027, +.060], +.126 [+.109, +.144] and +.217 [+.197, +.238] in accuracy at N 500, 2000 and 5000, with ECE lower by .186 to .276 and AURC by .050 to .174; at N 5000 its Cov@.05 is .595 against .032. \texttt{positive\_sft} trains on 206 to 2151 confirmed answers and is worse calibrated than zero-shot at every N (ECE .256 to .363 against .251).
-  \item \emph{Against \texttt{full\_sft}:} 3.8 to 4.6 points below on seed 0; over three seeds at N 5000, $-$.043 [$-$.056, $-$.031] in accuracy against \texttt{full\_sft}'s one seed, with ECE level, +.006 [$-$.005, +.018]. It closes 68, 79 and 88 percent of the accuracy gap between zero-shot (.540) and \texttt{full\_sft}, computed from the stored accuracies.
-  \item \emph{Seeds:} accuracy .821 to .832, ECE .031 to .070.
-  \item \emph{CAPS-log} at N 5000 is $-$.021 [$-$.030, $-$.012] below CAPS-Brier's seed mean in accuracy, with higher Brier and NLL; Brier stays the default.
-  \item \emph{The temperature learner} (T about 2.3) has the lowest ECE, .024 at N 5000, and leaves AURC at .294 against zero-shot's .295: it fixes the level, not the ranking.
-  \item \emph{Forgetting:} at N 5000, CAPS-Brier costs 1.9 to 2.6 points of in-domain accuracy across seeds and \texttt{full\_sft} 3.4, both with in-domain ECE within .004 of zero-shot.
-  \item \emph{Label ceiling:} the audit finds a label problem in .32 and .40 of a uniform sample, mostly a labelling convention that follows emotion words (.20), and no plainly wrong label; the ceiling is .93 or higher if the convention is learnable and near .80 if it is not (\texttt{docs/audit/EMOTION\_SUMMARY.md}). \texttt{full\_sft} and every CAPS-Brier seed are above .80.
-  \item \emph{Against an API model:} on the 500-record emotion subset, gpt-4.1-mini scores .598 and CAPS-Brier at N 5000 .842 to .858, with no paired interval.
-\end{itemize}
-
-The phase 4 plan predicted that ``predictions 1 and 2 hold on emotion from N 2000 as on Banking77'': held, and prediction 1 holds from N 500, where Banking77 tied. It predicted that ``the gap to \texttt{full\_sft} at N 5000 is larger than on Banking77 because the task is harder and the logging policy wrong more often'': held, $-$.039 [$-$.052, $-$.027] against $-$.018 [$-$.025, $-$.011] on seed 0 and $-$.043 against $-$.015 for the seed means; the stated cause is consistent with the result but not isolated by it, since task and logging policy change together. What it did not predict is the size of the lead over \texttt{positive\_sft}, nine times Banking77's at N 5000: with fewer than half the outcomes positive, discarding the negatives discards most of the log.
+Both predictions stated before these runs held. CAPS beats \texttt{positive\_sft} in accuracy and ECE on emotion from N 2000, as on Banking77, and in accuracy from N 500, where Banking77 tied; and the gap to \texttt{full\_sft} at N 5000 is larger than on Banking77, $-$.039 [$-$.052, $-$.027] against $-$.018 [$-$.025, $-$.011] on seed 0 and $-$.043 against $-$.015 for the seed means, as predicted from a harder task and a logging policy wrong more often, though the two change together, so the cause is not isolated. Not predicted was the size of the lead over \texttt{positive\_sft}, nine times Banking77's at N 5000: with fewer than half the outcomes positive, discarding the negatives discards most of the log.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\textwidth]{figures/v4_emotion_n_curve.png}
+\includegraphics[width=0.6\textwidth]{figures/v4_emotion_n_curve.png}
 \caption{Emotion N-curve, 0.6B, on the emotion test split: every learner at seed 0 with 95 percent record-bootstrap intervals, CAPS-log at N 5000, and CAPS-Brier's range over three training seeds. Provenance: Table~\ref{tab:prov}, F6.}\label{fig:v4_emotion_n_curve}
 \end{figure}
 
 \section{Limitations}\label{sec:5}
 
 \begin{itemize}
-  \item \textbf{Simulated feedback.} Outcomes come from gold labels, revealed cleanly or flipped symmetrically at a known rate. Real feedback is delayed, biased towards some errors, and of unknown noise rate, and backward correction needs that rate. The learned compression towards the channel is global: in-domain ECE rises by .050 for the noisy run.
-  \item \textbf{Domains and sizes.}
-  \begin{itemize}
-    \item Two adaptation domains with one log each; on emotion, \texttt{positive\_sft} and \texttt{full\_sft} have one seed.
-    \item One logging policy per domain at epsilon 0.1: .836 accurate on Banking77, .542 on emotion.
-    \item Two sizes; at 1.7B, CAPS-Brier has three training seeds and \texttt{positive\_sft} and \texttt{full\_sft} one each, so the 1.7B gaps carry no baseline seed variance.
-    \item The noise sweep has one seed per rate.
-  \end{itemize}
-  \item \textbf{Missing off-policy arms.} The propensity-weighted arms reweight the direct-method loss; there is no counterfactual-risk policy learner (POEM or BanditNet; \citealp{swaminathan2015crm,joachims2018banditnet}), no doubly robust arm \citep{dudik2011doubly}, and no self-normalised off-policy estimate of the learned policy's value from the log. The no-gain result is shown against reweighted regression, not against the methods built around the weights.
-  \item \textbf{Label noise, judged by two language models, no human.}
-  \begin{itemize}
-    \item \emph{Banking77} (\texttt{docs/audit/SUMMARY.md}): some label problem in .12 and .14 of a uniform sample, and a clearly wrong label in .04. Of 100 questions both \texttt{full\_sft} and CAPS-Brier miss, the judges find a problem in .66 and .62. The ceiling is plausibly near .96.
-    \item \emph{Emotion} (\texttt{docs/audit/EMOTION\_SUMMARY.md}): a problem in .32 and .40 of a uniform sample, mostly a labelling convention that follows emotion words (.20 for both judges).
-    \item \emph{Both:} the clean feedback inherits these labels.
-  \end{itemize}
-  \item \textbf{Selection.} Checkpoints every 50 steps. At N 2000 the log-score arms peaked at the first candidate, so a finer grid could favour them. At N 500, 50 interactions select.
-  \item \textbf{Coverage of the claim.} The gap to full labels does not shrink with N. The claim is that using failures beats discarding them, not that it replaces labels.
+  \item \textbf{Simulated feedback.} Outcomes come from gold labels, cleanly or flipped symmetrically at a known rate, while real feedback is delayed, biased towards some errors and of unknown noise rate, which backward correction needs; the compression towards the channel is global, with in-domain ECE up by .050 for the noisy run.
+  \item \textbf{Domains and sizes.} There are two adaptation domains with one log each and one logging policy per domain at epsilon 0.1, .836 accurate on Banking77 and .542 on emotion; \texttt{positive\_sft} and \texttt{full\_sft} have one seed on emotion and at 1.7B, where CAPS-Brier has three, so those gaps carry no baseline seed variance; and the noise sweep has one seed per rate.
+  \item \textbf{Missing off-policy arms.} The weighted arms reweight the direct-method loss; with no counterfactual-risk policy learner (POEM or BanditNet; \citealp{swaminathan2015crm,joachims2018banditnet}), doubly robust arm \citep{dudik2011doubly} or self-normalised estimate of the learned policy's value, the no-gain result is shown against reweighted regression, not against the methods built around the weights.
+  \item \textbf{Label noise, judged by two language models, no human.} The judges find a label problem in .12 and .14 of a uniform Banking77 sample and in .32 and .40 of an emotion sample, and the clean feedback inherits these labels (Appendix~\ref{sec:setup}).
+  \item \textbf{Selection.} Checkpoints are every 50 steps, so at N 2000, where the log-score arms peaked at the first candidate, a finer grid could favour them, and at N 500 only 50 interactions select.
+  \item \textbf{Coverage of the claim.} The gap to full labels does not shrink with N, so the claim is that using failures beats discarding them, not that it replaces labels.
 \end{itemize}
 
 \section{Conclusion}\label{sec:6}
@@ -339,28 +202,7 @@ The two negative results frame it. Scoring the sampled action's own probability 
 
 \section{Reproducibility}\label{sec:7}
 
-\begin{itemize}
-  \item \textbf{Code and data:} \url{https://github.com/yuan-phd/jevmark}, Apache-2.0.
-  \item \textbf{Tags:} v1, v2 and v3 for the phases, v3-final for the closing state, and v4-paper for the phase 4 experiments and this paper.
-  \item \textbf{Commits of the runs:}
-  \begin{itemize}
-    \item b5913ef: the v3 logs and the phase 3 runs;
-    \item b6b9e85 and 409c983: the off-policy runs;
-    \item 36e8ee1: the noise sweep;
-    \item c9e29c6: the 1.7B runs;
-    \item 344019b: the 1.7B CAPS-Brier seeds 1 and 2;
-    \item c86d322: the emotion log and runs;
-    \item b9c0257: AURC and Cov@eps added to every run and stage file, earlier values unchanged.
-  \end{itemize}
-  \item \textbf{Reports and provenance:} R1, R2 and R3 are the project reports \texttt{docs/RESULTS\_v1.md}, \texttt{RESULTS\_v2.md} and \texttt{RESULTS\_v3.md}, with the full analyses. Table~\ref{tab:prov} in Appendix~\ref{sec:B} maps every table, figure and in-text result to the committed metrics file and key it comes from, and to its report section.
-  \item \textbf{Run provenance:} every run's \texttt{metrics.json} records its commit, dirty flag, data sha256 and adapter sha256.
-  \item \textbf{Adapters on the Hugging Face Hub} (\texttt{yuanphd/jevmark}):
-  \begin{itemize}
-    \item \texttt{sft\_06b} and \texttt{sft\_17b}, the general decision head;
-    \item \texttt{rlcd\_banking77\_06b}, CAPS-Brier adapted to Banking77.
-  \end{itemize}
-  \item \textbf{Tables and figures:} every table is regenerated on CPU from committed files by \texttt{scripts/compare\_v3.py}, \texttt{scripts/compare\_noise.py}, \texttt{scripts/compare\_rlcd.py}, \texttt{scripts/paired\_deltas.py} and \texttt{scripts/log\_stats.py}. Every figure is regenerated by \texttt{scripts/make\_figures.py}. The training scripts (\texttt{scripts/train\_sft.py}, \texttt{scripts/train\_rlcd.py}) fit one Kaggle T4 session per run (\texttt{docs/KAGGLE.md}).
-\end{itemize}
+Code and data are at \url{https://github.com/yuan-phd/jevmark} (Apache-2.0), with tags v1, v2 and v3 for the phases, v3-final for the closing state, and v4-paper for the phase 4 experiments and this paper; the adapters \texttt{sft\_06b} and \texttt{sft\_17b} (the general decision head) and \texttt{rlcd\_banking77\_06b} (CAPS-Brier adapted to Banking77) are on the Hugging Face Hub (\texttt{yuanphd/jevmark}). Every run's \texttt{metrics.json} records its commit, dirty flag, data sha256 and adapter sha256, and every table and figure is regenerated on CPU from committed files (Appendix~\ref{sec:setup}).
 
 \bibliographystyle{plainnat}
 \bibliography{references}
@@ -430,6 +272,8 @@ N & vs & accuracy & ECE & Brier & NLL & AURC & Cov@.05 \\
 \end{adjustbox}
 \end{table}
 
+CAPS-Brier closes 69, 91 and 81 percent of the accuracy gap between zero-shot and \texttt{full\_sft} at N 500, 2000 and 5000, computed from the stored accuracies. One temperature is monotone within a question but can reorder top-1 probabilities across questions: at N 5000 the temperature learner moves Cov@.05 from .756 to .765, and on CAPS-Brier, whose fitted temperature is near 1, it moves AURC by under .0001.
+
 \subsection{Training seeds at N 5000}\label{sec:A2}
 
 \begin{table}[H]
@@ -470,6 +314,8 @@ CAPS-log minus CAPS-Brier (seed means) & +.002 [$-$.001, +.005] & $-$.003 [$-$.0
 \end{adjustbox}
 \end{table}
 
+Training seeds and the second log draw move CAPS-Brier's accuracy by at most .6 points. A temperature fitted on CAPS-Brier's own training interactions comes out at .951 to 1.039 and moves ECE by at most .003.
+
 \subsection{Off-policy baselines, seed 0}\label{sec:A3}
 
 \begin{table}[H]
@@ -502,6 +348,14 @@ N & learner & accuracy & ECE & Brier & NLL & AURC & Cov@.05 & accuracy minus CAP
 \end{adjustbox}
 \end{table}
 
+Every arm that keeps the negatives leads \texttt{positive\_sft}, by +.016 to +.028 in accuracy. \texttt{ips\_positive} equals \texttt{positive\_sft}: +.002 [$-$.001, +.005] in accuracy at N 2000 and +.000 [$-$.003, +.004] at N 5000, and +.0003 [$-$.0003, +.0009] and +.0002 [$-$.0005, +.0010] in AURC; at N 5000, only 25 of the 3342 positives it trains on are clipped. At N 5000, \texttt{ips\_log} beats CAPS-Brier on Brier and NLL, but the unweighted CAPS-log beats it by more, so the gain is the log score's, not the weight's. CAPS-log forgets more in-domain ($-$.038 to $-$.046 against $-$.027 to $-$.043 for CAPS-Brier) and is behind at N 2000 on one seed ($-$.010 [$-$.016, $-$.004]).
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{figures/v4_offpolicy.png}
+\caption{Off-policy baselines on the Banking77 log at N 2000 and 5000, 0.6B: accuracy and ECE per arm, with the range over three training seeds at N 5000 where they exist. Provenance: Table~\ref{tab:prov}, F3.}\label{fig:v4_offpolicy}
+\end{figure}
+
 \subsection{Noise-rate sweep, N 5000, seed 0}\label{sec:A4}
 
 \begin{table}[H]
@@ -527,6 +381,8 @@ f & learner & accuracy & minus clean & channel-scale ECE & reference & mean top-
 \end{tabular}
 \end{adjustbox}
 \end{table}
+
+CAPS-Brier's excess channel-scale ECE over a channel-calibrated copy of the clean run grows with f: .017, .044 and .060. Its accuracy loss against \texttt{positive\_sft}'s is +.009 [+.000, +.018] at 0.1 and +.017 [+.007, +.028] at 0.2. A soft-target diagnostic removes most of the residual; it needs the clean outcome, so it is a diagnostic, not a learner: channel-scale ECE .019 to .024 against a reference of .014 (R3, Section~4). The residual is therefore the variance of one noisy draw per interaction, not a limit of the objective.
 
 \subsection{Scale: 1.7B against 0.6B at N 5000}\label{sec:A5}
 
@@ -571,7 +427,7 @@ CAPS-Brier seed mean minus \texttt{full\_sft} & $-$.006 [$-$.011, $-$.002] & $-$
 \end{adjustbox}
 \end{table}
 
-CAPS-Brier at 1.7B over training seeds 0, 1 and 2, mean (range): accuracy .947 (.942, .949), ECE .016 (.013, .021), Brier .084 (.079, .093), NLL .192 (.182, .205), AURC .0073 (.0066, .0085), Cov@.05 .993 (.983, .998). The differences above put the seed mean against the single seed of each baseline.
+CAPS-Brier at 1.7B over training seeds 0, 1 and 2, mean (range): accuracy .947 (.942, .949), ECE .016 (.013, .021), Brier .084 (.079, .093), NLL .192 (.182, .205), AURC .0073 (.0066, .0085), Cov@.05 .993 (.983, .998). The differences above put the seed mean against the single seed of each baseline. Every 1.7B CAPS-Brier seed is above every 0.6B one (.942 to .949 against .929 to .935).
 
 \subsection{Full labels: unseen-schema ECE, 0.6B, three seeds}\label{sec:A6}
 
@@ -598,6 +454,9 @@ CAPS-log & .170 (.181, .172, .156) & +.048 [+.043, +.055] & +.005 [+.001, +.011]
 \end{table}
 
 \subsection{Emotion, 0.6B}\label{sec:A7}
+
+AURC is lower for CAPS-Brier than for \texttt{positive\_sft} by .050 to .174, and at N 5000 its Cov@.05 is .595 against .032. \texttt{positive\_sft} trains on 206 to 2151 confirmed answers and is worse calibrated than zero-shot at every N (ECE .256 to .363 against .251). Against \texttt{full\_sft}, CAPS-Brier is 3.8 to 4.6 points below on seed 0 and closes 68, 79 and 88 percent of the accuracy gap between zero-shot (.540) and \texttt{full\_sft}, computed from the stored accuracies. Its seeds span accuracy .821 to .832 and ECE .031 to .070. CAPS-log at N 5000 is $-$.021 [$-$.030, $-$.012] below CAPS-Brier's seed mean in accuracy, with higher Brier and NLL, so Brier stays the default. The temperature learner (T about 2.3) has the lowest ECE, .024 at N 5000, and leaves AURC at .294 against zero-shot's .295: it fixes the level, not the ranking. At N 5000, CAPS-Brier costs 1.9 to 2.6 points of in-domain accuracy across seeds and \texttt{full\_sft} 3.4, both with in-domain ECE within .004 of zero-shot. The label audit finds a problem in .32 and .40 of a uniform sample, mostly a labelling convention that follows emotion words (.20), and no plainly wrong label; the ceiling is .93 or higher if the convention is learnable and near .80 if it is not, and \texttt{full\_sft} and every CAPS-Brier seed are above .80. On the 500-record emotion subset, gpt-4.1-mini scores .598 and CAPS-Brier at N 5000 .842 to .858, with no paired interval.
+
 
 \begin{table}[H]
 \centering
@@ -715,11 +574,57 @@ CAPS-log & $-$.022 [$-$.026, $-$.019] & $-$.001 [$-$.006, +.003] & $-$.011 [$-$.
 \end{table}
 
 \clearpage
+\section{Setup and reproducibility details}\label{sec:setup}
+
+\textbf{Model and training.} LoRA has r 16 and alpha 32 on the attention projections, and answers are read from the letter logits at each question's answer slot in one forward pass. Supervised training samples options per record, with negated yes-or-no phrasings. In adaptation, all trained learners take the same number of steps, $\max(200, \lceil 10 \times 0.9 N / 32 \rceil)$, at lr 5e-5, and bootstrap intervals use 1000 resamples over records, paired across runs.
+
+\textbf{Group baselines.} \texttt{rlcd.normalize\_std: false} is set in \texttt{configs/rlcd\_06b.yaml} and in the \texttt{config.yaml} of all 31 full-label runs, so the full-label group baseline subtracts the group mean only; the logged-feedback REINFORCE arm subtracts the batch mean only.
+
+\textbf{Learners.}
+\begin{itemize}
+  \item Temperature fitted to the logged outcomes: post-hoc and global, and it changes no argmax.
+  \item \texttt{positive\_sft}: cross-entropy on confirmed actions, positive-unlabeled learning with the negatives discarded, not unobserved. What practitioners do.
+  \item \texttt{full\_sft}: cross-entropy on gold for every logged interaction. The upper bound, at one label per interaction.
+\end{itemize}
+
+\textbf{Leak and duplicate gates.} Before any GPU run, the data must pass two CPU checks:
+\begin{itemize}
+  \item state-free leak probes: classifiers on phrasing, question text and structure, which must not beat chance by more than a fixed margin and a shuffled-target null;
+  \item train-test duplicate rules.
+\end{itemize}
+
+The Banking77 log domain drops 30 messages that match the test split and 31 repeats.
+
+\textbf{Off-policy forms}, all on the same log:
+\begin{itemize}
+  \item REINFORCE with reward $r - p_a$, detached, a batch-mean baseline and the importance weight $\min(p/q, 5)$ (\texttt{outcome\_minus\_p\_log});
+  \item CAPS with the log score and inverse propensity weighting of the direct-method loss, $\min(1/q, 5)$ divided by its mean over the training prefix (\texttt{ips\_log}), which is importance-weighted regression;
+  \item \texttt{positive\_sft} with the same weights (\texttt{ips\_positive}).
+\end{itemize}
+
+\textbf{Metrics.} AURC is the mean error of the kept answers over all coverages; Cov@eps is computed for eps in \{.05, .10, .20\}, with ties in top-1 kept or dropped together. Every trained learner reaches Cov@.20 = 1, and from N 2000 Cov@.10 = 1 as well, so the tables show Cov@.05. The same metrics ranked by the response's confidence field, $1 - H/\ln K$, are stored under \texttt{\_entropy} keys.
+
+\textbf{Label audits.} Two language-model judges, no human, audited the labels. On Banking77 they find some label problem in .12 and .14 of a uniform sample and a clearly wrong label in .04, and a problem in .66 and .62 of 100 questions both \texttt{full\_sft} and CAPS-Brier miss, so the ceiling is plausibly near .96 (\texttt{docs/audit/SUMMARY.md}). On emotion they find a problem in .32 and .40 of a uniform sample, mostly a labelling convention that follows emotion words (.20 for both judges) (\texttt{docs/audit/EMOTION\_SUMMARY.md}).
+
+\textbf{Commits of the runs:}
+\begin{itemize}
+  \item b5913ef: the v3 logs and the phase 3 runs;
+  \item b6b9e85 and 409c983: the off-policy runs;
+  \item 36e8ee1: the noise sweep;
+  \item c9e29c6: the 1.7B runs;
+  \item 344019b: the 1.7B CAPS-Brier seeds 1 and 2;
+  \item c86d322: the emotion log and runs;
+  \item b9c0257: AURC and Cov@eps added to every run and stage file, earlier values unchanged.
+\end{itemize}
+
+\textbf{Tables and figures:} every table is regenerated on CPU from committed files by \texttt{scripts/compare\_v3.py}, \texttt{scripts/compare\_noise.py}, \texttt{scripts/compare\_rlcd.py}, \texttt{scripts/paired\_deltas.py} and \texttt{scripts/log\_stats.py}. Every figure is regenerated by \texttt{scripts/make\_figures.py}. The training scripts (\texttt{scripts/train\_sft.py}, \texttt{scripts/train\_rlcd.py}) fit one Kaggle T4 session per run (\texttt{docs/KAGGLE.md}).
+
+\clearpage
 \section{Provenance}\label{sec:B}
 \counterwithout{table}{subsection}
 \counterwithin{table}{section}
 
-Every number in the paper comes from a committed file in the repository at the commits listed in Section~\ref{sec:7}. Table~\ref{tab:prov} gives, for each table (T), figure (F) and in-text result (S), the file and the keys within it; \texttt{<N>}, \texttt{<f>}, \texttt{<learner>}, \texttt{<arm>}, \texttt{<split>}, \texttt{<k>} and \texttt{<run>} stand for the log size, flip rate, learner, arm, evaluation split, training seed and run directory. The report column gives the section of R1, R2 or R3 with the full analysis.
+Every number in the paper comes from a committed file in the repository at the commits listed in Section~\ref{sec:7}. Table~\ref{tab:prov} gives, for each table (T), figure (F) and in-text result (S), the file and the keys within it; \texttt{<N>}, \texttt{<f>}, \texttt{<learner>}, \texttt{<arm>}, \texttt{<split>}, \texttt{<k>} and \texttt{<run>} stand for the log size, flip rate, learner, arm, evaluation split, training seed and run directory. R1, R2 and R3 are the project reports \texttt{docs/RESULTS\_v1.md}, \texttt{RESULTS\_v2.md} and \texttt{RESULTS\_v3.md}, and the report column gives the section with the full analysis.
 
 {\footnotesize
 \setlength{\tabcolsep}{4pt}
@@ -758,24 +663,24 @@ F6 & Figure~\ref{fig:v4_emotion_n_curve} & \texttt{runs/\allowbreak{}v3\_\allowb
 S1 & Section~\ref{sec:1}: in-domain ECE .013 to .015, up to .22 off-domain & \texttt{runs/\allowbreak{}sft\_\allowbreak{}\{06b,17b\}/\allowbreak{}metrics.\allowbreak{}json}: \texttt{splits.\allowbreak{}\textless{}split\textgreater{}.\allowbreak{}overall.\allowbreak{}ece} & R1 \S2 \\
 S2 & Sections~\ref{sec:1} and~\ref{sec:5}: the gap to full labels does not shrink with N & \texttt{runs/\allowbreak{}v3\_\allowbreak{}stage\_\allowbreak{}06b/\allowbreak{}metrics.\allowbreak{}json}: \texttt{n\_\allowbreak{}curve.\allowbreak{}\textless{}N\textgreater{}.\allowbreak{}direct\_\allowbreak{}brier\_\allowbreak{}minus\_\allowbreak{}full\_\allowbreak{}sft} & R3 \S8 \\
 S3 & Section~\ref{sec:3}: logging policy, negatives off the top choice & \texttt{runs/\allowbreak{}v3\_\allowbreak{}log\_\allowbreak{}s0/\allowbreak{}metrics.\allowbreak{}json}: \texttt{negatives} & R3 \S1; METHOD \S2 \\
-S4 & Section~\ref{sec:3}: mean-only group baseline & \texttt{configs/\allowbreak{}rlcd\_\allowbreak{}06b.\allowbreak{}yaml;\allowbreak{} runs/\allowbreak{}rlcd\_\allowbreak{}06b\_\allowbreak{}*/\allowbreak{}config.\allowbreak{}yaml}: \texttt{rlcd.\allowbreak{}normalize\_\allowbreak{}std} & R2 \S2 \\
-S5 & Section~\ref{sec:4.1}: log-domain duplicates & \texttt{data/\allowbreak{}v3\_\allowbreak{}manifest.\allowbreak{}json} & R3 \S1 \\
+S4 & Section~\ref{sec:3} and Appendix~\ref{sec:setup}: mean-only group baseline & \texttt{configs/\allowbreak{}rlcd\_\allowbreak{}06b.\allowbreak{}yaml;\allowbreak{} runs/\allowbreak{}rlcd\_\allowbreak{}06b\_\allowbreak{}*/\allowbreak{}config.\allowbreak{}yaml}: \texttt{rlcd.\allowbreak{}normalize\_\allowbreak{}std} & R2 \S2 \\
+S5 & Appendix~\ref{sec:setup}: log-domain duplicates & \texttt{data/\allowbreak{}v3\_\allowbreak{}manifest.\allowbreak{}json} & R3 \S1 \\
 S6 & Section~\ref{sec:4.1}: policy accuracy and outcome rate & \texttt{runs/\allowbreak{}v3\_\allowbreak{}log\_\allowbreak{}s0/\allowbreak{}metrics.\allowbreak{}json}: \texttt{accuracy;\allowbreak{} outcome\_\allowbreak{}rate} & R3 \S1 \\
-S7 & Section~\ref{sec:4.1}: temperature against AURC and Cov@.05 & \texttt{runs/\allowbreak{}v3\_\allowbreak{}stage\_\allowbreak{}06b/\allowbreak{}metrics.\allowbreak{}json}: \texttt{n\_\allowbreak{}curve.\allowbreak{}5000.\allowbreak{}\{zero\_\allowbreak{}shot,temperature\};\allowbreak{} n\_\allowbreak{}curve.\allowbreak{}5000.\allowbreak{}direct\_\allowbreak{}brier\_\allowbreak{}temp\_\allowbreak{}minus\_\allowbreak{}direct\_\allowbreak{}brier.\allowbreak{}aurc} & R3 \S2 \\
+S7 & Section~\ref{sec:4.1} and Appendix~\ref{sec:A1}: temperature against AURC and Cov@.05 & \texttt{runs/\allowbreak{}v3\_\allowbreak{}stage\_\allowbreak{}06b/\allowbreak{}metrics.\allowbreak{}json}: \texttt{n\_\allowbreak{}curve.\allowbreak{}5000.\allowbreak{}\{zero\_\allowbreak{}shot,temperature\};\allowbreak{} n\_\allowbreak{}curve.\allowbreak{}5000.\allowbreak{}direct\_\allowbreak{}brier\_\allowbreak{}temp\_\allowbreak{}minus\_\allowbreak{}direct\_\allowbreak{}brier.\allowbreak{}aurc} & R3 \S2 \\
 S8 & Section~\ref{sec:4.2}: the broken reward & \texttt{runs/\allowbreak{}sft\_\allowbreak{}06b/\allowbreak{}metrics.\allowbreak{}json;\allowbreak{} runs/\allowbreak{}rlcd\_\allowbreak{}06b\_\allowbreak{}brier\_\allowbreak{}s0/\allowbreak{}metrics.\allowbreak{}json}: \texttt{splits.\allowbreak{}\textless{}split\textgreater{}.\allowbreak{}score.\allowbreak{}accuracy} \newline \texttt{runs/\allowbreak{}rlcd\_\allowbreak{}06b\_\allowbreak{}brier\_\allowbreak{}s0/\allowbreak{}config.\allowbreak{}yaml}: \texttt{rlcd.\allowbreak{}normalize\_\allowbreak{}std} \newline \texttt{runs/\allowbreak{}advantage\_\allowbreak{}simulation\_\allowbreak{}06b/\allowbreak{}metrics.\allowbreak{}json}: \texttt{rewards} & R2 \S2 \\
 S9 & Section~\ref{sec:4.2}: no gain on full labels & \texttt{runs/\allowbreak{}rlcd\_\allowbreak{}stage2a\_\allowbreak{}06b/\allowbreak{}metrics.\allowbreak{}json}: \texttt{unseen\_\allowbreak{}schemas.\allowbreak{}mean\_\allowbreak{}ece.\allowbreak{}sft\_\allowbreak{}temp;\allowbreak{} unseen\_\allowbreak{}schemas.\allowbreak{}arms.\allowbreak{}\textless{}arm\textgreater{};\allowbreak{} temperature\_\allowbreak{}ablation.\allowbreak{}arms.\allowbreak{}\textless{}arm\textgreater{}} & R2 \S3 \\
-S10 & Section~\ref{sec:4.3}: the N-curve & \texttt{runs/\allowbreak{}v3\_\allowbreak{}stage\_\allowbreak{}06b/\allowbreak{}metrics.\allowbreak{}json}: \texttt{n\_\allowbreak{}curve.\allowbreak{}\textless{}N\textgreater{}.\allowbreak{}direct\_\allowbreak{}brier\_\allowbreak{}minus\_\allowbreak{}\{positive\_\allowbreak{}sft,full\_\allowbreak{}sft\};\allowbreak{} n\_\allowbreak{}curve.\allowbreak{}\textless{}N\textgreater{}.\allowbreak{}\textless{}learner\textgreater{}.\allowbreak{}accuracy;\allowbreak{} n\_\allowbreak{}curve.\allowbreak{}\textless{}N\textgreater{}.\allowbreak{}temperature} & R3 \S2 \\
-S11 & Section~\ref{sec:4.3}: seeds & \texttt{runs/\allowbreak{}v3\_\allowbreak{}stage\_\allowbreak{}06b/\allowbreak{}metrics.\allowbreak{}json}: \texttt{seeds;\allowbreak{} direct\_\allowbreak{}brier\_\allowbreak{}temperatures} & R3 \S3 \\
-S12 & Section~\ref{sec:4.3}: off-policy baselines & \texttt{runs/\allowbreak{}v3\_\allowbreak{}stage\_\allowbreak{}06b/\allowbreak{}metrics.\allowbreak{}json}: \texttt{n\_\allowbreak{}curve.\allowbreak{}\textless{}N\textgreater{}.\allowbreak{}off\_\allowbreak{}policy.\allowbreak{}ips\_\allowbreak{}positive.\allowbreak{}minus\_\allowbreak{}positive\_\allowbreak{}sft;\allowbreak{} seeds.\allowbreak{}direct\_\allowbreak{}log\_\allowbreak{}seed\_\allowbreak{}mean\_\allowbreak{}minus\_\allowbreak{}direct\_\allowbreak{}brier\_\allowbreak{}seed\_\allowbreak{}mean} \newline \texttt{runs/\allowbreak{}v3\_\allowbreak{}06b\_\allowbreak{}ips\_\allowbreak{}positive\_\allowbreak{}n5000\_\allowbreak{}s0/\allowbreak{}train\_\allowbreak{}summary.\allowbreak{}json}: \texttt{ips} & R3 \S11 \\
-S13 & Section~\ref{sec:4.3}: noisy feedback & \texttt{runs/\allowbreak{}v3\_\allowbreak{}noise\_\allowbreak{}sweep\_\allowbreak{}06b/\allowbreak{}metrics.\allowbreak{}json}: \texttt{by\_\allowbreak{}rate.\allowbreak{}\textless{}f\textgreater{}.\allowbreak{}direct\_\allowbreak{}brier.\allowbreak{}channel.\allowbreak{}channel\_\allowbreak{}scale.\allowbreak{}channel\_\allowbreak{}ece\_\allowbreak{}minus\_\allowbreak{}reference;\allowbreak{} by\_\allowbreak{}rate.\allowbreak{}\textless{}f\textgreater{}.\allowbreak{}direct\_\allowbreak{}brier.\allowbreak{}channel.\allowbreak{}inverted\_\allowbreak{}top1\_\allowbreak{}ece;\allowbreak{} by\_\allowbreak{}rate.\allowbreak{}\textless{}f\textgreater{}.\allowbreak{}amplification;\allowbreak{} clean.\allowbreak{}direct\_\allowbreak{}brier.\allowbreak{}ece;\allowbreak{} by\_\allowbreak{}rate.\allowbreak{}\textless{}f\textgreater{}.\allowbreak{}direct\_\allowbreak{}brier\_\allowbreak{}loss\_\allowbreak{}minus\_\allowbreak{}positive\_\allowbreak{}sft\_\allowbreak{}loss.\allowbreak{}accuracy;\allowbreak{} by\_\allowbreak{}rate.\allowbreak{}0.\allowbreak{}3.\allowbreak{}direct\_\allowbreak{}brier.\allowbreak{}last.\allowbreak{}accuracy;\allowbreak{} zero\_\allowbreak{}shot.\allowbreak{}accuracy;\allowbreak{} by\_\allowbreak{}rate.\allowbreak{}\textless{}f\textgreater{}.\allowbreak{}direct\_\allowbreak{}brier.\allowbreak{}selection.\allowbreak{}best\_\allowbreak{}step} & R3 \S4 \\
-S14 & Section~\ref{sec:4.3}: scale & \texttt{runs/\allowbreak{}v3\_\allowbreak{}stage\_\allowbreak{}17b/\allowbreak{}metrics.\allowbreak{}json}: \texttt{seeds.\allowbreak{}training\_\allowbreak{}seeds;\allowbreak{} seeds.\allowbreak{}training\_\allowbreak{}seed\_\allowbreak{}mean\_\allowbreak{}minus\_\allowbreak{}\{positive\_\allowbreak{}sft,full\_\allowbreak{}sft\};\allowbreak{} n\_\allowbreak{}curve.\allowbreak{}5000.\allowbreak{}direct\_\allowbreak{}brier\_\allowbreak{}minus\_\allowbreak{}full\_\allowbreak{}sft} \newline \texttt{runs/\allowbreak{}v3\_\allowbreak{}stage\_\allowbreak{}06b/\allowbreak{}metrics.\allowbreak{}json}: \texttt{seeds.\allowbreak{}training\_\allowbreak{}seed\_\allowbreak{}mean\_\allowbreak{}minus\_\allowbreak{}full\_\allowbreak{}sft\_\allowbreak{}seed\_\allowbreak{}mean} & R3 \S12 \\
+S10 & Section~\ref{sec:4.3} and Appendix~\ref{sec:A1}: the N-curve & \texttt{runs/\allowbreak{}v3\_\allowbreak{}stage\_\allowbreak{}06b/\allowbreak{}metrics.\allowbreak{}json}: \texttt{n\_\allowbreak{}curve.\allowbreak{}\textless{}N\textgreater{}.\allowbreak{}direct\_\allowbreak{}brier\_\allowbreak{}minus\_\allowbreak{}\{positive\_\allowbreak{}sft,full\_\allowbreak{}sft\};\allowbreak{} n\_\allowbreak{}curve.\allowbreak{}\textless{}N\textgreater{}.\allowbreak{}\textless{}learner\textgreater{}.\allowbreak{}accuracy;\allowbreak{} n\_\allowbreak{}curve.\allowbreak{}\textless{}N\textgreater{}.\allowbreak{}temperature} & R3 \S2 \\
+S11 & Section~\ref{sec:4.3} and Appendix~\ref{sec:A2}: seeds & \texttt{runs/\allowbreak{}v3\_\allowbreak{}stage\_\allowbreak{}06b/\allowbreak{}metrics.\allowbreak{}json}: \texttt{seeds;\allowbreak{} direct\_\allowbreak{}brier\_\allowbreak{}temperatures} & R3 \S3 \\
+S12 & Section~\ref{sec:4.3} and Appendix~\ref{sec:A3}: off-policy baselines & \texttt{runs/\allowbreak{}v3\_\allowbreak{}stage\_\allowbreak{}06b/\allowbreak{}metrics.\allowbreak{}json}: \texttt{n\_\allowbreak{}curve.\allowbreak{}\textless{}N\textgreater{}.\allowbreak{}off\_\allowbreak{}policy.\allowbreak{}ips\_\allowbreak{}positive.\allowbreak{}minus\_\allowbreak{}positive\_\allowbreak{}sft;\allowbreak{} seeds.\allowbreak{}direct\_\allowbreak{}log\_\allowbreak{}seed\_\allowbreak{}mean\_\allowbreak{}minus\_\allowbreak{}direct\_\allowbreak{}brier\_\allowbreak{}seed\_\allowbreak{}mean} \newline \texttt{runs/\allowbreak{}v3\_\allowbreak{}06b\_\allowbreak{}ips\_\allowbreak{}positive\_\allowbreak{}n5000\_\allowbreak{}s0/\allowbreak{}train\_\allowbreak{}summary.\allowbreak{}json}: \texttt{ips} & R3 \S11 \\
+S13 & Section~\ref{sec:4.3} and Appendix~\ref{sec:A4}: noisy feedback & \texttt{runs/\allowbreak{}v3\_\allowbreak{}noise\_\allowbreak{}sweep\_\allowbreak{}06b/\allowbreak{}metrics.\allowbreak{}json}: \texttt{by\_\allowbreak{}rate.\allowbreak{}\textless{}f\textgreater{}.\allowbreak{}direct\_\allowbreak{}brier.\allowbreak{}channel.\allowbreak{}channel\_\allowbreak{}scale.\allowbreak{}channel\_\allowbreak{}ece\_\allowbreak{}minus\_\allowbreak{}reference;\allowbreak{} by\_\allowbreak{}rate.\allowbreak{}\textless{}f\textgreater{}.\allowbreak{}direct\_\allowbreak{}brier.\allowbreak{}channel.\allowbreak{}inverted\_\allowbreak{}top1\_\allowbreak{}ece;\allowbreak{} by\_\allowbreak{}rate.\allowbreak{}\textless{}f\textgreater{}.\allowbreak{}amplification;\allowbreak{} clean.\allowbreak{}direct\_\allowbreak{}brier.\allowbreak{}ece;\allowbreak{} by\_\allowbreak{}rate.\allowbreak{}\textless{}f\textgreater{}.\allowbreak{}direct\_\allowbreak{}brier\_\allowbreak{}loss\_\allowbreak{}minus\_\allowbreak{}positive\_\allowbreak{}sft\_\allowbreak{}loss.\allowbreak{}accuracy;\allowbreak{} by\_\allowbreak{}rate.\allowbreak{}0.\allowbreak{}3.\allowbreak{}direct\_\allowbreak{}brier.\allowbreak{}last.\allowbreak{}accuracy;\allowbreak{} zero\_\allowbreak{}shot.\allowbreak{}accuracy;\allowbreak{} by\_\allowbreak{}rate.\allowbreak{}\textless{}f\textgreater{}.\allowbreak{}direct\_\allowbreak{}brier.\allowbreak{}selection.\allowbreak{}best\_\allowbreak{}step} & R3 \S4 \\
+S14 & Section~\ref{sec:4.3} and Appendix~\ref{sec:A5}: scale & \texttt{runs/\allowbreak{}v3\_\allowbreak{}stage\_\allowbreak{}17b/\allowbreak{}metrics.\allowbreak{}json}: \texttt{seeds.\allowbreak{}training\_\allowbreak{}seeds;\allowbreak{} seeds.\allowbreak{}training\_\allowbreak{}seed\_\allowbreak{}mean\_\allowbreak{}minus\_\allowbreak{}\{positive\_\allowbreak{}sft,full\_\allowbreak{}sft\};\allowbreak{} n\_\allowbreak{}curve.\allowbreak{}5000.\allowbreak{}direct\_\allowbreak{}brier\_\allowbreak{}minus\_\allowbreak{}full\_\allowbreak{}sft} \newline \texttt{runs/\allowbreak{}v3\_\allowbreak{}stage\_\allowbreak{}06b/\allowbreak{}metrics.\allowbreak{}json}: \texttt{seeds.\allowbreak{}training\_\allowbreak{}seed\_\allowbreak{}mean\_\allowbreak{}minus\_\allowbreak{}full\_\allowbreak{}sft\_\allowbreak{}seed\_\allowbreak{}mean} & R3 \S12 \\
 S15 & Section~\ref{sec:4.3}: forgetting and selective prediction & \texttt{runs/\allowbreak{}v3\_\allowbreak{}stage\_\allowbreak{}06b/\allowbreak{}metrics.\allowbreak{}json}: \texttt{forgetting;\allowbreak{} coverage.\allowbreak{}\{positive\_\allowbreak{}sft,direct\_\allowbreak{}brier\}\_\allowbreak{}n5000\_\allowbreak{}s0.\allowbreak{}0.\allowbreak{}95;\allowbreak{} n\_\allowbreak{}curve.\allowbreak{}5000.\allowbreak{}\{direct\_\allowbreak{}brier,positive\_\allowbreak{}sft\}.\allowbreak{}coverage\_\allowbreak{}at\_\allowbreak{}0.\allowbreak{}05} & R3 \S\S5, 6 \\
 S16 & Section~\ref{sec:4.3}: against an API model & \texttt{runs/\allowbreak{}v3\_\allowbreak{}stage\_\allowbreak{}06b/\allowbreak{}metrics.\allowbreak{}json}: \texttt{b2\_\allowbreak{}reference} & R3 \S7 \\
 S17 & Section~\ref{sec:4.4}: the emotion log & \texttt{runs/\allowbreak{}v3\_\allowbreak{}log\_\allowbreak{}emotion\_\allowbreak{}s0/\allowbreak{}metrics.\allowbreak{}json}: \texttt{accuracy;\allowbreak{} negatives.\allowbreak{}negatives} \newline \texttt{runs/\allowbreak{}v3\_\allowbreak{}log\_\allowbreak{}s0/\allowbreak{}metrics.\allowbreak{}json}: \texttt{outcome\_\allowbreak{}rate} & R3 \S13 \\
-S18 & Section~\ref{sec:4.4}: emotion results & \texttt{runs/\allowbreak{}v3\_\allowbreak{}stage\_\allowbreak{}emotion\_\allowbreak{}06b/\allowbreak{}metrics.\allowbreak{}json}: \texttt{n\_\allowbreak{}curve.\allowbreak{}\textless{}N\textgreater{}.\allowbreak{}direct\_\allowbreak{}brier\_\allowbreak{}minus\_\allowbreak{}\{positive\_\allowbreak{}sft,full\_\allowbreak{}sft\};\allowbreak{} n\_\allowbreak{}curve.\allowbreak{}\textless{}N\textgreater{}.\allowbreak{}\textless{}learner\textgreater{};\allowbreak{} seeds.\allowbreak{}training\_\allowbreak{}seeds;\allowbreak{} seeds.\allowbreak{}training\_\allowbreak{}seed\_\allowbreak{}mean\_\allowbreak{}minus\_\allowbreak{}full\_\allowbreak{}sft;\allowbreak{} seeds.\allowbreak{}direct\_\allowbreak{}log\_\allowbreak{}seed\_\allowbreak{}mean\_\allowbreak{}minus\_\allowbreak{}direct\_\allowbreak{}brier\_\allowbreak{}seed\_\allowbreak{}mean;\allowbreak{} forgetting.\allowbreak{}test\_\allowbreak{}indomain.\allowbreak{}minus\_\allowbreak{}zero\_\allowbreak{}shot;\allowbreak{} b2\_\allowbreak{}reference} \newline \texttt{runs/\allowbreak{}v3\_\allowbreak{}emotion\_\allowbreak{}06b\_\allowbreak{}positive\_\allowbreak{}sft\_\allowbreak{}n\textless{}N\textgreater{}\_\allowbreak{}s0/\allowbreak{}train\_\allowbreak{}summary.\allowbreak{}json}: \texttt{n\_\allowbreak{}used} \newline \texttt{docs/\allowbreak{}audit/\allowbreak{}emotion\_\allowbreak{}summary.\allowbreak{}json}: \texttt{groups} & R3 \S13 \\
+S18 & Section~\ref{sec:4.4} and Appendix~\ref{sec:A7}: emotion results & \texttt{runs/\allowbreak{}v3\_\allowbreak{}stage\_\allowbreak{}emotion\_\allowbreak{}06b/\allowbreak{}metrics.\allowbreak{}json}: \texttt{n\_\allowbreak{}curve.\allowbreak{}\textless{}N\textgreater{}.\allowbreak{}direct\_\allowbreak{}brier\_\allowbreak{}minus\_\allowbreak{}\{positive\_\allowbreak{}sft,full\_\allowbreak{}sft\};\allowbreak{} n\_\allowbreak{}curve.\allowbreak{}\textless{}N\textgreater{}.\allowbreak{}\textless{}learner\textgreater{};\allowbreak{} seeds.\allowbreak{}training\_\allowbreak{}seeds;\allowbreak{} seeds.\allowbreak{}training\_\allowbreak{}seed\_\allowbreak{}mean\_\allowbreak{}minus\_\allowbreak{}full\_\allowbreak{}sft;\allowbreak{} seeds.\allowbreak{}direct\_\allowbreak{}log\_\allowbreak{}seed\_\allowbreak{}mean\_\allowbreak{}minus\_\allowbreak{}direct\_\allowbreak{}brier\_\allowbreak{}seed\_\allowbreak{}mean;\allowbreak{} forgetting.\allowbreak{}test\_\allowbreak{}indomain.\allowbreak{}minus\_\allowbreak{}zero\_\allowbreak{}shot;\allowbreak{} b2\_\allowbreak{}reference} \newline \texttt{runs/\allowbreak{}v3\_\allowbreak{}emotion\_\allowbreak{}06b\_\allowbreak{}positive\_\allowbreak{}sft\_\allowbreak{}n\textless{}N\textgreater{}\_\allowbreak{}s0/\allowbreak{}train\_\allowbreak{}summary.\allowbreak{}json}: \texttt{n\_\allowbreak{}used} \newline \texttt{docs/\allowbreak{}audit/\allowbreak{}emotion\_\allowbreak{}summary.\allowbreak{}json}: \texttt{groups} & R3 \S13 \\
 S19 & Section~\ref{sec:4.4}: the predictions & \texttt{runs/\allowbreak{}v3\_\allowbreak{}stage\_\allowbreak{}emotion\_\allowbreak{}06b/\allowbreak{}metrics.\allowbreak{}json}: \texttt{n\_\allowbreak{}curve.\allowbreak{}5000.\allowbreak{}direct\_\allowbreak{}brier\_\allowbreak{}minus\_\allowbreak{}full\_\allowbreak{}sft;\allowbreak{} seeds.\allowbreak{}training\_\allowbreak{}seed\_\allowbreak{}mean\_\allowbreak{}minus\_\allowbreak{}full\_\allowbreak{}sft} \newline \texttt{runs/\allowbreak{}v3\_\allowbreak{}stage\_\allowbreak{}06b/\allowbreak{}metrics.\allowbreak{}json}: \texttt{n\_\allowbreak{}curve.\allowbreak{}5000.\allowbreak{}direct\_\allowbreak{}brier\_\allowbreak{}minus\_\allowbreak{}full\_\allowbreak{}sft;\allowbreak{} seeds.\allowbreak{}training\_\allowbreak{}seed\_\allowbreak{}mean\_\allowbreak{}minus\_\allowbreak{}full\_\allowbreak{}sft\_\allowbreak{}seed\_\allowbreak{}mean} & R3 \S13 \\
 S20 & Section~\ref{sec:5}: in-domain ECE of the noisy run & \texttt{runs/\allowbreak{}v3\_\allowbreak{}stage\_\allowbreak{}06b/\allowbreak{}metrics.\allowbreak{}json}: \texttt{forgetting.\allowbreak{}test\_\allowbreak{}indomain.\allowbreak{}minus\_\allowbreak{}zero\_\allowbreak{}shot.\allowbreak{}direct\_\allowbreak{}brier\_\allowbreak{}n5000\_\allowbreak{}s0\_\allowbreak{}noisy.\allowbreak{}ece} & R3 \S5 \\
-S21 & Section~\ref{sec:5}: label audits & \texttt{docs/\allowbreak{}audit/\allowbreak{}summary.\allowbreak{}json;\allowbreak{} docs/\allowbreak{}audit/\allowbreak{}emotion\_\allowbreak{}summary.\allowbreak{}json}: \texttt{groups} & \texttt{docs/audit} \\
+S21 & Section~\ref{sec:5} and Appendix~\ref{sec:setup}: label audits & \texttt{docs/\allowbreak{}audit/\allowbreak{}summary.\allowbreak{}json;\allowbreak{} docs/\allowbreak{}audit/\allowbreak{}emotion\_\allowbreak{}summary.\allowbreak{}json}: \texttt{groups} & \texttt{docs/audit} \\
 S22 & Section~\ref{sec:5}: selection grid & \texttt{runs/\allowbreak{}v3\_\allowbreak{}stage\_\allowbreak{}06b/\allowbreak{}metrics.\allowbreak{}json}: \texttt{n\_\allowbreak{}curve.\allowbreak{}\textless{}N\textgreater{}.\allowbreak{}\textless{}arm\textgreater{};\allowbreak{} runs/\allowbreak{}\textless{}run\textgreater{}/\allowbreak{}train\_\allowbreak{}summary.\allowbreak{}json:best\_\allowbreak{}step} & R3 \S\S9, 11 \\
 \end{longtable}
 }
