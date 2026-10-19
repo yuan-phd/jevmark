@@ -1,15 +1,15 @@
-\documentclass[11pt]{article}
+% arXiv: build with pdflatex; tectonic (XeTeX) defines \pdfoutput too, so skip it there.
+\ifdefined\XeTeXversion\else\pdfoutput=1\fi
+\documentclass[10pt,letterpaper]{article}
 
-\usepackage{iftex}
-\ifXeTeX
-  \usepackage{fontspec}
-\else
-  \usepackage[utf8]{inputenc}
-  \usepackage[T1]{fontenc}
-  \usepackage{lmodern}
-\fi
-\usepackage[margin=1in]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{newtxtext}
+\renewcommand{\ttdefault}{lmtt}
 \usepackage{amsmath,amssymb,amsthm}
+\usepackage[varvw]{newtxmath}
+\usepackage[letterpaper,margin=1in]{geometry}
+\usepackage{microtype}
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{adjustbox}
@@ -20,15 +20,34 @@
 \usepackage{enumitem}
 \usepackage[font=small]{caption}
 \setlist{nosep,leftmargin=*}
-\usepackage{natbib}
+\usepackage[round,semicolon,authoryear]{natbib}
 \usepackage{url}
-\usepackage[hidelinks]{hyperref}
+\usepackage{xcolor}
+\usepackage{hyperref}
 
-\setcitestyle{authoryear,round,semicolon}
+\newcommand{\papertitle}{Learning a calibrated decision head from logged bandit feedback}
+\newcommand{\paperkeywords}{logged bandit feedback, calibration, proper scoring rules, decision heads, selective classification, LoRA}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor={blue!60!black},
+  citecolor={green!40!black},
+  urlcolor={blue!70!black},
+  pdftitle={\papertitle},
+  pdfauthor={NAME},
+  pdfsubject={Machine learning},
+  pdfkeywords={\paperkeywords}
+}
+
+\theoremstyle{plain}
+\newtheorem{corollary}{Corollary}
+
 \setlength{\emergencystretch}{3em}
 
-\title{Learning a calibrated decision head from logged bandit feedback}
-\author{NAME\\ \texttt{EMAIL}\\ AFFILIATION}
+\title{\papertitle}
+\author{NAME\\
+  AFFILIATION\\
+  \texttt{EMAIL}}
 \date{}
 
 \setlength{\textfloatsep}{10pt plus 2pt minus 4pt}
@@ -44,6 +63,9 @@ Second, with full labels, no bandit objective beat cross-entropy plus one temper
 
 Third, from logged bandit feedback alone, Chosen-Action Proper Scoring (CAPS), the direct method with a proper score that fits the chosen action's probability to its logged outcome by the pathwise gradient, beats fine-tuning on confirmed answers only, which is positive-unlabeled learning with the negatives discarded: on Banking77 by +2.6 points [1.9, 3.3] in accuracy, .053 in ECE and .0095 in AURC. It stays 1.5 points [1.0, 2.0] below full-label training at 0.6B and .6 points [.2, 1.1] below it at 1.7B, so the gap shrinks with scale (three CAPS seeds, one full-label seed at 1.7B), and propensity weights add nothing, as expected of a well-specified regression. Under feedback flipped at a known rate, CAPS calibrates to the noisy channel without any correction, backward correction recovers most of the clean calibration, and early stopping on the held-out log-likelihood of logged outcomes prevents the memorisation of the single noisy draw.
 \end{abstract}
+
+\noindent\textbf{Keywords:} \paperkeywords
+
 \section{Introduction}\label{sec:1}
 
 \textbf{The decision head.} A decision head answers typed questions about a text state: yes or no, one of K options, or a level on a scale. The options are part of each request, so the same model answers label sets it was never trained on. It returns a full distribution per question from the option-letter probabilities at an answer slot, in one forward pass, with no text generated. The caller's code turns the probabilities into actions, for example by answering above a confidence threshold and escalating below it, which is selective classification with a reject option. That only works if the probabilities are calibrated and rank the errors lowest. Ours is a LoRA adapter on Qwen3-0.6B-Base and 1.7B-Base. Its in-domain ECE is .013 to .015, but it is overconfident on unfamiliar schemas, with ECE up to .22. The setting is the one TypeSafe AI announced with Jev \citep{typesafe2026jev}, trained by an unpublished recipe called RLCD, reinforcement learning for calibrated decisions. Our decision head is an independent re-implementation of the concept; jevmark is the name of its code repository and released adapters.
@@ -89,6 +111,7 @@ The learner starts from a general decision head $p_\theta$ and sees only the log
 
 \textbf{Objective.} CAPS minimises
 \begin{equation}
+  \label{eq:caps}
   L(\theta) = \mathbb{E}_x\, \mathbb{E}_{a \sim q(\cdot \mid x)} \bigl[ S\bigl(p_\theta(a \mid x), r(x, a)\bigr) \bigr]
 \end{equation}
 with $S$ a strictly proper binary score: Brier, $(r - p)^2$, by default, or the log score. The empirical mean over the log estimates $L$ directly. The gradient is the pathwise gradient through $p_a$; for Brier it is $-2 (r - p_a)\, \partial p_a / \partial \theta$. A right action is pushed up and a wrong one down.
@@ -99,13 +122,15 @@ with $S$ a strictly proper binary score: Brier, $(r - p)^2$, by default, or the 
 
 Accuracy is a consequence, not the objective: moving right actions up and wrong ones down moves the argmax, and options the logger never takes are unconstrained. A negative on an option other than the logger's top choice arises only from the logger's randomness; on our main log, 1514 of 2593 negatives (.584) fall on such options, and about .545 of those come from the uniform exploration term.
 
-\textbf{Corollary (a proper score of the sampled action's probability as a detached reward).} Take $K$ options, gold $g$, and a proper score used as the reward of the sampled action: Brier, $R(a) = 1 - (r_a - p_a)^2$, or the log score, $R(a) = r_a \log p_a + (1 - r_a) \log(1 - p_a)$.
+\begin{corollary}[A proper score of the sampled action's probability as a detached reward]\label{cor:detached}
+Take $K$ options, gold $g$, and a proper score used as the reward of the sampled action: Brier, $R(a) = 1 - (r_a - p_a)^2$, or the log score, $R(a) = r_a \log p_a + (1 - r_a) \log(1 - p_a)$.
 
 The gradient of the expected reward, $\sum_a p_a R(a)$, has a score-function term, $\sum_a R(a)\, \nabla p_a$, and a pathwise term, $\sum_a p_a \nabla R(a)$. Detaching $R$ keeps only the first \citep{schulman2015scg}. Form REINFORCE advantages against the mean of a sampled group, the sample itself included and not divided by the group standard deviation.
 
 (i) If $K > 2$, every wrong action's reward is at least gold's. In each group, the lowest-probability wrong action sampled has the largest reward, so its advantage is non-negative. Whenever the group also samples gold, gold's advantage is non-positive.
 
 (ii) If $K = 2$, all rewards in every group are equal, and the gradient is zero.
+\end{corollary}
 
 \begin{proof}
 A wrong action $w$ has $r_w = 0$ and $p_w \le 1 - p_g$. Under Brier, $R(w) = 1 - p_w^2$ and $R(g) = 1 - (1 - p_g)^2$; under the log score, $R(w) = \log(1 - p_w)$ and $R(g) = \log p_g$. Both rewards decrease in $p_w$ and equal $R(g)$ at $p_w = 1 - p_g$. Hence $R(w) \ge R(g)$, and the smallest sampled $p_w$ gives the group maximum. At $K = 2$, $p_w = 1 - p_g$ exactly, so $R(w) = R(g)$.
@@ -350,7 +375,7 @@ N & learner & accuracy & ECE & Brier & NLL & AURC & Cov@.05 & accuracy minus CAP
 
 Every arm that keeps the negatives leads \texttt{positive\_sft}, by +.016 to +.028 in accuracy. \texttt{ips\_positive} equals \texttt{positive\_sft}: +.002 [$-$.001, +.005] in accuracy at N 2000 and +.000 [$-$.003, +.004] at N 5000, and +.0003 [$-$.0003, +.0009] and +.0002 [$-$.0005, +.0010] in AURC; at N 5000, only 25 of the 3342 positives it trains on are clipped. At N 5000, \texttt{ips\_log} beats CAPS-Brier on Brier and NLL, but the unweighted CAPS-log beats it by more, so the gain is the log score's, not the weight's. CAPS-log forgets more in-domain ($-$.038 to $-$.046 against $-$.027 to $-$.043 for CAPS-Brier) and is behind at N 2000 on one seed ($-$.010 [$-$.016, $-$.004]).
 
-\begin{figure}[H]
+\begin{figure}[t]
 \centering
 \includegraphics[width=\textwidth]{figures/v4_offpolicy.png}
 \caption{Off-policy baselines on the Banking77 log at N 2000 and 5000, 0.6B: accuracy and ECE per arm, with the range over three training seeds at N 5000 where they exist. Provenance: Table~\ref{tab:prov}, F3.}\label{fig:v4_offpolicy}
@@ -617,7 +642,7 @@ The Banking77 log domain drops 30 messages that match the test split and 31 repe
   \item b9c0257: AURC and Cov@eps added to every run and stage file, earlier values unchanged.
 \end{itemize}
 
-\textbf{Tables and figures:} every table is regenerated on CPU from committed files by \texttt{scripts/compare\_v3.py}, \texttt{scripts/compare\_noise.py}, \texttt{scripts/compare\_rlcd.py}, \texttt{scripts/paired\_deltas.py} and \texttt{scripts/log\_stats.py}. Every figure is regenerated by \texttt{scripts/make\_figures.py}. The training scripts (\texttt{scripts/train\_sft.py}, \texttt{scripts/train\_rlcd.py}) fit one Kaggle T4 session per run (\texttt{docs/KAGGLE.md}).
+{\sloppy \textbf{Tables and figures:} every table is regenerated on CPU from committed files by \texttt{scripts/compare\_v3.py}, \texttt{scripts/compare\_noise.py}, \texttt{scripts/compare\_rlcd.py}, \texttt{scripts/paired\_deltas.py} and \texttt{scripts/log\_stats.py}. Every figure is regenerated by \texttt{scripts/make\_figures.py}. The training scripts (\texttt{scripts/train\_sft.py}, \texttt{scripts/train\_rlcd.py}) fit one Kaggle T4 session per run (\texttt{docs/KAGGLE.md}).\par}
 
 \clearpage
 \section{Provenance}\label{sec:B}
