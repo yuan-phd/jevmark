@@ -28,23 +28,10 @@ The arXiv version of docs/PAPER.md is built from `paper/main.tex`. This file lis
 - **Title:** Learning a calibrated decision head from logged bandit feedback
 - **Authors:** as in the author block, in the same order, comma separated.
 - **Comments (optional):** for example "21 pages, 6 figures. Code and adapters: https://github.com/yuan-phd/jevmark".
-- **Abstract:** below. arXiv allows at most 1920 characters, and the paper's abstract is about 2,220 characters as plain text. The version below is 1905 characters, ASCII only, with no markup. It is the paper's abstract with these deletions and nothing new added:
-  - "the lowest-probability wrong action sampled gets the largest advantage,"
-  - "; the best arm was level, -.002 [-.006, +.004]"
-  - the list after "a stricter protocol" (transfer to unseen label schemas, the continued cross-entropy control, four bandit arms under one temperature)
-  - ", which is positive-unlabeled learning with the negatives discarded"
-  - ", .0095 in AURC" (with ".053 in ECE" joined by "and")
-
-  The abstract in the PDF stays the full one. Approve or shorten the form version before pasting it in.
+- **Abstract:** paste the text below, the same as the paper's abstract. It is 1787 characters, ASCII only, with no markup, under arXiv's limit of 1920.
 
 ```text
-A decision head reads a state and a list of options and returns a probability for each option in one forward pass; a caller answers when the top probability clears a threshold and escalates otherwise. Once deployed, it usually observes only whether the option it chose was right: logged bandit feedback. We adapt such a head, a LoRA adapter on Qwen3-0.6B-Base and 1.7B-Base, from that feedback, and report three results.
-
-First, a proper score of the sampled action's own probability is not a usable REINFORCE reward. That a detached, parameter-dependent reward drops the pathwise term of the gradient is known; we give the corollary for this reward: against a group-mean baseline every wrong action earns at least the gold action's reward, and at K = 2 the signal is exactly zero. In practice it cut one score task's accuracy from .636 to .111.
-
-Second, with full labels, no bandit objective beat cross-entropy plus one temperature on calibration under label-space shift. This replicates a concurrent finding under a stricter protocol.
-
-Third, from logged bandit feedback alone, Chosen-Action Proper Scoring (CAPS), the direct method with a proper score that fits the chosen action's probability to its logged outcome by the pathwise gradient, beats fine-tuning on confirmed answers only: on Banking77 by +2.6 points [1.9, 3.3] in accuracy and .053 in ECE. It stays 1.5 points [1.0, 2.0] below full-label training at 0.6B and .6 points [.2, 1.1] below it at 1.7B, so the gap shrinks with scale (three CAPS seeds, one full-label seed at 1.7B), and propensity weights add nothing, as expected of a well-specified regression. Under feedback flipped at a known rate, CAPS calibrates to the noisy channel without any correction, backward correction recovers most of the clean calibration, and early stopping on the held-out log-likelihood of logged outcomes prevents the memorisation of the single noisy draw.
+A decision head reads a state and a list of options and returns a probability for each option in one forward pass; a caller acts when the top probability clears a threshold and escalates otherwise. Once deployed, it usually observes only whether the option it chose was right: logged bandit feedback. We adapt such a head, a LoRA adapter on Qwen3-0.6B-Base and 1.7B-Base, from that feedback and report three results. First, a proper score of the sampled action's own probability is not a usable REINFORCE reward: against a group-mean baseline every wrong action earns at least the gold action's reward, the lowest-probability wrong action gets the largest advantage, and at two options the signal is exactly zero; in practice it cut one task's accuracy from .636 to .111. The pathwise gradient is the fix. Second, with full labels, no bandit objective beat cross-entropy plus one temperature on calibration under label-space shift, replicating a concurrent finding under a stricter protocol. Third, from logged feedback alone, Chosen-Action Proper Scoring (CAPS), the direct method with a proper score fitted to the chosen action's probability, beats fine-tuning on confirmed answers only, which discards the negatives: 2.6 accuracy points, .053 lower ECE and lower selective risk on Banking77, and 21.7 points on an emotion dataset where the logging policy is often wrong. CAPS stays 1.5 points below full-label training at 0.6B and .6 points at 1.7B, and propensity weights add nothing. Under feedback flipped at a known rate, CAPS calibrates to the noisy channel, backward correction recovers most of the clean calibration, and early stopping on the held-out log-likelihood of logged outcomes prevents memorisation of the noisy draws. Code, adapters and every metrics file are public.
 ```
 
 ## Upload
