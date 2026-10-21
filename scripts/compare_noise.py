@@ -21,7 +21,11 @@ top-1 ECE; mean top-1 against the channel line f + (1 - 2f) x accuracy; the sele
 criterion at the selected and the last step as its excess over the best achievable
 value (-H(f) for flipped outcomes, 0 for clean ones) and the growth between them; for
 direct_brier, the final adapter's metrics and its difference from the selected one.
-Per rate, direct_brier's loss from clean minus positive_sft's, paired. Missing runs
+Per rate, direct_brier's loss from clean minus positive_sft's, paired. The review
+block `uncorrected` repeats, per rate including the clean runs (f 0), each learner's
+uncorrected ECE (the stored top-1 against clean, gold correctness, before any
+inversion) with its interval, and that paired difference of accuracy changes with its
+interval, so the table has them side by side. Missing runs
 are listed, and their entries are null. Every number comes from the runs' committed
 or regenerable files; nothing is retrained.
 """
@@ -174,6 +178,21 @@ def compare(runs_dir: Path, size: str, resamples: int) -> dict[str, Any]:
         keys = [f"direct_brier_f{f:g}", "direct_brier_clean", f"positive_sft_f{f:g}", "positive_sft_clean"]
         row["direct_brier_loss_minus_positive_sft_loss"] = split.delta_of_deltas(*keys) if all(k in present for k in keys) else None
         by_rate[f"{f:g}"] = row
+    uncorrected: dict[str, Any] = {
+        "note": ("ece is the uncorrected ECE: the stored top-1 probability against clean correctness (the gold label), before any inversion. "
+                 "accuracy_change is noisy minus clean accuracy, paired; direct_brier_change_minus_positive_sft_change is direct_brier's change minus "
+                 "positive_sft's, paired, positive when direct_brier loses less."),
+        "rates": {},
+    }
+    for f, row in [("0", {arm: clean[arm] for arm in ARMS}), *by_rate.items()]:
+        entry: dict[str, Any] = {}
+        for arm in ARMS:
+            r = row[arm]
+            entry[arm] = None if r is None else {"accuracy": r["accuracy"], "accuracy_ci": r["accuracy_ci"], "ece": r["ece"], "ece_ci": r["ece_ci"],
+                                                 "accuracy_change": (r.get("minus_clean") or {}).get("accuracy")}
+        d = row.get("direct_brier_loss_minus_positive_sft_loss")
+        entry["direct_brier_change_minus_positive_sft_change"] = d["accuracy"] if d else None
+        uncorrected["rates"][f] = entry
     return {
         "size": size,
         "split": V3_TEST_FULL,
@@ -191,6 +210,7 @@ def compare(runs_dir: Path, size: str, resamples: int) -> dict[str, Any]:
         "zero_shot": split.point("zero_shot"),
         "clean": clean,
         "by_rate": by_rate,
+        "uncorrected": uncorrected,
         "sources": sources,
         "missing": missing,
     }
@@ -237,6 +257,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         if d:
             a = d["accuracy"]
             print(f"{f:5s} direct_brier loss minus positive_sft loss (accuracy): {a['delta']:+.3f} [{a['ci'][0]:+.3f}, {a['ci'][1]:+.3f}]")
+    print("\n== uncorrected ECE (stored top-1 against clean correctness) and the paired accuracy changes [95 percent intervals]")
+    print("f | CAPS-Brier ECE | positive-only ECE | CAPS-Brier change | positive-only change | CAPS minus positive-only change")
+    ci = lambda v: f"{v['ece']:.3f} [{v['ece_ci'][0]:.3f}, {v['ece_ci'][1]:.3f}]"
+    dc = lambda d: "-" if d is None else f"{d['delta']:+.3f} [{d['ci'][0]:+.3f}, {d['ci'][1]:+.3f}]"
+    for f, e in result["uncorrected"]["rates"].items():
+        db, ps = e["direct_brier"], e["positive_sft"]
+        if db is None or ps is None:
+            print(f"{f} | missing")
+            continue
+        print(f"{f} | {ci(db)} | {ci(ps)} | {dc(db['accuracy_change'])} | {dc(ps['accuracy_change'])} | {dc(e['direct_brier_change_minus_positive_sft_change'])}")
     if result["missing"]:
         print("missing:", ", ".join(result["missing"]))
     print(f"wrote {out}")
