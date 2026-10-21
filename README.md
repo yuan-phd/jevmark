@@ -6,7 +6,7 @@ jevmark is not affiliated with or endorsed by TypeSafe AI. Their Jev model is th
 
 ## Results
 
-Three phases, each with its own report, and a fourth that tests the v3 result for a paper; every number there is cited to a committed `metrics.json`. In one line: the supervised model works in-domain and reads options it never saw; RLCD adds nothing on full labels; it helps when the only feedback is whether the model's own answer was right, on two domains and at both sizes. The paper draft is docs/PAPER.md. Decision numbers in the reports refer to the author's private working log; every number and conclusion in the reports is backed by the cited metrics files and does not depend on that log.
+Three phases, each with its own report, and a fourth that tests the v3 result for a paper; every number there is cited to a committed `metrics.json`. In one line: the supervised model works in-domain and reads options it never saw; RLCD adds nothing on full labels; it helps when the only feedback is whether the model's own answer was right, on two domains and at both sizes. The paper is on arXiv, link to follow. Decision numbers in the reports refer to the author's private working log; every number and conclusion in the reports is backed by the cited metrics files and does not depend on that log.
 
 ### v1: the supervised model (docs/RESULTS_v1.md)
 
@@ -65,7 +65,7 @@ The learning curve: the table above as a figure, with 95 percent intervals and, 
 
 The cascade at N 5000: as the confidence threshold rises, each learner answers fewer questions and the answers it keeps are more accurate. Wherever their curves overlap, RLCD's kept answers are more accurate than positive-only SFT's and zero-shot's, and less accurate than full-label SFT's.
 
-### Phase 4: experiments for a paper (docs/PAPER.md)
+### Phase 4: experiments for a paper
 
 The paper names the v3 learner Chosen-Action Proper Scoring (CAPS): the direct method of logged bandit feedback with a proper score on the chosen action (docs/METHOD.md). Four experiments, reported in docs/RESULTS_v3.md sections 4 and 11 to 13:
 
@@ -280,7 +280,8 @@ Training and evaluation themselves (`make train-sft`, `scripts/train_rlcd.py`, `
 - docs/DATA.md, docs/KAGGLE.md: data, and how to run on Kaggle.
 - docs/MODEL_CARD.md: the card of the adapters on the Hugging Face Hub.
 - docs/audit/SUMMARY.md, docs/audit/EMOTION_SUMMARY.md: the Banking77 and emotion label-noise audits.
-- docs/PAPER.md: the paper draft (phase 4), every number cited to a `metrics.json`; docs/METHOD.md: the method statement; docs/references.bib: its references, each checked against a primary source except one the paper does not cite, marked NOT FOUND.
+- Paper: arXiv, link to follow.
+- docs/METHOD.md: the method statement; docs/references.bib: the paper's references, each checked against a primary source except one the paper does not cite, marked NOT FOUND.
 
 ## License
 
