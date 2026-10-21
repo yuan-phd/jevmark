@@ -67,6 +67,8 @@ gpt-4.1-mini's choice question on the 500-record subset of test_emotion. On both
 domains only the choice question is scored: the emotion full test also asks
 test_emotion's expresses_emotion noul, which no learner was trained on.
 
+A rewrite keeps the keys scripts/v3_review.py added to the file (REVIEW_KEYS).
+
 Every run must hold exactly the same questions as the zero-shot run on each split,
 and the data hashes of the splits must agree across runs; otherwise it stops.
 Adapted learners' Banking77 numbers are never mixed into the v1 or v2
@@ -110,6 +112,7 @@ RISK_METRICS = tuple(m + suffix for suffix in RISK_RANKINGS for m in ("aurc", *(
 METRICS = (*BASE_METRICS, *RISK_METRICS)
 OTHER = "other"
 B2_RUN = "b2_gpt-4.1-mini"
+REVIEW_KEYS = ("off_policy", "forgetting_table", "selected_steps", "review")  # written by scripts/v3_review.py, kept on a rewrite
 CHOICE_QUESTION = "label"  # the one question a v3 learner answers, and the only one scored here
 RUN_PATTERN = re.compile(r"^v3_(?:(?P<domain>emotion)_)?(?P<size>06b|17b)_(?P<arm>positive_sft|full_sft|direct_brier|direct_log|outcome_minus_p_log|ips_log|ips_positive)_n(?P<n>\d+)_s(?P<seed>\d+)(?P<noisy>_noisy)?(?:_log(?P<log>\d+))?$")
 
@@ -543,6 +546,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     result = compare(runs_dir, args.size, args.resamples, Path(args.subset), args.domain)
     out = Path(args.out) if args.out else runs_dir / f"v3_stage_{V3_DOMAINS[args.domain]['infix']}{args.size}" / "metrics.json"
     out.parent.mkdir(parents=True, exist_ok=True)
+    if out.is_file():  # keys scripts/v3_review.py added to an earlier version of this file
+        earlier = json.loads(out.read_text())
+        result.update({k: earlier[k] for k in REVIEW_KEYS if k in earlier})
     out.write_text(json.dumps(result, indent=2) + "\n")
     print_tables(result)
     print(f"\nwrote {out}")

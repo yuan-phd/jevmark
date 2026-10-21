@@ -9806,5 +9806,163 @@
     }
   },
   "missing": [],
-  "missing_off_policy": []
+  "missing_off_policy": [],
+  "off_policy": {
+    "identity": {
+      "claim": "E_q[grad outcome_minus_p_log loss] = (1 - 1/B) / 2 * E_q[grad (1 / q(a)) (r - p(a))^2] = (1 - 1/B) / 2 * grad sum_a (r_a - p_a)^2, per question, while no weight is clipped",
+      "derivation": "E_q[w R grad log p] = sum_a p_a (r_a - p_a) grad log p_a = sum_a (r_a - p_a) grad p_a; the micro-batch baseline's other samples give b sum_a grad p_a = 0 and its own sample removes 1/B; E_q[(1 / q) grad (r - p_a)^2] = -2 sum_a (r_a - p_a) grad p_a",
+      "tiny_model_check": {
+        "setting": {
+          "model": "tiny random Qwen3 (2 layers, hidden 64) with a random LoRA adapter, fp32, CPU",
+          "micro_batch": 2,
+          "k": [
+            3,
+            4
+          ],
+          "behaviour": "q = (1 - epsilon) p + epsilon / K at the current p",
+          "epsilon": 0.1,
+          "action_pairs_enumerated": 12,
+          "gradient_entries": 3584
+        },
+        "max_weight_p_over_q": 1.0143344503513152,
+        "constant": 0.25,
+        "constant_formula": "(1 - 1/B) / 2",
+        "max_abs_ips_brier_gradient": 0.17214347907703859,
+        "max_rel_difference_reinforce_vs_constant_times_ips_brier": 4.481351365418094e-07,
+        "max_rel_difference_ips_brier_vs_full_information_brier": 1.79303836477966e-06,
+        "cosine_reinforce_ips_brier": 0.9999999999986543,
+        "tolerance": 1e-05,
+        "matches": true
+      }
+    },
+    "clipping": {
+      "logging_policy": {
+        "n": 5000,
+        "max_p_log_over_q": 1.0988997773924651,
+        "bound_1_over_1_minus_epsilon": 1.1111111111111112,
+        "clipped": 0
+      },
+      "outcome_minus_p_log": {
+        "2000": {
+          "weight": "min(p(a) / q(a), 5), p the learner's current probability",
+          "all_steps": {
+            "steps": 563,
+            "weights": 17800,
+            "clipped": 132,
+            "clipped_share": 0.007415730337078652,
+            "mean_weight": 0.9490168224206046
+          },
+          "to_selected_step": {
+            "selected_step": 200,
+            "weights": 6400,
+            "clipped": 39,
+            "clipped_share": 0.00609375,
+            "first_step_with_a_clip": 26,
+            "note": "from the step lines (mean micro-batch share times 32 examples a step), exact when every micro-batch is full"
+          },
+          "source": "runs/v3_06b_outcome_minus_p_log_n2000_s0"
+        },
+        "5000": {
+          "weight": "min(p(a) / q(a), 5), p the learner's current probability",
+          "all_steps": {
+            "steps": 1407,
+            "weights": 44916,
+            "clipped": 240,
+            "clipped_share": 0.0053433075073470475,
+            "mean_weight": 0.9381868045618791
+          },
+          "to_selected_step": {
+            "selected_step": 300,
+            "weights": 9600,
+            "clipped": 42,
+            "clipped_share": 0.004375,
+            "first_step_with_a_clip": 26,
+            "note": "from the step lines (mean micro-batch share times 32 examples a step), exact when every micro-batch is full"
+          },
+          "source": "runs/v3_06b_outcome_minus_p_log_n5000_s0"
+        }
+      },
+      "ips_log": {
+        "2000": {
+          "weight": "min(1 / q(a), 5) divided by its mean over the training prefix",
+          "prefix": {
+            "weights": 1800,
+            "clipped": 216,
+            "clipped_share": 0.12,
+            "normaliser": 1.7520616963642588
+          },
+          "trained_on": {
+            "weights": 1800,
+            "clipped": 216,
+            "clipped_share": 0.12,
+            "mean_normalised_weight": 1.0
+          },
+          "source": "runs/v3_06b_ips_log_n2000_s0"
+        },
+        "5000": {
+          "weight": "min(1 / q(a), 5) divided by its mean over the training prefix",
+          "prefix": {
+            "weights": 4500,
+            "clipped": 561,
+            "clipped_share": 0.12466666666666666,
+            "normaliser": 1.7742008051149327
+          },
+          "trained_on": {
+            "weights": 4500,
+            "clipped": 561,
+            "clipped_share": 0.12466666666666666,
+            "mean_normalised_weight": 1.0
+          },
+          "source": "runs/v3_06b_ips_log_n5000_s0"
+        }
+      },
+      "ips_positive": {
+        "2000": {
+          "weight": "min(1 / q(a), 5) divided by its mean over the training prefix",
+          "prefix": {
+            "weights": 1800,
+            "clipped": 216,
+            "clipped_share": 0.12,
+            "normaliser": 1.7520616963642588
+          },
+          "trained_on": {
+            "weights": 1332,
+            "clipped": 14,
+            "clipped_share": 0.010510510510510511,
+            "mean_normalised_weight": 0.7038039864069134
+          },
+          "source": "runs/v3_06b_ips_positive_n2000_s0"
+        },
+        "5000": {
+          "weight": "min(1 / q(a), 5) divided by its mean over the training prefix",
+          "prefix": {
+            "weights": 4500,
+            "clipped": 561,
+            "clipped_share": 0.12466666666666666,
+            "normaliser": 1.7742008051149327
+          },
+          "trained_on": {
+            "weights": 3342,
+            "clipped": 25,
+            "clipped_share": 0.007480550568521843,
+            "mean_normalised_weight": 0.6932846427431175
+          },
+          "source": "runs/v3_06b_ips_positive_n5000_s0"
+        }
+      }
+    }
+  },
+  "review": {
+    "off_policy": {
+      "created": "2026-10-21T12:03:03+00:00",
+      "git": {
+        "commit": "c707cdde2001905e16e5cf379df544628154568b",
+        "dirty": false
+      },
+      "script_sha256": "ec97f7da391241e37fb737ecaca9ff4945589ea979b0538ce4908dc733012c24",
+      "keys": [
+        "off_policy"
+      ]
+    }
+  }
 }
