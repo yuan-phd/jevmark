@@ -23,6 +23,24 @@ question type:
   some wrong sample is rewarded below some gold sample, the share where every
   reward is equal, and the share where the gold samples' mean advantage is negative
 
+- gold_logit_zero: the share of questions whose update leaves the gold logit unchanged
+  (1 - down - up), split into all_samples_identical (all G sampled actions the same,
+  so every reward and advantage is equal), distinct_samples_equal_rewards (different
+  actions, every advantage zero; for brier and log every noul group) and
+  nonzero_advantage (the rest: some advantage non-zero, the step below the 1e-12
+  tolerance, as when gold is sampled at p_g near 1 next to a wrong action of tiny p)
+
+the expected gold-logit gradient: with R detached and the group mean of all G
+rewards as the baseline, E[mean_i A_i w_i (1[a_i = g] - p_g)] =
+(1 - 1/G) p_g (R(g) - sum_a p_a R(a)) whenever the weight clip does not bind (p / q <
+1 / (1 - epsilon) under the epsilon mix), because the baseline's own-sample term
+removes 1/G of the expectation and its other samples are independent of a_i, and
+E_p[1[a = g] - p_g] = 0. For brier and log every wrong action's reward is at least
+gold's (p_a <= 1 - p_g), so the value is at most 0 for every K and exactly 0 at K 2.
+It is evaluated in closed form on every question, and checked against an exact
+enumeration of all K^G action tuples under q, with train_rlcd.py's reward, advantage
+and weight functions, on the first questions of every (type, K),
+
 plus a sign check: question_loss of train_rlcd.py on K 3, p = (0.6, 0.3, 0.1),
 gold 0, actions forced to (0, 1, 2), beta 0, for every arm, with the loss and
 gradient computed by hand next to it and p after one plain descent step at lr 1.
@@ -58,6 +76,7 @@ SIGN_CHECK_P = (0.6, 0.3, 0.1)
 SIGN_CHECK_ACTIONS = (0, 1, 2)
 TOL = 1e-12
 HAND_TOL = 1e-6  # question_loss computes in fp32 (z.float()), the hand values in float64
+ENUM_TOL = 1e-12
 
 
 def load_train_rlcd() -> Any:
@@ -92,6 +111,7 @@ def _mean(x: list[float]) -> float | None:
 
 def simulate(draws: Sequence[tuple[str, torch.Tensor, int, torch.Tensor, torch.Tensor]], rl: Any, arm: str, clip: float) -> dict[str, Any]:
     a_gold, a_wrong, aw_gold, aw_wrong, step, mixed_below, mixed_equal, mixed_gold_negative = [], [], [], [], [], [], [], []
+    zero_identical, zero_equal, zero_other = [], [], []
     for _, p, gold, q, actions in draws:
         r = (actions == gold).double()
         rewards = rl.reward(arm, r, p[actions])
@@ -101,6 +121,12 @@ def simulate(draws: Sequence[tuple[str, torch.Tensor, int, torch.Tensor, torch.T
             (a_gold if ri else a_wrong).append(ai)
             (aw_gold if ri else aw_wrong).append(ai * wi)
         step.append(float(((a * w) * (r - p[gold])).mean()))
+        if abs(step[-1]) <= TOL:
+            identical = bool((actions == actions[0]).all())
+            all_zero = bool(a.abs().max() < TOL)
+            zero_identical.append(identical)
+            zero_equal.append(all_zero and not identical)
+            zero_other.append(not all_zero)
         n_gold = int(r.sum())
         if 0 < n_gold < len(r):
             mixed_below.append(bool(rewards[r == 0].min() < rewards[r == 1].max() - TOL))
@@ -119,6 +145,12 @@ def simulate(draws: Sequence[tuple[str, torch.Tensor, int, torch.Tensor, torch.T
         "gold_logit_down": _share([x < -TOL for x in step]),
         "gold_logit_up": _share([x > TOL for x in step]),
         "mean_gold_logit_step": _mean(step),
+        "gold_logit_zero": {
+            "share": len(zero_identical) / len(draws) if draws else None,
+            "all_samples_identical": sum(zero_identical) / len(draws) if draws else None,
+            "distinct_samples_equal_rewards": sum(zero_equal) / len(draws) if draws else None,
+            "nonzero_advantage": sum(zero_other) / len(draws) if draws else None,
+        },
         "mixed_groups": {
             "n": len(mixed_below),
             "some_wrong_rewarded_below_gold": _share(mixed_below),
@@ -126,6 +158,80 @@ def simulate(draws: Sequence[tuple[str, torch.Tensor, int, torch.Tensor, torch.T
             "gold_mean_advantage_negative": _share(mixed_gold_negative),
         },
     }
+
+
+def expected_gold_step(rl: Any, arm: str, p: torch.Tensor, gold: int, group_size: int) -> float:
+    """(1 - 1/G) p_g (R(g) - sum_a p_a R(a)): the expected gold-logit step with R detached, unclipped weights."""
+    k = p.shape[-1]
+    options = torch.arange(k)
+    rewards = rl.reward(arm, (options == gold).double(), p)
+    return float((1.0 - 1.0 / group_size) * p[gold] * (rewards[gold] - (p * rewards).sum()))
+
+
+def enumerated_gold_step(rl: Any, arm: str, p: torch.Tensor, gold: int, q: torch.Tensor, group_size: int, clip: float) -> float:
+    """E over all K^G action tuples drawn from q of mean_i A_i w_i (1[a_i = g] - p_g), with train_rlcd.py's functions."""
+    k = p.shape[-1]
+    tuples = torch.cartesian_prod(*[torch.arange(k)] * group_size).reshape(-1, group_size)
+    r = (tuples == gold).double()
+    a = rl.advantages(rl.reward(arm, r, p[tuples]), False)
+    w = rl.importance_weights(p[tuples], q[tuples], clip)
+    probability = q[tuples].prod(dim=-1)
+    return float((probability * ((a * w) * (r - p[gold])).mean(dim=-1)).sum())
+
+
+def expected_gradient(draws: Sequence[tuple[str, torch.Tensor, int, torch.Tensor, torch.Tensor]], rl: Any, group_size: int, epsilon: float, clip: float, per_cell: int) -> dict[str, Any]:
+    """The closed-form expected gold-logit step on every question, by K, and its check against exact enumeration."""
+    max_weight = max(float((p / q).max()) for _, p, _, q, _ in draws)
+    out: dict[str, Any] = {
+        "formula": "E[mean_i A_i w_i (1[a_i = g] - p_g)] = (1 - 1/G) p_g (R(g) - sum_a p_a R(a)), R detached, group-mean baseline over all G samples, unclipped weights",
+        "group_size": group_size,
+        "max_weight_p_over_q": max_weight,
+        "weight_bound_1_over_1_minus_epsilon": 1.0 / (1.0 - epsilon),
+        "clip": clip,
+        "clip_binds": max_weight > clip,
+        "rewards": {},
+    }
+    by_k: dict[int, list[int]] = {}
+    for i, (_, p, _, _, _) in enumerate(draws):
+        by_k.setdefault(p.shape[-1], []).append(i)
+    checked: dict[tuple[str, int], list[int]] = {}
+    for i, (qtype, p, _, _, _) in enumerate(draws):
+        cell = checked.setdefault((qtype, p.shape[-1]), [])
+        if len(cell) < per_cell:
+            cell.append(i)
+    for arm in REWARDS:
+        values = [expected_gold_step(rl, arm, p, gold, group_size) for _, p, gold, _, _ in draws]
+        blocks = {}
+        for k, idx in sorted(by_k.items()):
+            v = [values[i] for i in idx]
+            blocks[str(k)] = {
+                "questions": len(v),
+                "max": max(v),
+                "min": min(v),
+                "mean": sum(v) / len(v),
+                "share_negative": sum(x < -TOL for x in v) / len(v),
+                "share_zero": sum(abs(x) <= TOL for x in v) / len(v),
+                "share_positive": sum(x > TOL for x in v) / len(v),
+            }
+        differences = [abs(enumerated_gold_step(rl, arm, draws[i][1], draws[i][2], draws[i][3], group_size, clip) - values[i]) for idx in checked.values() for i in idx]
+        out["rewards"][arm] = {
+            "overall": {
+                "max": max(values),
+                "share_negative": sum(x < -TOL for x in values) / len(values),
+                "share_zero": sum(abs(x) <= TOL for x in values) / len(values),
+                "share_positive": sum(x > TOL for x in values) / len(values),
+            },
+            "by_k": blocks,
+            "never_positive": max(values) <= TOL,
+            "zero_at_k2": all(abs(values[i]) <= TOL for i in by_k.get(2, [])),
+            "enumeration_check": {
+                "questions": len(differences),
+                "cells": {f"{t}_k{k}": len(idx) for (t, k), idx in sorted(checked.items())},
+                "max_abs_difference": max(differences) if differences else None,
+                "matches": bool(differences) and max(differences) < ENUM_TOL,
+            },
+        }
+    return out
 
 
 def hand_loss_and_grad(arm: str, p: Sequence[float], actions: Sequence[int], gold: int, epsilon: float, clip: float) -> tuple[float, list[float]]:
@@ -189,6 +295,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--epsilon", type=float, default=0.1)
     parser.add_argument("--importance-clip", type=float, default=5.0)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--enumerate-per-cell", type=int, default=20, help="questions per (type, K) checked by exact enumeration of the K^G action tuples")
     parser.add_argument("--out", default=None, help="output directory; default runs/advantage_simulation_<size> next to the run")
     args = parser.parse_args(argv)
 
@@ -216,6 +323,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "questions": {"overall": len(draws), **{t: len(d) for t, d in by_type.items()}},
         "note": "Advantages of the REINFORCE rewards of scripts/train_rlcd.py on actions sampled from the stored probabilities; decision 52. brier and log are the known broken arms.",
         "rewards": rewards,
+        "expected_gold_gradient": expected_gradient(draws, rl, args.group_size, args.epsilon, args.importance_clip, args.enumerate_per_cell),
         "sign_check": sign_check(rl, args.epsilon, args.importance_clip),
     }
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -224,7 +332,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     print("reward | gold A<0 | wrong A>0 | mean A gold | mean A wrong | gold logit down / up")
     for arm, blocks in rewards.items():
         m = blocks["overall"]
-        print(f"{arm} | {m['gold_negative_advantage']:.3f} | {m['wrong_positive_advantage']:.3f} | {m['mean_advantage_gold']:+.3f} | {m['mean_advantage_wrong']:+.3f} | {m['gold_logit_down']:.3f} / {m['gold_logit_up']:.3f}")
+        z = m["gold_logit_zero"]
+        print(f"{arm} | {m['gold_negative_advantage']:.3f} | {m['wrong_positive_advantage']:.3f} | {m['mean_advantage_gold']:+.3f} | {m['mean_advantage_wrong']:+.3f} | {m['gold_logit_down']:.3f} / {m['gold_logit_up']:.3f}"
+              f" | zero {z['share']:.3f} = identical {z['all_samples_identical']:.3f} + equal rewards {z['distinct_samples_equal_rewards']:.3f} + other {z['nonzero_advantage']:.3f}")
+    e = metrics["expected_gold_gradient"]
+    print(f"\nexpected gold-logit step {e['formula']}; max p/q {e['max_weight_p_over_q']:.4f} (clip {e['clip']} binds: {e['clip_binds']})")
+    print("reward | max | share < 0 / = 0 / > 0 | never positive | zero at K 2 | enumeration max |diff| (questions)")
+    for arm, v in e["rewards"].items():
+        o, c = v["overall"], v["enumeration_check"]
+        print(f"{arm} | {o['max']:+.2e} | {o['share_negative']:.3f} / {o['share_zero']:.3f} / {o['share_positive']:.3f} | {v['never_positive']} | {v['zero_at_k2']} | {c['max_abs_difference']:.1e} ({c['questions']})")
     return 0
 
 

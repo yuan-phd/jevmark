@@ -46,6 +46,18 @@ def test_simulation_on_a_synthetic_run(tmp_path, capsys):
         choice = rewards[arm]["choice"]["mixed_groups"]
         assert choice["n"] > 0 and choice["some_wrong_rewarded_below_gold"] == 0.0 and choice["gold_mean_advantage_negative"] == 1.0
     assert "score" not in rewards["brier"]
+    for arm in sim.REWARDS:
+        o = rewards[arm]["overall"]
+        z = o["gold_logit_zero"]
+        assert z["share"] == pytest.approx(1 - o["gold_logit_down"] - o["gold_logit_up"])
+        assert z["share"] == pytest.approx(z["all_samples_identical"] + z["distinct_samples_equal_rewards"] + z["nonzero_advantage"])
+    expected = metrics["expected_gold_gradient"]
+    assert not expected["clip_binds"] and expected["max_weight_p_over_q"] < expected["weight_bound_1_over_1_minus_epsilon"]
+    for arm in ("brier", "log"):
+        e = expected["rewards"][arm]
+        assert e["never_positive"] and e["zero_at_k2"] and e["by_k"]["4"]["share_negative"] == 1.0
+    assert expected["rewards"]["outcome"]["overall"]["share_positive"] == 1.0
+    assert all(e["enumeration_check"]["matches"] for e in expected["rewards"].values())
     check = metrics["sign_check"]["arms"]
     assert all(arm["code_matches_hand"] for arm in check.values())
     assert check["brier"]["rewards"] == pytest.approx([0.84, 0.91, 0.99])
