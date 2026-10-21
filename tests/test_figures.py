@@ -50,3 +50,26 @@ def test_scale_values_draw_a_seed_range_only_when_the_stage_file_holds_more_than
     assert make_figures.scale_values(three, "direct_brier", "accuracy") == (0.9, [0.89, 0.91])
     value, rng = make_figures.forgetting_values(three, "direct_brier")
     assert abs(value + 0.03) < 1e-12 and rng == [-0.04, -0.02]
+
+
+
+def test_paper_figures_use_the_paper_names_and_carry_no_source_line(tmp_path, monkeypatch):
+    import re
+
+    from matplotlib.text import Text
+
+    texts: dict[str, list[str]] = {}
+    real_save = make_figures.save
+
+    def save(fig, out, name, written):
+        texts[name] = [t.get_text() for t in fig.findobj(Text) if t.get_text()]
+        real_save(fig, out, name, written)
+
+    monkeypatch.setattr(make_figures, "save", save)
+    assert make_figures.main(["--paper", "--out", str(tmp_path)]) == 0
+    assert sorted(texts) == sorted(f.__name__ + ".png" for f in make_figures.PAPER_FIGURES)
+    for name, shown in texts.items():
+        joined = "\n".join(shown)
+        assert "Source" not in joined and "runs/" not in joined, name
+        assert not re.search(r"direct_|positive_sft|full_sft|zero_shot|ips_|outcome_minus|sft_cont|sft_06b|RLCD|v3_|\bv[1-4]\b|[Pp]hase", joined), (name, joined)
+    assert any("CAPS-Brier" in t for t in texts["v3_n_curve.png"]) and any("CAPS-log" in t for t in texts["v4_offpolicy.png"])

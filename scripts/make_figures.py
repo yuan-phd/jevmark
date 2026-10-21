@@ -32,6 +32,13 @@ never results.jsonl.gz or replies.jsonl, so every figure rebuilds from git. Writ
 
 Each figure carries a caption line naming its metrics files.
 
+--paper draws the six paper figures (v2_arm_ece, v3_n_curve, v4_offpolicy, v4_noise_sweep,
+v4_scale, v4_emotion_n_curve) into docs/figures/paper/ instead, from the same files, with
+the paper's names (PAPER_NAMES: CAPS-Brier and CAPS-log for direct_brier and direct_log,
+positive-only and full-label SFT, and so on), no internal names (phases, run or split
+names) in titles or legends, titles that state what is shown and not what it means, and
+no source line in the image: the sources go in the paper's captions.
+
 Pending, not drawn yet (PENDING below): the 1.7B seed ranges in v4_scale.png wait for
 direct_brier's seeds 1 and 2 at 1.7B, and appear without a code change once
 runs/v3_stage_17b/metrics.json holds them.
@@ -72,6 +79,23 @@ ARMS = ["sft_cont", "outcome", "outcome_minus_p", "direct_brier", "direct_log"]
 NS = [500, 2000, 5000]
 V3 = "v3_banking77_test_full"
 FLIP_FLOOR = 0.5004024235381879  # H(0.2), the best achievable selection criterion under the 0.2 flip
+PAPER_NAMES = {
+    "zero_shot": "zero-shot", "temperature": "temperature", "positive_sft": "positive-only SFT", "full_sft": "full-label SFT",
+    "direct_brier": "CAPS-Brier", "direct_brier_temp": "CAPS-Brier + temperature", "direct_log": "CAPS-log",
+    "ips_positive": "IPS positive-only SFT", "ips_log": "IPS CAPS-log", "outcome_minus_p_log": "REINFORCE, reward r - p",
+    "sft_cont": "more cross-entropy", "outcome": "REINFORCE, reward r", "outcome_minus_p": "REINFORCE, reward r - p",
+    "sft": "SFT", "sft_temp": "SFT + temperature",
+}
+
+
+def named(key: str, default: str, paper: bool) -> str:
+    """The paper's name for a learner or arm under --paper, else the report's."""
+    return PAPER_NAMES[key] if paper else default
+
+
+def tick(key: str, default: str, paper: bool) -> str:
+    """named() for a tick label: the paper's longer names broken onto two lines."""
+    return named(key, default, paper).replace("IPS ", "IPS\n").replace(", ", ",\n") if paper else default
 
 
 def style() -> None:
@@ -242,7 +266,7 @@ def v2_reliability(runs: Path, out: Path, written: list[Path]) -> None:
     save(fig, out, "v2_reliability.png", written)
 
 
-def v2_arm_ece(runs: Path, out: Path, written: list[Path]) -> None:
+def v2_arm_ece(runs: Path, out: Path, written: list[Path], paper: bool = False) -> None:
     stage = load(runs / "rlcd_stage2a_06b" / "metrics.json")
     unseen = stage["unseen_schemas"]
     before, before_rng, after, after_rng = [], [], [], []
@@ -262,17 +286,20 @@ def v2_arm_ece(runs: Path, out: Path, written: list[Path]) -> None:
         pos = [x + (k - 0.5) * 0.36 for x in xs]
         err = [[v - r[0] for v, r in zip(values, ranges)], [r[1] - v for v, r in zip(values, ranges)]]
         ax.bar(pos, values, 0.32, color=SERIES[k], label=label, edgecolor=SURFACE, yerr=err, ecolor=INK_2, capsize=3, error_kw={"linewidth": 1})
-    for value, label, style_ in ((unseen["mean_ece"]["sft"], "sft_06b", ":"), (unseen["mean_ece"]["sft_temp"], "sft_06b + T", "--")):
-        ax.axhline(value, color=REFERENCE, linestyle=style_, linewidth=1.2, label=f"{label}, {value:.3f}")
-    ax.set_xticks(list(xs), ARMS)
+    for value, key, label, style_ in ((unseen["mean_ece"]["sft"], "sft", "sft_06b", ":"), (unseen["mean_ece"]["sft_temp"], "sft_temp", "sft_06b + T", "--")):
+        ax.axhline(value, color=REFERENCE, linestyle=style_, linewidth=1.2, label=f"{named(key, label, paper)}, {value:.3f}")
+    ax.set_xticks(list(xs), [tick(arm, arm, paper) for arm in ARMS])
     ax.grid(axis="x", visible=False)
     ax.set_ylabel("unseen-schema mean ECE")
-    ax.set_title("v2: RLCD arms on 0.6B, mean of seeds 0, 1, 2 (bars) and their range (whiskers)", loc="left")
+    title = ("Full-label arms at 0.6B: mean ECE over four unseen schemas, three seeds" if paper
+             else "v2: RLCD arms on 0.6B, mean of seeds 0, 1, 2 (bars) and their range (whiskers)")
+    ax.set_title(title, loc="left")
     ax.legend(loc="upper right", ncol=2)
     ax.set_ylim(0, 0.3)
-    fig.tight_layout(rect=(0, 0.06, 1, 1))
-    caption(fig, "Source: runs/rlcd_stage2a_06b/metrics.json (unseen_schemas, temperature_ablation); "
-                 "runs/rlcd_06b_<arm>_s<k>_temp/metrics.json for the per-seed values after temperature. Mean over AG News, emotion, Banking77, Yelp.")
+    fig.tight_layout(rect=(0, 0 if paper else 0.06, 1, 1))
+    if not paper:
+        caption(fig, "Source: runs/rlcd_stage2a_06b/metrics.json (unseen_schemas, temperature_ablation); "
+                     "runs/rlcd_06b_<arm>_s<k>_temp/metrics.json for the per-seed values after temperature. Mean over AG News, emotion, Banking77, Yelp.")
     save(fig, out, "v2_arm_ece.png", written)
 
 
@@ -287,7 +314,7 @@ def v3_colors() -> dict[str, str]:
     return {"zero_shot": REFERENCE, "temperature": SERIES[3], "positive_sft": SERIES[2], "full_sft": SERIES[0], "direct_brier": SERIES[1], "direct_brier_temp": SERIES[4]}
 
 
-def v3_n_curve(runs: Path, out: Path, written: list[Path]) -> None:
+def v3_n_curve(runs: Path, out: Path, written: list[Path], paper: bool = False) -> None:
     stage = load(runs / "v3_stage_06b" / "metrics.json")
     curve, seeds = stage["n_curve"], stage["seeds"]
     colors = v3_colors()
@@ -298,7 +325,7 @@ def v3_n_curve(runs: Path, out: Path, written: list[Path]) -> None:
             ys = [p[metric] for p in points]
             err = [[p[metric] - p[f"{metric}_ci"][0] for p in points], [p[f"{metric}_ci"][1] - p[metric] for p in points]]
             line = {"zero_shot": "--", "direct_brier_temp": ":"}.get(key, "-")
-            ax.errorbar(NS, ys, yerr=err, color=colors[key], marker=MARKERS[k], linestyle=line, capsize=2, elinewidth=0.8, label=name)
+            ax.errorbar(NS, ys, yerr=err, color=colors[key], marker=MARKERS[k], linestyle=line, capsize=2, elinewidth=0.8, label=named(key, name, paper))
         for key, block, shift in (("direct_brier", seeds["training_seeds"], 1.09), ("full_sft", seeds["full_sft"]["training_seeds"], 1.17)):
             lo, hi = block[metric]["range"]
             ax.vlines(5000 * shift, lo, hi, color=colors[key], linewidth=4, alpha=0.6)
@@ -309,10 +336,12 @@ def v3_n_curve(runs: Path, out: Path, written: list[Path]) -> None:
         ax.set_ylabel(label)
     handles, names = axes[0].get_legend_handles_labels()
     fig.legend(handles, names, ncol=3, loc="upper left", bbox_to_anchor=(0.01, 0.93))
-    fig.suptitle("v3: learning Banking77 from the deployment log, v3_banking77_test_full (3080 records)", x=0.01, ha="left", fontsize=10)
-    fig.tight_layout(rect=(0, 0.07, 1, 0.82))
-    caption(fig, "Source: runs/v3_stage_06b/metrics.json: n_curve.<N>.<learner> (seed 0; whiskers 95% record bootstrap), "
-                 "seeds.training_seeds and seeds.full_sft.training_seeds (thick bars right of N 5000: range over training seeds 0, 1, 2, direct_brier then full_sft). A temperature changes no prediction, so the temperature's accuracy line covers zero-shot's and direct_brier + temperature covers direct_brier's.")
+    title = "Learning Banking77 from the deployment log at 0.6B: test set, 3080 records" if paper else "v3: learning Banking77 from the deployment log, v3_banking77_test_full (3080 records)"
+    fig.suptitle(title, x=0.01, ha="left", fontsize=10)
+    fig.tight_layout(rect=(0, 0 if paper else 0.07, 1, 0.82))
+    if not paper:
+        caption(fig, "Source: runs/v3_stage_06b/metrics.json: n_curve.<N>.<learner> (seed 0; whiskers 95% record bootstrap), "
+                     "seeds.training_seeds and seeds.full_sft.training_seeds (thick bars right of N 5000: range over training seeds 0, 1, 2, direct_brier then full_sft). A temperature changes no prediction, so the temperature's accuracy line covers zero-shot's and direct_brier + temperature covers direct_brier's.")
     save(fig, out, "v3_n_curve.png", written)
 
 
@@ -400,7 +429,7 @@ def seed_points(seed_block: dict[str, Any] | None, metric: str) -> tuple[float, 
     return m["mean"], m["range"], m["n_seeds"]
 
 
-def v4_offpolicy(runs: Path, out: Path, written: list[Path]) -> None:
+def v4_offpolicy(runs: Path, out: Path, written: list[Path], paper: bool = False) -> None:
     stage = load(runs / "v3_stage_06b" / "metrics.json")
     curve, seeds = stage["n_curve"], stage["seeds"]
     seed_blocks = {"direct_brier": seeds["training_seeds"], "direct_log": seeds["direct_log"]["training_seeds"], "full_sft": seeds["full_sft"]["training_seeds"]}
@@ -418,22 +447,25 @@ def v4_offpolicy(runs: Path, out: Path, written: list[Path]) -> None:
                 ax.vlines(i + 0.22, *sp[1], color=colors[key], linewidth=5, alpha=0.6)
         ax.set_ylabel(label)
         ax.grid(axis="x", visible=False)
-    axes[1].set_xticks(list(xs), [name for _, name in OFF_POLICY], fontsize=8)
+    axes[1].set_xticks(list(xs), [tick(key, name, paper) for key, name in OFF_POLICY], fontsize=8)
     axes[0].plot([], [], marker="o", markersize=7, markerfacecolor=SURFACE, markeredgecolor=INK_2, color=INK_2, linestyle="none", label="N 2000, seed 0")
     axes[0].plot([], [], marker="o", markersize=7, color=INK_2, linestyle="none", label="N 5000, seed 0")
     axes[0].plot([], [], color=INK_2, linewidth=5, alpha=0.6, label="N 5000, range over training seeds 0, 1, 2")
     axes[0].legend(loc="lower right", ncol=3)
-    fig.suptitle("Off-policy baselines on the Banking77 log: no arm beats direct_brier on accuracy; weighting adds nothing", x=0.01, ha="left", fontsize=10)
-    fig.tight_layout(rect=(0, 0.06, 1, 0.96))
-    caption(fig, "Source: runs/v3_stage_06b/metrics.json: n_curve.<N>.<arm> (whiskers: 95% record bootstrap), seeds.training_seeds (direct_brier), "
-                 "seeds.direct_log.training_seeds and seeds.full_sft.training_seeds (thick bars). v3_banking77_test_full, 3080 records, 0.6B.")
+    title = ("Off-policy baselines on the Banking77 log at 0.6B: accuracy and ECE on the test set, 3080 records" if paper
+             else "Off-policy baselines on the Banking77 log: no arm beats direct_brier on accuracy; weighting adds nothing")
+    fig.suptitle(title, x=0.01, ha="left", fontsize=10)
+    fig.tight_layout(rect=(0, 0 if paper else 0.06, 1, 0.96))
+    if not paper:
+        caption(fig, "Source: runs/v3_stage_06b/metrics.json: n_curve.<N>.<arm> (whiskers: 95% record bootstrap), seeds.training_seeds (direct_brier), "
+                     "seeds.direct_log.training_seeds and seeds.full_sft.training_seeds (thick bars). v3_banking77_test_full, 3080 records, 0.6B.")
     save(fig, out, "v4_offpolicy.png", written)
 
 
 FLIPS = ["0.1", "0.2", "0.3"]
 
 
-def v4_noise_sweep(runs: Path, out: Path, written: list[Path]) -> None:
+def v4_noise_sweep(runs: Path, out: Path, written: list[Path], paper: bool = False) -> None:
     sweep = load(runs / "v3_noise_sweep_06b" / "metrics.json")
     clean, rates, zero = sweep["clean"], sweep["by_rate"], sweep["zero_shot"]["accuracy"]
     for f in FLIPS:  # the channel numbers come from the inverted files; check the sweep copied them
@@ -444,7 +476,7 @@ def v4_noise_sweep(runs: Path, out: Path, written: list[Path]) -> None:
                 raise SystemExit(f"{channel['source']}: stored_channel.ece differs from the sweep's channel_ece at f {f}")
     colors = v3_colors()
     xs = [0.0, *(float(f) for f in FLIPS)]
-    arms = (("direct_brier", "direct_brier"), ("positive_sft", "positive_sft"))
+    arms = tuple((arm, named(arm, arm, paper)) for arm in ("direct_brier", "positive_sft"))
     fig, axes = plt.subplots(1, 3, figsize=(12, 4.2))
     ax = axes[0]
     for k, (arm, name) in enumerate(arms):
@@ -480,21 +512,25 @@ def v4_noise_sweep(runs: Path, out: Path, written: list[Path]) -> None:
         ys = [get(b)["accuracy"] for b in blocks]
         ax.errorbar(xs, ys, yerr=[[y - get(b)["accuracy_ci"][0] for y, b in zip(ys, blocks)], [get(b)["accuracy_ci"][1] - y for y, b in zip(ys, blocks)]],
                     color=colors["direct_brier"], marker=MARKERS[k], markerfacecolor=colors["direct_brier"] if k == 0 else SURFACE, linestyle=line, capsize=2,
-                    elinewidth=0.8, label=f"direct_brier, {label}")
+                    elinewidth=0.8, label=f"{named('direct_brier', 'direct_brier', paper)}, {label}")
     ax.axhline(zero, color=REFERENCE, linestyle="--", linewidth=1.1, label=f"zero-shot {zero:.3f}")
     ax.set_xticks(xs, [f"{'0 (clean)' if x == 0 else x}\nstep {b['selection']['best_step']}\ngrowth {b['selection']['growth']:.3f}" for x, b in zip(xs, blocks)], fontsize=7)
     ax.set_xlabel("flip rate f, selected step, criterion growth")
     ax.set_ylabel("accuracy")
     ax.set_ylim(0.7, 0.97)
-    ax.set_title("the collapse: selected against final step", loc="left")
+    ax.set_title("selected against final step" if paper else "the collapse: selected against final step", loc="left")
     ax.legend(loc="lower left", fontsize=7)
     excess = ", ".join(f"{rates[f]['direct_brier']['channel']['channel_scale']['channel_ece_minus_reference']:.3f}".replace("0.", ".", 1) for f in FLIPS)
-    fig.suptitle(f"Noise-rate sweep, N 5000, seed 0: direct_brier sits near the channel line, its excess over the mapped-clean reference growing with f "
-                 f"({excess}), and the collapse grows with f", x=0.01, ha="left", fontsize=10, wrap=True)
-    fig.tight_layout(rect=(0, 0.08, 1, 0.95))
-    caption(fig, "Source: runs/v3_noise_sweep_06b/metrics.json: clean.<arm>, by_rate.<f>.<arm> (accuracy, minus_clean, channel.channel_scale, selection, last); "
-                 "channel-scale ECE checked against runs/<run>_inverted/metrics.json:stored_channel. At f 0 the channel scale is ordinary ECE and the reference is the clean run "
-                 "itself. Whiskers: 95% record bootstrap. Growth: the selection criterion's excess over its floor -H(f) at step 1407 minus at the selected step.")
+    if paper:
+        fig.suptitle("Outcomes flipped at rate f, Banking77 log at 0.6B, N 5000, seed 0", x=0.01, ha="left", fontsize=10)
+    else:
+        fig.suptitle(f"Noise-rate sweep, N 5000, seed 0: direct_brier sits near the channel line, its excess over the mapped-clean reference growing with f "
+                     f"({excess}), and the collapse grows with f", x=0.01, ha="left", fontsize=10, wrap=True)
+    fig.tight_layout(rect=(0, 0 if paper else 0.08, 1, 0.95))
+    if not paper:
+        caption(fig, "Source: runs/v3_noise_sweep_06b/metrics.json: clean.<arm>, by_rate.<f>.<arm> (accuracy, minus_clean, channel.channel_scale, selection, last); "
+                     "channel-scale ECE checked against runs/<run>_inverted/metrics.json:stored_channel. At f 0 the channel scale is ordinary ECE and the reference is the clean run "
+                     "itself. Whiskers: 95% record bootstrap. Growth: the selection criterion's excess over its floor -H(f) at step 1407 minus at the selected step.")
     save(fig, out, "v4_noise_sweep.png", written)
 
 
@@ -521,7 +557,7 @@ def forgetting_values(stage: dict[str, Any], key: str) -> tuple[float, list[floa
     return sum(deltas) / len(deltas), ([min(deltas), max(deltas)] if len(deltas) > 1 else None)
 
 
-def v4_scale(runs: Path, out: Path, written: list[Path]) -> None:
+def v4_scale(runs: Path, out: Path, written: list[Path], paper: bool = False) -> None:
     stages = {"0.6B": load(runs / "v3_stage_06b" / "metrics.json"), "1.7B": load(runs / "v3_stage_17b" / "metrics.json")}
     colors = v3_colors()
     fig, axes = plt.subplots(1, 3, figsize=(12, 4))
@@ -535,22 +571,25 @@ def v4_scale(runs: Path, out: Path, written: list[Path]) -> None:
                 ax.plot(i + dx, value, marker=marker, markersize=7, color=colors[key], markerfacecolor=colors[key] if filled else SURFACE, markeredgewidth=1.6, linestyle="none")
         if metric is None:
             ax.axhline(0, color=REFERENCE, linewidth=1)
-        ax.set_xticks(range(len(SCALE)), [name for _, name in SCALE], fontsize=7.5, rotation=20)
+        ax.set_xticks(range(len(SCALE)), [tick(key, name, paper) for key, name in SCALE], fontsize=7.5, rotation=20)
         ax.grid(axis="x", visible=False)
         ax.set_title(label, loc="left")
     axes[0].plot([], [], marker="o", markersize=7, markerfacecolor=SURFACE, markeredgecolor=INK_2, linestyle="none", label="0.6B")
     axes[0].plot([], [], marker="D", markersize=7, color=INK_2, linestyle="none", label="1.7B")
     axes[0].plot([], [], color=INK_2, linewidth=5, alpha=0.45, label="range over training seeds")
     axes[0].legend(loc="upper left")
-    fig.suptitle("Scale, Banking77 at N 5000: the ordering holds at 1.7B, direct_brier close to full_sft", x=0.01, ha="left", fontsize=10)
-    fig.tight_layout(rect=(0, 0.09, 1, 0.95))
-    caption(fig, "Source: runs/v3_stage_06b/metrics.json and runs/v3_stage_17b/metrics.json: n_curve.5000.<learner>, seeds.training_seeds and seeds.full_sft.training_seeds "
-                 "(direct_brier at both sizes and 0.6B full_sft: mean of training seeds 0, 1, 2 with their range; everything else seed 0), "
-                 "forgetting.test_indomain.minus_zero_shot. v3_banking77_test_full and test_indomain.")
+    title = ("Banking77 log at N 5000, 0.6B and 1.7B: test-set accuracy and ECE, and in-domain accuracy change" if paper
+             else "Scale, Banking77 at N 5000: the ordering holds at 1.7B, direct_brier close to full_sft")
+    fig.suptitle(title, x=0.01, ha="left", fontsize=10)
+    fig.tight_layout(rect=(0, 0 if paper else 0.09, 1, 0.95))
+    if not paper:
+        caption(fig, "Source: runs/v3_stage_06b/metrics.json and runs/v3_stage_17b/metrics.json: n_curve.5000.<learner>, seeds.training_seeds and seeds.full_sft.training_seeds "
+                     "(direct_brier at both sizes and 0.6B full_sft: mean of training seeds 0, 1, 2 with their range; everything else seed 0), "
+                     "forgetting.test_indomain.minus_zero_shot. v3_banking77_test_full and test_indomain.")
     save(fig, out, "v4_scale.png", written)
 
 
-def v4_emotion_n_curve(runs: Path, out: Path, written: list[Path]) -> None:
+def v4_emotion_n_curve(runs: Path, out: Path, written: list[Path], paper: bool = False) -> None:
     stage = load(runs / "v3_stage_emotion_06b" / "metrics.json")
     curve, seeds = stage["n_curve"], stage["seeds"]
     colors = v3_colors()
@@ -562,10 +601,10 @@ def v4_emotion_n_curve(runs: Path, out: Path, written: list[Path]) -> None:
             ys = [p[metric] for p in points]
             err = [[p[metric] - p[f"{metric}_ci"][0] for p in points], [p[f"{metric}_ci"][1] - p[metric] for p in points]]
             ax.errorbar(NS, ys, yerr=err, color=colors[key], marker=MARKERS[k], linestyle="--" if key == "zero_shot" else "-", capsize=2,
-                        elinewidth=0.8, label=name)
+                        elinewidth=0.8, label=named(key, name, paper))
         log = curve["5000"]["direct_log"]
         ax.errorbar([5000 * 1.09], [log[metric]], yerr=[[log[metric] - log[f"{metric}_ci"][0]], [log[f"{metric}_ci"][1] - log[metric]]],
-                    color=SERIES[6], marker=MARKERS[len(learners)], linestyle="none", capsize=2, elinewidth=0.8, label="direct_log (N 5000)")
+                    color=SERIES[6], marker=MARKERS[len(learners)], linestyle="none", capsize=2, elinewidth=0.8, label=f"{named('direct_log', 'direct_log', paper)} (N 5000)")
         lo, hi = seeds["training_seeds"][metric]["range"]
         ax.vlines(5000 * 1.17, lo, hi, color=colors["direct_brier"], linewidth=4, alpha=0.6)
         ax.set_xscale("log")
@@ -575,11 +614,13 @@ def v4_emotion_n_curve(runs: Path, out: Path, written: list[Path]) -> None:
         ax.set_ylabel(label)
     handles, names = axes[0].get_legend_handles_labels()
     fig.legend(handles, names, ncol=3, loc="upper left", bbox_to_anchor=(0.01, 0.93))
-    fig.suptitle("Phase 4: learning emotion from the deployment log, v3_emotion_test_full (2000 records)", x=0.01, ha="left", fontsize=10)
-    fig.tight_layout(rect=(0, 0.07, 1, 0.82))
-    caption(fig, "Source: runs/v3_stage_emotion_06b/metrics.json: n_curve.<N>.<learner> (seed 0; whiskers 95% record bootstrap), n_curve.5000.direct_log, "
-                 "seeds.training_seeds (thick bar right of N 5000: direct_brier's range over training seeds 0, 1, 2). full_sft and positive_sft are one seed. "
-                 "A temperature changes no prediction, so the temperature's accuracy line covers zero-shot's.")
+    title = "Learning emotion from the deployment log at 0.6B: test set, 2000 records" if paper else "Phase 4: learning emotion from the deployment log, v3_emotion_test_full (2000 records)"
+    fig.suptitle(title, x=0.01, ha="left", fontsize=10)
+    fig.tight_layout(rect=(0, 0 if paper else 0.07, 1, 0.82))
+    if not paper:
+        caption(fig, "Source: runs/v3_stage_emotion_06b/metrics.json: n_curve.<N>.<learner> (seed 0; whiskers 95% record bootstrap), n_curve.5000.direct_log, "
+                     "seeds.training_seeds (thick bar right of N 5000: direct_brier's range over training seeds 0, 1, 2). full_sft and positive_sft are one seed. "
+                     "A temperature changes no prediction, so the temperature's accuracy line covers zero-shot's.")
     save(fig, out, "v4_emotion_n_curve.png", written)
 
 
@@ -587,6 +628,7 @@ FIGURES = (v1_full_splits, v1_subset, v2_cascade, v2_reliability, v2_arm_ece, v3
            v4_emotion_n_curve)
 EXPECTED = ("v1_full_splits.png", "v1_subset.png", "v2_cascade.png", "v2_reliability.png", "v2_arm_ece.png", "v3_n_curve.png", "v3_coverage.png", "v3_noise.png",
             "v4_offpolicy.png", "v4_noise_sweep.png", "v4_scale.png", "v4_emotion_n_curve.png")
+PAPER_FIGURES = (v2_arm_ece, v3_n_curve, v4_offpolicy, v4_noise_sweep, v4_scale, v4_emotion_n_curve)
 # Figures waiting for runs, not drawn: the file each would read and what it waits for.
 PENDING: dict[str, tuple[str, str]] = {}
 
@@ -594,14 +636,19 @@ PENDING: dict[str, tuple[str, str]] = {}
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--runs-dir", default=str(REPO / "runs"))
-    parser.add_argument("--out", default=str(REPO / "docs" / "figures"))
+    parser.add_argument("--out", default=None, help="default: docs/figures, or docs/figures/paper with --paper")
+    parser.add_argument("--paper", action="store_true", help="the six paper figures with the paper's names and no source line")
     args = parser.parse_args(argv)
-    runs, out = Path(args.runs_dir), Path(args.out)
+    runs = Path(args.runs_dir)
+    out = Path(args.out) if args.out else REPO / "docs" / "figures" / ("paper" if args.paper else "")
     out.mkdir(parents=True, exist_ok=True)
     style()
     written: list[Path] = []
-    for figure in FIGURES:
-        figure(runs, out, written)
+    for figure in PAPER_FIGURES if args.paper else FIGURES:
+        if args.paper:
+            figure(runs, out, written, paper=True)
+        else:
+            figure(runs, out, written)
     for path in written:
         print(f"wrote {path}")
     return 0
