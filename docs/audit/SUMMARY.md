@@ -1,6 +1,6 @@
 # Label-noise audit: summary of a two-model pass
 
-**The judges were two language models, no human.** The first pass is Claude's, made from the blind sheet before the model answers were opened (`label_audit_cc_pass.csv`); the second is GPT's, filled into the blind sheet (`label_audit_sheet.csv`). Neither saw the other's verdicts or the model answers, as far as the files show. The review guide (`REVIEW_GUIDE.md`) planned a human pass; until one exists, every number here is a model judgement, and the numbers below that both models agree on are the ones to rely on. All numbers are from `summary.json`, written by `scripts/summarise_label_audit.py`; every row where the passes differ is in `disagreements.csv`.
+**The judges were two language models, no human:** Claude (Fable 5.1 and Opus 5.5, via Claude Code) and GPT-Astra, October 2026. The first pass is Claude's, made from the blind sheet before the model answers were opened (`label_audit_cc_pass.csv`); the second is GPT's, filled into the blind sheet (`label_audit_sheet.csv`). Neither saw the other's verdicts or the model answers, as far as the files show. The review guide (`REVIEW_GUIDE.md`) planned a human pass; until one exists, every number here is a model judgement, and the numbers below that both models agree on are the ones to rely on. All numbers are from `summary.json`, written by `scripts/summarise_label_audit.py`; every row where the passes differ is in `disagreements.csv`.
 
 ## Verdict shares per group
 
