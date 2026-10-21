@@ -1,0 +1,334 @@
+{
+  "run_name": "b2_paired_v3",
+  "created": "2026-10-21T12:07:21+00:00",
+  "git": {
+    "commit": "cb3ac9a44ab30b0d031d766aeeb49724aaf7c981",
+    "dirty": false
+  },
+  "code_sha256": {
+    "b2_paired.py": "e68d49570cd372a3ad72fa948017fc00ac3638787f52c002a7ba3506c93e2cb7"
+  },
+  "b2": {
+    "run": "runs/b2_gpt-4.1-mini",
+    "model": {
+      "requested": "gpt-4.1-mini",
+      "reported": [
+        "gpt-4.1-mini-2025-04-14"
+      ],
+      "reported_counts": {
+        "gpt-4.1-mini-2025-04-14": 4500
+      }
+    },
+    "replies_sha256": "d6ace1638a85ede9378596a380b901699d4f617795092d452f1adee2a6c6018b"
+  },
+  "bootstrap": {
+    "resamples": 1000,
+    "seed": 0,
+    "unit": "record (one choice question per record)",
+    "paired": true
+  },
+  "note": "learner minus gpt-4.1-mini (B2) accuracy on the same subset questions; a B2 reply that does not parse counts as wrong (accuracy_all). caps_brier is the direct_brier arm (CAPS-Brier) on clean logged outcomes.",
+  "domains": {
+    "banking77": {
+      "split": "test_banking77",
+      "question": "label",
+      "n_records": 500,
+      "data_sha256": "5f05145341ed3174e89e13e8efe13c9171cda43f0f14dae6bfacb57ae453f5fe",
+      "b2": {
+        "accuracy_all": 0.918,
+        "n_parsed": 500,
+        "parse_failures": 0,
+        "stored_accuracy_all_ci": [
+          0.894,
+          0.94
+        ]
+      },
+      "learners": {
+        "zero_shot": {
+          "run": "runs/v3_06b_zeroshot",
+          "n": 500,
+          "accuracy": 0.846,
+          "b2_accuracy": 0.918,
+          "minus_b2": -0.07200000000000006,
+          "minus_b2_ci": [
+            -0.09800000000000009,
+            -0.04200000000000004
+          ],
+          "prediction_disagreement": 0.132
+        },
+        "caps_brier_n5000_s0": {
+          "run": "runs/v3_06b_direct_brier_n5000_s0",
+          "n": 500,
+          "accuracy": 0.934,
+          "b2_accuracy": 0.918,
+          "minus_b2": 0.016000000000000014,
+          "minus_b2_ci": [
+            -0.008000000000000007,
+            0.039999999999999925
+          ],
+          "prediction_disagreement": 0.086
+        },
+        "caps_brier_n5000_s1": {
+          "run": "runs/v3_06b_direct_brier_n5000_s1",
+          "n": 500,
+          "accuracy": 0.936,
+          "b2_accuracy": 0.918,
+          "minus_b2": 0.018000000000000016,
+          "minus_b2_ci": [
+            -0.006000000000000005,
+            0.041999999999999926
+          ],
+          "prediction_disagreement": 0.096
+        },
+        "caps_brier_n5000_s2": {
+          "run": "runs/v3_06b_direct_brier_n5000_s2",
+          "n": 500,
+          "accuracy": 0.926,
+          "b2_accuracy": 0.918,
+          "minus_b2": 0.008000000000000007,
+          "minus_b2_ci": [
+            -0.01605000000000001,
+            0.03200000000000003
+          ],
+          "prediction_disagreement": 0.096
+        },
+        "caps_brier_n5000_s0_log1": {
+          "run": "runs/v3_06b_direct_brier_n5000_s0_log1",
+          "n": 500,
+          "accuracy": 0.934,
+          "b2_accuracy": 0.918,
+          "minus_b2": 0.016000000000000014,
+          "minus_b2_ci": [
+            -0.007999999999999896,
+            0.040000000000000036
+          ],
+          "prediction_disagreement": 0.09
+        },
+        "full_sft_n5000_s0": {
+          "run": "runs/v3_06b_full_sft_n5000_s0",
+          "n": 500,
+          "accuracy": 0.948,
+          "b2_accuracy": 0.918,
+          "minus_b2": 0.029999999999999916,
+          "minus_b2_ci": [
+            0.0040000000000000036,
+            0.05604999999999989
+          ],
+          "prediction_disagreement": 0.098
+        },
+        "full_sft_n5000_s1": {
+          "run": "runs/v3_06b_full_sft_n5000_s1",
+          "n": 500,
+          "accuracy": 0.944,
+          "b2_accuracy": 0.918,
+          "minus_b2": 0.025999999999999912,
+          "minus_b2_ci": [
+            -4.9999999999994426e-05,
+            0.04999999999999993
+          ],
+          "prediction_disagreement": 0.096
+        },
+        "full_sft_n5000_s2": {
+          "run": "runs/v3_06b_full_sft_n5000_s2",
+          "n": 500,
+          "accuracy": 0.95,
+          "b2_accuracy": 0.918,
+          "minus_b2": 0.03199999999999992,
+          "minus_b2_ci": [
+            0.005999999999999894,
+            0.05799999999999994
+          ],
+          "prediction_disagreement": 0.09
+        }
+      },
+      "seed_means": {
+        "caps_brier_n5000": {
+          "members": [
+            "caps_brier_n5000_s0",
+            "caps_brier_n5000_s1",
+            "caps_brier_n5000_s2"
+          ],
+          "accuracy": 0.932,
+          "accuracy_range": [
+            0.926,
+            0.936
+          ],
+          "minus_b2": 0.014000000000000012,
+          "minus_b2_ci": [
+            -0.010000000000000009,
+            0.036666666666666736
+          ]
+        },
+        "full_sft_n5000": {
+          "members": [
+            "full_sft_n5000_s0",
+            "full_sft_n5000_s1",
+            "full_sft_n5000_s2"
+          ],
+          "accuracy": 0.9473333333333332,
+          "accuracy_range": [
+            0.944,
+            0.95
+          ],
+          "minus_b2": 0.02933333333333321,
+          "minus_b2_ci": [
+            0.0033333333333334077,
+            0.053333333333333344
+          ]
+        }
+      },
+      "sources": {
+        "zero_shot": {
+          "run": "runs/v3_06b_zeroshot",
+          "results_sha256": "fdbd3a95ef5e5700edcdac243843e67f6b22f5996f4e703452fc42ce580c38c4"
+        },
+        "caps_brier_n5000_s0": {
+          "run": "runs/v3_06b_direct_brier_n5000_s0",
+          "results_sha256": "4d26996388e51b19a04b97d98ab4eb0c6d013f19333a12e833e2d82e15e7c83f"
+        },
+        "caps_brier_n5000_s1": {
+          "run": "runs/v3_06b_direct_brier_n5000_s1",
+          "results_sha256": "cf80973a294fd26226a32014f8dedff1a226d67976c0debcb840af8db422c89d"
+        },
+        "caps_brier_n5000_s2": {
+          "run": "runs/v3_06b_direct_brier_n5000_s2",
+          "results_sha256": "3c2290dbbfc699320d39aac9910888f23c4c54b73ddd07e8c1c2bd623addef75"
+        },
+        "caps_brier_n5000_s0_log1": {
+          "run": "runs/v3_06b_direct_brier_n5000_s0_log1",
+          "results_sha256": "b7ee42431f427e673b4b13c6c3ba34efc29598ce1962b8177d71e2a2fa1987a0"
+        },
+        "full_sft_n5000_s0": {
+          "run": "runs/v3_06b_full_sft_n5000_s0",
+          "results_sha256": "6bcaf25e8f7c84fb2c3caaab7a8fb5039001fb420a2de3f071e6ef67ff786d86"
+        },
+        "full_sft_n5000_s1": {
+          "run": "runs/v3_06b_full_sft_n5000_s1",
+          "results_sha256": "cfba96ecb9f587c3b31868d153a3d32ed7f932a9a9b70f6bb45ca57229cb8be3"
+        },
+        "full_sft_n5000_s2": {
+          "run": "runs/v3_06b_full_sft_n5000_s2",
+          "results_sha256": "fb489b81d5aee2a3d031bea110af457b34eb5099d8b38902dce165fa134de0a7"
+        }
+      }
+    },
+    "emotion": {
+      "split": "test_emotion",
+      "question": "label",
+      "n_records": 500,
+      "data_sha256": "12bc79d03bf87043b88a675244f928e29359cc1f8e2444a9efe4c7e8bdb17b5c",
+      "b2": {
+        "accuracy_all": 0.598,
+        "n_parsed": 500,
+        "parse_failures": 0,
+        "stored_accuracy_all_ci": [
+          0.552,
+          0.64
+        ]
+      },
+      "learners": {
+        "zero_shot": {
+          "run": "runs/v3_emotion_06b_zeroshot",
+          "n": 500,
+          "accuracy": 0.564,
+          "b2_accuracy": 0.598,
+          "minus_b2": -0.03400000000000003,
+          "minus_b2_ci": [
+            -0.07999999999999996,
+            0.010000000000000009
+          ],
+          "prediction_disagreement": 0.33
+        },
+        "caps_brier_n5000_s0": {
+          "run": "runs/v3_emotion_06b_direct_brier_n5000_s0",
+          "n": 500,
+          "accuracy": 0.858,
+          "b2_accuracy": 0.598,
+          "minus_b2": 0.26,
+          "minus_b2_ci": [
+            0.21594999999999998,
+            0.30600000000000005
+          ],
+          "prediction_disagreement": 0.372
+        },
+        "caps_brier_n5000_s1": {
+          "run": "runs/v3_emotion_06b_direct_brier_n5000_s1",
+          "n": 500,
+          "accuracy": 0.846,
+          "b2_accuracy": 0.598,
+          "minus_b2": 0.248,
+          "minus_b2_ci": [
+            0.20594999999999997,
+            0.29405
+          ],
+          "prediction_disagreement": 0.356
+        },
+        "caps_brier_n5000_s2": {
+          "run": "runs/v3_emotion_06b_direct_brier_n5000_s2",
+          "n": 500,
+          "accuracy": 0.842,
+          "b2_accuracy": 0.598,
+          "minus_b2": 0.244,
+          "minus_b2_ci": [
+            0.19999999999999996,
+            0.2899999999999999
+          ],
+          "prediction_disagreement": 0.35
+        },
+        "full_sft_n5000_s0": {
+          "run": "runs/v3_emotion_06b_full_sft_n5000_s0",
+          "n": 500,
+          "accuracy": 0.888,
+          "b2_accuracy": 0.598,
+          "minus_b2": 0.29000000000000004,
+          "minus_b2_ci": [
+            0.248,
+            0.33205
+          ],
+          "prediction_disagreement": 0.374
+        }
+      },
+      "seed_means": {
+        "caps_brier_n5000": {
+          "members": [
+            "caps_brier_n5000_s0",
+            "caps_brier_n5000_s1",
+            "caps_brier_n5000_s2"
+          ],
+          "accuracy": 0.8486666666666666,
+          "accuracy_range": [
+            0.842,
+            0.858
+          ],
+          "minus_b2": 0.2506666666666666,
+          "minus_b2_ci": [
+            0.2086499999999999,
+            0.29535
+          ]
+        }
+      },
+      "sources": {
+        "zero_shot": {
+          "run": "runs/v3_emotion_06b_zeroshot",
+          "results_sha256": "8c834333d2c813c83d8458c7b7ea6bc8501ca2a579144f22bbd7c110916da741"
+        },
+        "caps_brier_n5000_s0": {
+          "run": "runs/v3_emotion_06b_direct_brier_n5000_s0",
+          "results_sha256": "e1c18421a453b2a26be4e2d848df4f26ce89d4fe9a56359e7232a0f7195ce52b"
+        },
+        "caps_brier_n5000_s1": {
+          "run": "runs/v3_emotion_06b_direct_brier_n5000_s1",
+          "results_sha256": "e94d009ade3502e57766cca903d360a4a3a503edb31a4e65e38ea57e7f41bedc"
+        },
+        "caps_brier_n5000_s2": {
+          "run": "runs/v3_emotion_06b_direct_brier_n5000_s2",
+          "results_sha256": "51631c359171189875c0b8e7b5d7e93533913d6caaf0b95fb40191ca8752a3d3"
+        },
+        "full_sft_n5000_s0": {
+          "run": "runs/v3_emotion_06b_full_sft_n5000_s0",
+          "results_sha256": "6e4db37d03b97c847e9e798ce720237c742b783a2a94dc9cdeaae76b97ce98b3"
+        }
+      }
+    }
+  }
+}
