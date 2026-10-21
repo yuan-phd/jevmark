@@ -31,7 +31,11 @@ off-policy writes `off_policy`:
   training example of every step) and from the step lines of training_log.jsonl up to
   the selected step. For ips_log and ips_positive (weight min(1 / q, 5), normalised)
   the number and share of clipped weights over the 0.9 N training prefix and over the
-  interactions each arm trains on, from train_summary.json.
+  interactions each arm trains on, from train_summary.json, and split by the logged
+  outcome: the share of clipped weights (1 / q > 5) among the negatives and among the
+  positives of the training prefix, recomputed from runs/v3_log_s0/log.jsonl with
+  jevmark.feedback.prefix and checked against the summary's counts (ips_positive trains
+  on the positives only, so its clipped_used is the positives' count).
 
 forgetting writes `forgetting_table` and `selected_steps`:
 
@@ -67,7 +71,7 @@ from typing import Any
 
 import torch
 
-from jevmark.feedback import EPSILON, read_log
+from jevmark.feedback import EPSILON, TRAIN_SHARE, prefix, read_log
 from jevmark.provenance import git_state
 
 REPO = Path(__file__).resolve().parents[1]
@@ -183,6 +187,17 @@ def logging_policy_ratio(n: int) -> dict[str, Any]:
     return {"n": len(ratios), "max_p_log_over_q": max(ratios), "bound_1_over_1_minus_epsilon": 1.0 / (1.0 - EPSILON), "clipped": sum(r > 5.0 for r in ratios)}
 
 
+def clipped_by_outcome(n: int, clip: float = 5.0) -> dict[str, Any]:
+    """Among the training prefix's negatives and positives, the number and share with 1 / q > clip."""
+    train = prefix(read_log(LOG), n, TRAIN_SHARE).train
+    out: dict[str, Any] = {}
+    for name, outcome in (("negatives", 0), ("positives", 1)):
+        members = [i for i in train if i.outcome == outcome]
+        clipped = sum(1.0 / i.propensity > clip for i in members)
+        out[name] = {"n": len(members), "clipped": clipped, "clipped_share": clipped / len(members) if members else None}
+    return out
+
+
 def step_lines(run: Path) -> list[dict[str, Any]]:
     return [e for e in (json.loads(line) for line in (run / "training_log.jsonl").read_text().splitlines() if line.strip()) if "event" not in e]
 
@@ -210,10 +225,16 @@ def clipping(runs_dir: Path) -> dict[str, Any]:
         for arm in ("ips_log", "ips_positive"):
             run = runs_dir / f"v3_06b_{arm}_n{n}_s0"
             ips = json.loads((run / "train_summary.json").read_text())["ips"]
+            by_outcome = clipped_by_outcome(n)
+            if by_outcome["negatives"]["n"] + by_outcome["positives"]["n"] != ips["n"] or by_outcome["negatives"]["clipped"] + by_outcome["positives"]["clipped"] != ips["clipped"]:
+                raise SystemExit(f"{run}: the prefix recomputed from {LOG} differs from train_summary.json's ips counts")
+            if arm == "ips_positive" and (by_outcome["positives"]["n"] != ips["n_used"] or by_outcome["positives"]["clipped"] != ips["clipped_used"]):
+                raise SystemExit(f"{run}: the prefix's positives differ from train_summary.json's n_used or clipped_used")
             out[arm][str(n)] = {
                 "weight": "min(1 / q(a), 5) divided by its mean over the training prefix",
                 "prefix": {"weights": ips["n"], "clipped": ips["clipped"], "clipped_share": ips["clipped_share"], "normaliser": ips["normaliser"]},
                 "trained_on": {"weights": ips["n_used"], "clipped": ips["clipped_used"], "clipped_share": ips["clipped_used"] / ips["n_used"], "mean_normalised_weight": ips["mean_weight_used"]},
+                "prefix_by_outcome": by_outcome,
                 "source": str(run.relative_to(REPO) if run.resolve().is_relative_to(REPO) else run),
             }
     return out
@@ -346,6 +367,11 @@ def print_off_policy(o: dict[str, Any]) -> None:
         for n, v in o["clipping"][arm].items():
             p, t = v["prefix"], v["trained_on"]
             print(f"{arm} | {n} | {p['weights']} prefix / {t['weights']} trained on | {p['clipped']} / {t['clipped']} | {p['clipped_share']:.4f} / {t['clipped_share']:.4f}")
+    print("\nclipped weights in the training prefix by outcome: arm | N | negatives clipped / n (share) | positives clipped / n (share)")
+    for arm in ("ips_log", "ips_positive"):
+        for n, v in o["clipping"][arm].items():
+            neg, pos = v["prefix_by_outcome"]["negatives"], v["prefix_by_outcome"]["positives"]
+            print(f"{arm} | {n} | {neg['clipped']} / {neg['n']} ({neg['clipped_share']:.4f}) | {pos['clipped']} / {pos['n']} ({pos['clipped_share']:.4f})")
 
 
 def print_forgetting(table: dict[str, Any], steps: dict[str, Any]) -> None:

@@ -27,6 +27,7 @@ def test_negatives_split_by_top_option_and_uniform_share_by_hand(tmp_path):
     assert block["on_top"] == {"count": 1, "share": pytest.approx(1 / 3)}
     assert block["on_other"] == {"count": 2, "share": pytest.approx(2 / 3)}
     assert block["on_other_uniform_share"] == pytest.approx((1.0 + 0.05 / 0.41) / 2)
+    assert block["chosen_other"] == {"count": 0, "share": 0.0, "on_top_count": 0, "on_other_count": 0, "all_in_on_other": True}
 
     d = tmp_path / "v3_log_x"
     d.mkdir()
@@ -42,3 +43,18 @@ def test_a_propensity_off_the_behaviour_policy_is_refused():
     bad = Interaction(**{**bad.__dict__, "propensity": 0.5})
     with pytest.raises(SystemExit, match="behaviour policy"):
         log_stats.negatives([bad])
+
+
+def test_negatives_on_the_other_option_split_by_whether_other_was_top():
+    def labelled(index, probs, action, outcome):
+        i = interaction(index, probs, action, outcome)
+        return Interaction(**{**i.__dict__, "labels": ("o0", "o1", "other")})
+
+    log = [
+        labelled(0, (0.2, 0.1, 0.7), 2, 0),  # chose other, other on top
+        labelled(1, (0.7, 0.2, 0.1), 2, 0),  # chose other, not top
+        labelled(2, (0.7, 0.2, 0.1), 1, 0),  # another negative on other options
+        labelled(3, (0.7, 0.2, 0.1), 0, 0),  # negative on top
+    ]
+    block = log_stats.negatives(log)
+    assert block["chosen_other"] == {"count": 2, "share": 0.5, "on_top_count": 1, "on_other_count": 1, "all_in_on_other": False}

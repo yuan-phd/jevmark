@@ -126,6 +126,7 @@ def card(runs_dir: Path, files: list[tuple[str, Path]], digests: dict[Path, str]
         "---",
         "license: apache-2.0",
         "pretty_name: jevmark run files",
+        "viewer: false",  # mixed JSONL and gzip files under runs/ have no single schema; the viewer would show an error
         "---",
         "",
         "# jevmark run files",

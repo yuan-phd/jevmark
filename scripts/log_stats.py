@@ -9,7 +9,11 @@ as it was. On the clean outcome column:
   options, as counts and shares of all negatives;
 - of the negatives on other options, the share attributable to the uniform term of the
   behaviour policy q = (1 - epsilon) p + epsilon / K: the sum over those interactions of
-  (epsilon / K) / q(chosen action), divided by their number. The rest comes from sampling p.
+  (epsilon / K) / q(chosen action), divided by their number. The rest comes from sampling p;
+- the negatives whose chosen action was the option labelled other (never gold in these
+  logs), as a count and share of all negatives, split by whether other was the logging
+  policy's top option, so it shows whether all of them are in the on_other count (they
+  are only when other was never the top option). A log without an other option has 0.
 Before counting, every logged propensity is checked against the behaviour policy
 recomputed from the logged p at epsilon (jevmark/feedback.py), so the epsilon used is
 the one the log was drawn with.
@@ -33,12 +37,14 @@ from jevmark.feedback import EPSILON, Interaction, behaviour, file_sha256, read_
 from jevmark.provenance import git_state  # noqa: E402
 
 BLOCK = "negatives"
+OTHER = "other"
 PROPENSITY_TOLERANCE = 1e-6
 
 
 def negatives(log: Sequence[Interaction], epsilon: float = EPSILON) -> dict[str, Any]:
     worst = 0.0
     on_top = on_other = 0
+    other_on_top = other_on_other = 0
     uniform = 0.0
     for i in log:
         if i.propensity is None:
@@ -48,9 +54,12 @@ def negatives(log: Sequence[Interaction], epsilon: float = EPSILON) -> dict[str,
         if i.outcome:
             continue
         top = max(range(k), key=i.probs.__getitem__)
+        chose_other = i.labels[i.action] == OTHER
         if i.action == top:
             on_top += 1
+            other_on_top += chose_other
         else:
+            other_on_other += chose_other
             on_other += 1
             uniform += (epsilon / k) / i.propensity
     if worst > PROPENSITY_TOLERANCE:
@@ -65,6 +74,13 @@ def negatives(log: Sequence[Interaction], epsilon: float = EPSILON) -> dict[str,
         "on_other": {"count": on_other, "share": on_other / total if total else None},
         "on_other_uniform_share": uniform / on_other if on_other else None,
         "on_other_uniform_expected_count": uniform,
+        "chosen_other": {
+            "count": other_on_top + other_on_other,
+            "share": (other_on_top + other_on_other) / total if total else None,
+            "on_top_count": other_on_top,
+            "on_other_count": other_on_other,
+            "all_in_on_other": other_on_top == 0,
+        },
         "propensity_max_abs_diff": worst,
     }
 

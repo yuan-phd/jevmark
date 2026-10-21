@@ -37,6 +37,7 @@ def test_stage_writes_the_card_skips_smoke_runs_and_uploads_nothing(tmp_path, mo
     assert publish.main(["--runs-dir", str(runs), "--stage", str(tmp_path / "stage")]) == 0
     card = (tmp_path / "stage" / "README.md").read_text()
     assert "`runs/sft_06b/results.jsonl.gz`" in card and "`runs/v3_log_emotion_s0/log.jsonl`" in card
+    assert card.split("---")[1].splitlines()[1:] == ["license: apache-2.0", "pretty_name: jevmark run files", "viewer: false"]
     assert "fast_06b" not in card and "sft_06b_smoke" not in card
     assert hashlib.sha256(b"sft_06b").hexdigest() in card and "v3_06b_zeroshot (1)" in card
 
