@@ -23,7 +23,7 @@ jevmark is a small decision model that never generates text: a text state and a 
 
 jevmark is not affiliated with or endorsed by TypeSafe AI. Their Jev model is the inspiration; the code, the data pipeline and the adapters were built and trained independently on open-source Qwen3 base models.
 
-Code, data builders, every report and the metrics files behind every number: https://github.com/yuan-phd/jevmark
+Code, data builders, every report and the metrics files behind every number: https://github.com/yuan-phd/jevmark. The deployment logs and every run's per-record results: https://huggingface.co/datasets/yuanphd/jevmark-runs. Paper: "Learning a calibrated decision head from logged bandit feedback", arXiv, link to follow.
 
 ## The adapters
 
@@ -31,7 +31,7 @@ Code, data builders, every report and the metrics files behind every number: htt
 |---|---|---|
 | `sft_06b` | Qwen3-0.6B-Base | The general decision model: LoRA SFT on CLINC150 and SST-5 questions. |
 | `sft_17b` | Qwen3-1.7B-Base | The same general decision model at the larger size. |
-| `rlcd_banking77_06b` | Qwen3-0.6B-Base | `sft_06b` adapted to Banking77 from a deployment log: 5000 logged interactions where only the correctness of the model's own chosen answer was revealed, no labels, trained with a pathwise Brier loss (RLCD). |
+| `rlcd_banking77_06b` | Qwen3-0.6B-Base | `sft_06b` adapted to Banking77 from a deployment log: 5000 logged interactions where only the correctness of the model's own chosen answer was revealed, no labels, trained with a pathwise Brier loss on the chosen action's probability. The paper calls this learner CAPS-Brier (Chosen-Action Proper Scoring); the folder keeps its original name. |
 
 Provenance: each source run is a directory of the GitHub repository with its config and metrics, at the commit that trained it.
 
@@ -124,7 +124,7 @@ On the full Banking77 test split (3080 records), against the sft_06b adapter it 
 | **rlcd_banking77_06b** | **.929 [.920, .938]** | **.026** | **.111** | **.274** |
 | SFT on gold labels (needs a label per interaction) | .947 [.938, .955] | .030 | .082 | .212 |
 
-The cost on the original domain (`runs/v3_06b_direct_brier_n5000_s0/metrics.json:splits.<split>.overall`): test_indomain .929 (sft_06b .956) and test_unseen_intents .917 (sft_06b .892), both at ECE no higher than sft_06b's. On the 500-record subset where gpt-4.1-mini scores .918, this adapter scores .934 (`runs/v3_stage_06b/metrics.json:b2_reference.runs.direct_brier_n5000_s0`; 500 records, no paired interval).
+The cost on the original domain (`runs/v3_06b_direct_brier_n5000_s0/metrics.json:splits.<split>.overall`): test_indomain .929 (sft_06b .956) and test_unseen_intents .917 (sft_06b .892), both at ECE no higher than sft_06b's. On the 500-record subset where gpt-4.1-mini scores .918, this adapter scores .934, +.016 [-.008, +.040] paired over the same records, within noise; over three training seeds the mean is +.014 [-.010, +.037] (`runs/b2_paired_v3/metrics.json:domains.banking77.{learners.caps_brier_n5000_s0,seed_means.caps_brier_n5000}`).
 
 ## Training data
 
@@ -143,5 +143,5 @@ AG News, emotion and Yelp reviews were used for evaluation only. Option descript
 - Overconfident on schemas it was not trained on: ECE .113 to .218 on AG News, emotion and Yelp, and one temperature fitted in-domain removes only part of it (RESULTS_v1 section 5, RESULTS_v2 section 1).
 - Answers depend on question order: a question that depends on another should come after it, and reordering cost about 6 points of yes or no accuracy in-domain (API_SPEC section 4).
 - Banking77's labels are noisy: two language-model judges found a label problem in 12 to 14 percent of a uniform test sample, so its accuracy ceiling is near .96 (RESULTS_v3 section 9).
-- The RLCD adapter exists at 0.6B only and was trained from simulated feedback, revealed from gold labels; real deployment feedback is delayed, biased and of unknown noise rate.
+- The released Banking77 adapter is 0.6B only (the 1.7B runs of the paper are not released) and was trained from simulated feedback, revealed from gold labels; real deployment feedback is delayed, biased and of unknown noise rate.
 - English only: every training and test text is English.
