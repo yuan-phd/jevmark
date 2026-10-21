@@ -33,7 +33,21 @@ off-policy writes `off_policy`:
   the number and share of clipped weights over the 0.9 N training prefix and over the
   interactions each arm trains on, from train_summary.json.
 
-forgetting writes `forgetting_table` and `selected_steps`; see forgetting() below.
+forgetting writes `forgetting_table` and `selected_steps`:
+
+- forgetting_table: on test_indomain and test_unseen_intents (every gold-dependent
+  question), every learner compare_v3.py reads (the zero-shot run, the temperature
+  learners, every trained run at every N, seed and log, and direct_brier plus its
+  temperature), with accuracy and ECE, each with its 95 percent record bootstrap
+  interval, and the paired difference from the zero-shot run. The draws are
+  compare_v3.Split's (seed text "v3:<split>"), so the zero-shot values and the
+  differences equal the file's `forgetting` block, which is checked.
+- selected_steps: every Banking77 0.6B log-mode run with a train_summary.json (clean,
+  noisy at every flip rate, soft, the seed 1 log): the selected step (best selection
+  criterion), the last step, the interactions it trained on (n_used: every training
+  interaction, or the outcome-1 ones for positive_sft and ips_positive), the steps an
+  epoch takes (ceil(ceil(n_used / micro_batch) / accumulation)) and the epochs the
+  selected and the last step imply.
 """
 
 from __future__ import annotations
@@ -45,6 +59,7 @@ import hashlib
 import importlib.util
 import itertools
 import json
+import math
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -216,6 +231,90 @@ def off_policy(runs_dir: Path) -> dict[str, Any]:
     }
 
 
+# Forgetting and selected steps
+
+
+FORGETTING_METRICS = ("accuracy", "ece")
+
+
+def forgetting(runs_dir: Path, resamples: int) -> dict[str, Any]:
+    from jevmark.calibration import scale_results
+    from jevmark.metrics import read_results
+
+    cv3 = load_script("compare_v3")
+    zero_dir = runs_dir / "v3_06b_zeroshot"
+    zero_all = read_results(zero_dir / "results.jsonl.gz")
+    per_run = {"zero_shot": cv3.by_split(zero_all)}
+    sources = {"zero_shot": cv3.shown(zero_dir)}
+    for n in cv3.NS:
+        temp_dir = runs_dir / f"v3_06b_temp_n{n}"
+        t = float(json.loads((temp_dir / "calibration.json").read_text())["temperature"])
+        per_run[f"temperature_n{n}"] = cv3.by_split(scale_results(zero_all, t))
+        sources[f"temperature_n{n}"] = cv3.shown(temp_dir)
+    runs = cv3.discover(runs_dir, "06b")
+    for (arm, n, seed, noisy, log), path in runs.items():
+        name = cv3.learner_name(arm, n, seed, noisy, log)
+        per_run[name] = cv3.by_split(read_results(path / "results.jsonl.gz"))
+        sources[name] = cv3.shown(path)
+        temp_dir = path.parent / f"{path.name}_temp"
+        if arm == "direct_brier" and not noisy and not log and (temp_dir / "calibration.json").is_file():
+            t = float(json.loads((temp_dir / "calibration.json").read_text())["temperature"])
+            temp_name = cv3.learner_name(cv3.TEMP_ON_RLCD, n, seed)
+            per_run[temp_name] = cv3.by_split(scale_results(read_results(path / "results.jsonl.gz"), t))
+            sources[temp_name] = cv3.shown(temp_dir)
+    stored = json.loads(STAGE.read_text())["forgetting"]
+    table: dict[str, Any] = {
+        "note": ("accuracy and ECE on every gold-dependent question of the split, 95 percent record bootstrap intervals (compare_v3.Split draws, "
+                 "seed text v3:<split>, the same draws for every learner), and the paired difference from the zero-shot run (sft_06b, the logging policy)"),
+        "resamples": resamples,
+        "sources": sources,
+    }
+    for split in cv3.FORGETTING_SPLITS:
+        reference = per_run["zero_shot"][split]
+        members = {name: reference if name == "zero_shot" else cv3.aligned(reference, results[split], name) for name, results in per_run.items()}
+        s = cv3.Split(split, members, resamples, FORGETTING_METRICS)
+        block: dict[str, Any] = {"n": len(reference), "n_records": len({r.record_id for r in reference}), "learners": {}}
+        for name in members:
+            point = s.point(name)
+            entry = {m: point[m] for m in ("accuracy", "accuracy_ci", "ece", "ece_ci")}
+            if name != "zero_shot":
+                entry["minus_zero_shot"] = s.delta(name, "zero_shot")
+                if stored[split]["minus_zero_shot"].get(name) != entry["minus_zero_shot"]:
+                    raise SystemExit(f"{split} {name}: the difference from zero-shot differs from the file's forgetting block")
+            elif any(stored[split]["zero_shot"][k] != entry[k] for k in entry):
+                raise SystemExit(f"{split}: the zero-shot values differ from the file's forgetting block")
+            block["learners"][name] = entry
+        table[split] = block
+    return table
+
+
+def selected_steps(runs_dir: Path) -> dict[str, Any]:
+    import yaml
+
+    out: dict[str, Any] = {
+        "note": ("selected_step is the step with the best selection criterion (mean Bernoulli log-likelihood of the logged outcomes on the held-out 0.1 N); "
+                 "n_used is the interactions trained on (outcome-1 ones only for positive_sft and ips_positive); an epoch is ceil(ceil(n_used / micro_batch) / accumulation) steps"),
+        "runs": {},
+    }
+    for path in sorted(runs_dir.glob("v3_06b_*")):
+        summary_path = path / "train_summary.json"
+        if not summary_path.is_file():
+            continue
+        summary = json.loads(summary_path.read_text())
+        if summary.get("mode") != "log" or summary.get("run_name") != path.name:
+            continue
+        training = yaml.safe_load((path / "config.yaml").read_text())["training"]
+        micro, effective = int(training["micro_batch"]), int(training["effective_batch"])
+        per_epoch = math.ceil(math.ceil(summary["n_used"] / micro) / (effective // micro))
+        out["runs"][path.name] = {
+            "arm": summary["arm"], "n": summary["n"], "n_train": summary["n_train"], "n_used": summary["n_used"], "noisy": summary.get("noisy"),
+            "log": summary["log"], "selected_step": summary["best_step"], "last_step": summary["steps"], "steps_per_epoch": per_epoch,
+            "selected_epochs": summary["best_step"] / per_epoch, "last_epochs": summary["steps"] / per_epoch,
+            "selection_every": int(training["eval_every"]),
+        }
+    return out
+
+
 # Writing
 
 
@@ -249,16 +348,34 @@ def print_off_policy(o: dict[str, Any]) -> None:
             print(f"{arm} | {n} | {p['weights']} prefix / {t['weights']} trained on | {p['clipped']} / {t['clipped']} | {p['clipped_share']:.4f} / {t['clipped_share']:.4f}")
 
 
+def print_forgetting(table: dict[str, Any], steps: dict[str, Any]) -> None:
+    fmt = lambda v, k: f"{v[k]:.3f} [{v[k + '_ci'][0]:.3f}, {v[k + '_ci'][1]:.3f}]"
+    for split in ("test_indomain", "test_unseen_intents"):
+        print(f"\n== {split}: accuracy and ECE [95 percent record intervals], accuracy minus zero-shot [paired interval]")
+        for name, v in table[split]["learners"].items():
+            d = v.get("minus_zero_shot", {}).get("accuracy")
+            delta = f"{d['delta']:+.3f} [{d['ci'][0]:+.3f}, {d['ci'][1]:+.3f}]" if d else ""
+            print(f"{name:32s} {fmt(v, 'accuracy')}  {fmt(v, 'ece')}  {delta}")
+    print("\n== selected steps: run | n_used | selected step (epochs) | last step (epochs)")
+    for name, v in steps["runs"].items():
+        print(f"{name:52s} {v['n_used']:5d} | {v['selected_step']:5d} ({v['selected_epochs']:.2f}) | {v['last_step']:5d} ({v['last_epochs']:.2f})")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("what", choices=("off-policy", "forgetting"))
     parser.add_argument("--runs-dir", default=str(REPO / "runs"))
+    parser.add_argument("--resamples", type=int, default=1000)
     args = parser.parse_args(argv)
     runs_dir = Path(args.runs_dir)
     if args.what == "off-policy":
         result = off_policy(runs_dir)
         write_keys({"off_policy": result}, "off_policy")
         print_off_policy(result)
+    else:
+        table, steps = forgetting(runs_dir, args.resamples), selected_steps(runs_dir)
+        write_keys({"forgetting_table": table, "selected_steps": steps}, "forgetting")
+        print_forgetting(table, steps)
     print(f"\nwrote {STAGE}")
     return 0
 
