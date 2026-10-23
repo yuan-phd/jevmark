@@ -44,7 +44,7 @@ def test_notebook_token_is_never_printed_or_put_on_a_command_line(name):
     cells = code_cells(name)
     clone = cells[1]
     assert 'get_secret("GITHUB_TOKEN")' in clone
-    assert "GIT_CONFIG_VALUE_0" in clone and "secrets=(token, header)" in clone
+    assert "GIT_CONFIG_VALUE_0" in clone and "secrets = (token, header)" in clone and "secrets=secrets" in clone
     for cell in cells:
         for line in cell.splitlines():
             if "print(" in line:
@@ -53,6 +53,16 @@ def test_notebook_token_is_never_printed_or_put_on_a_command_line(name):
                 assert "token" not in line.lower(), line
     assert "https://github.com/{REPO}.git" in clone and "@github.com" not in clone
 
+
+
+@pytest.mark.parametrize("name", ["kaggle_eval.ipynb", "kaggle_train.ipynb", "kaggle_baseline_b1.ipynb", "kaggle_rlcd.ipynb", "kaggle_v3.ipynb"])
+def test_notebook_token_is_optional_for_the_public_repository(name):
+    clone = code_cells(name)[1]
+    lookup = clone.index('get_secret("GITHUB_TOKEN")')
+    assert clone.rindex("try:", 0, lookup) < lookup < clone.index("except Exception:", lookup)  # a missing secret does not stop the clone
+    assert clone.index("if token:") < clone.index('header = "AUTHORIZATION') < clone.index("GIT_CONFIG_VALUE_0")  # the header only with a token
+    assert 'git_env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}' in clone and "secrets = ()" in clone
+    assert clone.index("if token:") < clone.index('run(["git", "fetch"')
 
 def test_notebook_runs_smoke_before_every_size_in_sizes_and_copies_runs():
     joined = "\n".join(CODE)

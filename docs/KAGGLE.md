@@ -2,9 +2,9 @@
 
 The notebooks in `notebooks/` are thin wrappers: they clone this repository at one commit, install pinned dependencies and run a script. All logic lives in the repository. This page covers `notebooks/kaggle_eval.ipynb`, which produces the frozen-base baseline B0 (task 1.6) for both backbones.
 
-## 1. One-time setup: a read-only GitHub token
+## 1. Optional: a read-only GitHub token
 
-The repository is private, so the notebook needs a token. Use a fine-grained token that can only read this one repository.
+The repository is public, so the notebooks clone it over HTTPS without a credential and sections 1 and 2 can be skipped. A token is needed only if the repository is made private. In that case use a fine-grained token that can only read this one repository.
 
 1. On GitHub: Settings, Developer settings, Personal access tokens, Fine-grained tokens, Generate new token.
 2. Token name: `kaggle-jevmark-read`. Expiration: the shortest that covers your runs (for example 30 days).
@@ -14,13 +14,13 @@ The repository is private, so the notebook needs a token. Use a fine-grained tok
 
 To revoke it later: the same page, the token, Delete.
 
-## 2. One-time setup: the Kaggle secret
+## 2. Optional: the Kaggle secret
 
 1. Open any Kaggle notebook editor, then Add-ons, Secrets, Add a new secret.
 2. Label: `GITHUB_TOKEN` (exactly this name; the notebook reads it). Value: the token.
 3. Secrets are attached per notebook: after importing the notebook (section 3), open Add-ons, Secrets there and tick `GITHUB_TOKEN`.
 
-The notebook passes the token to git through environment variables only, never on a command line, never in `.git/config`, and replaces it with `***` in any output it prints.
+The clone cell reads the `GITHUB_TOKEN` secret if it is attached and otherwise clones the public repository without one; it prints which of the two it used. With a token it passes it to git through environment variables only, never on a command line, never in `.git/config`, and replaces it with `***` in any output it prints.
 
 ## 3. Import and configure the notebook
 
@@ -29,7 +29,7 @@ The notebook passes the token to git through environment variables only, never o
    - Accelerator: GPU T4 x2.
    - Internet: on (needed for GitHub, pip and the Hugging Face Hub; it requires a phone-verified Kaggle account).
    - Persistence: none needed.
-3. Attach the `GITHUB_TOKEN` secret (section 2, step 3).
+3. Only for a private repository: attach the `GITHUB_TOKEN` secret (section 2, step 3).
 4. In the first code cell set:
    - `REPO` to the repository as `owner/name`.
    - `COMMIT` to the full 40-character sha to evaluate, normally the latest commit on `main` that you have pushed (`git rev-parse HEAD` locally, after `git push`).
@@ -399,5 +399,5 @@ ADAPTER_EVAL = {
 }
 ```
 
-Settings: accelerator GPU T4, internet on, secret `GITHUB_TOKEN`, the adapter dataset added as input. About 30 minutes: setup, the smoke evaluation and an 11-minute evaluation. Download `runs/<name>/` from `/kaggle/working/runs`; commit its `metrics.json`, `config.yaml`, `model_id.txt`, `calibration.json` and `plots/` (`adapter/` and `results.jsonl.gz` are gitignored).
+Settings: accelerator GPU T4, internet on, the secret `GITHUB_TOKEN` only for a private repository, the adapter dataset added as input. About 30 minutes: setup, the smoke evaluation and an 11-minute evaluation. Download `runs/<name>/` from `/kaggle/working/runs`; commit its `metrics.json`, `config.yaml`, `model_id.txt`, `calibration.json` and `plots/` (`adapter/` and `results.jsonl.gz` are gitignored).
 
