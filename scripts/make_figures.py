@@ -84,7 +84,7 @@ PAPER_NAMES = {
     "zero_shot": "zero-shot", "temperature": "temperature", "positive_sft": "positive-only SFT", "full_sft": "full-label SFT",
     "direct_brier": "CAPS-Brier", "direct_brier_temp": "CAPS-Brier + temperature", "direct_log": "CAPS-log",
     "ips_positive": "IPS positive-only SFT", "ips_log": "IPS CAPS-log", "outcome_minus_p_log": "REINFORCE, reward r - p",
-    "sft_cont": "more cross-entropy", "outcome": "REINFORCE, reward r", "outcome_minus_p": "REINFORCE, reward r - p",
+    "sft_cont": "continued cross-entropy", "outcome": "REINFORCE, reward r", "outcome_minus_p": "REINFORCE, reward r - p",
     "sft": "SFT", "sft_temp": "SFT + temperature",
 }
 
@@ -681,6 +681,10 @@ def scale_paper(stages: dict[str, dict[str, Any]], colors: dict[str, str], out: 
         ax.grid(axis="y", visible=False)
         ax.set_title(label, loc="left")
         ax.xaxis.set_major_locator(matplotlib.ticker.MaxNLocator(3))
+    # accuracy: a tick left of zero-shot and temperature (near .85) beside the automatic .88 and .92
+    left, right = axes[0].get_xlim()
+    axes[0].set_xticks([t for t in (0.84, 0.88, 0.92, 0.96) if t <= right])
+    axes[0].set_xlim(min(left, 0.835), right)
     axes[0].set_yticks(range(len(SCALE)), [PAPER_NAMES[key] for key, _ in SCALE])
     axes[0].set_ylim(len(SCALE) - 0.5, -0.5)
     handles = [axes[0].plot([], [], marker="o", markersize=6, markerfacecolor=SURFACE, markeredgecolor=INK_2, linestyle="none", label="0.6B")[0],
