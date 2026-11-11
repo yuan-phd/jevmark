@@ -43,7 +43,12 @@ differences are paired), and writes runs/v3_stage_<size>/metrics.json:
   direct_brier_temp for training seeds 0, 1 and 2 and its seed mean minus
   direct_brier's seed mean; direct_log at N 5000 for training seeds 0, 1 and 2
   (mean and range, each seed minus seed 0) and its seed mean minus
-  direct_brier's seed mean, paired the same way;
+  direct_brier's seed mean, paired the same way; positive_sft at N 5000 in the same
+  form (seeds.positive_sft), and, once it has more than one training seed,
+  direct_brier's seed mean minus positive_sft's seed mean
+  (seeds.training_seed_mean_minus_positive_sft_seed_mean). Any training seed beyond
+  2 found under runs/ is included in every one of these blocks with no code change
+  (docs/TODO_runs.md lists the baseline seeds still to run);
 - noisy: direct_brier and positive_sft at N 5000 with flipped outcomes, each one's
   change from its clean run, and the difference of those changes (prediction 4);
 - forgetting: every learner's accuracy and ECE on test_indomain and
@@ -372,28 +377,43 @@ def compare(runs_dir: Path, size: str, resamples: int, subset_path: Path = SUBSE
         row["off_policy"] = off_policy
         n_curve[str(n)] = row
 
-    seed_runs = {f"seed_{s}": learner_name("direct_brier", 5000, s) for s in (0, 1, 2)}
+    def training_seeds_of(arm: str) -> list[int]:
+        """Seeds 0, 1 and 2 (their keys are written even when a run is absent), plus any further training seed of the arm at N 5000 on the seed 0 log, clean."""
+        return sorted({0, 1, 2} | {seed for (a, n, seed, noisy, log) in runs if a == arm and n == 5000 and not noisy and not log})
+
+    def seed_block(arm: str) -> tuple[dict[str, Any], list[str]]:
+        """seed_<k>, training_seeds (mean, range, n_seeds) and minus_seed_0 of one arm at N 5000, and the names of its seeds present."""
+        names = {f"seed_{s}": learner_name(arm, 5000, s) for s in training_seeds_of(arm)}
+        trained_ = [name for name in names.values() if name in present]
+        block: dict[str, Any] = {key: (main.point(name) if name in present else None) for key, name in names.items()}
+        if trained_:
+            points = [main.point(name) for name in trained_]
+            block["training_seeds"] = {m: {"mean": sum(p[m] for p in points) / len(points), "range": [min(p[m] for p in points), max(p[m] for p in points)], "n_seeds": len(points)} for m in METRICS}
+        block["minus_seed_0"] = {key: main.delta(name, names["seed_0"]) for key, name in names.items() if key != "seed_0" and name in present and names["seed_0"] in present}
+        return block, trained_
+
+    seed_runs = {f"seed_{s}": learner_name("direct_brier", 5000, s) for s in training_seeds_of("direct_brier")}
     seed_runs["log_seed_1"] = learner_name("direct_brier", 5000, 0, log=1)
     seeds: dict[str, Any] = {key: (main.point(name) if name in present else None) for key, name in seed_runs.items()}
-    trained = [seeds[f"seed_{s}"] for s in (0, 1, 2) if seeds[f"seed_{s}"]]
+    trained = [seeds[key] for key in seed_runs if key.startswith("seed_") and seeds[key]]
     if trained:
         seeds["training_seeds"] = {m: {"mean": sum(p[m] for p in trained) / len(trained), "range": [min(p[m] for p in trained), max(p[m] for p in trained)], "n_seeds": len(trained)} for m in METRICS}
-    trained_names = [seed_runs[f"seed_{s}"] for s in (0, 1, 2) if seed_runs[f"seed_{s}"] in present]
+    trained_names = [name for key, name in seed_runs.items() if key.startswith("seed_") and name in present]
     for other_arm in ("positive_sft", "full_sft"):
         other_name = learner_name(other_arm, 5000)
         seeds[f"training_seed_mean_minus_{other_arm}"] = main.mean_delta(trained_names, other_name) if trained_names and other_name in present else None
     base = seed_runs["seed_0"]
     seeds["minus_seed_0"] = {key: main.delta(name, base) for key, name in seed_runs.items() if key != "seed_0" and name in present and base in present}
-    full_names = {f"seed_{s}": learner_name("full_sft", 5000, s) for s in (0, 1, 2)}
-    full_trained = [name for name in full_names.values() if name in present]
-    full: dict[str, Any] = {key: (main.point(name) if name in present else None) for key, name in full_names.items()}
-    if full_trained:
-        points = [main.point(name) for name in full_trained]
-        full["training_seeds"] = {m: {"mean": sum(p[m] for p in points) / len(points), "range": [min(p[m] for p in points), max(p[m] for p in points)], "n_seeds": len(points)} for m in METRICS}
-    full["minus_seed_0"] = {key: main.delta(name, full_names["seed_0"]) for key, name in full_names.items() if key != "seed_0" and name in present and full_names["seed_0"] in present}
+    full, full_trained = seed_block("full_sft")
     seeds["full_sft"] = full
     seeds["training_seed_mean_minus_full_sft_seed_mean"] = main.mean_minus_mean(trained_names, full_trained) if trained_names and full_trained else None
-    temp_names = {f"seed_{s}": learner_name(TEMP_ON_RLCD, 5000, s) for s in (0, 1, 2)}
+    # Further positive_sft seeds (docs/TODO_runs.md) give it the same block; the seed-mean difference is written only once it has more than one seed,
+    # so a file without them keeps exactly its earlier keys apart from seeds.positive_sft itself.
+    positive, positive_trained = seed_block("positive_sft")
+    seeds["positive_sft"] = positive
+    if trained_names and len(positive_trained) > 1:
+        seeds["training_seed_mean_minus_positive_sft_seed_mean"] = main.mean_minus_mean(trained_names, positive_trained)
+    temp_names = {f"seed_{s}": learner_name(TEMP_ON_RLCD, 5000, s) for s in training_seeds_of("direct_brier")}
     temp_trained = [name for name in temp_names.values() if name in present]
     with_temp: dict[str, Any] = {key: (main.point(name) if name in present else None) for key, name in temp_names.items()}
     if temp_trained:
@@ -401,13 +421,7 @@ def compare(runs_dir: Path, size: str, resamples: int, subset_path: Path = SUBSE
         with_temp["training_seeds"] = {m: {"mean": sum(p[m] for p in points) / len(points), "range": [min(p[m] for p in points), max(p[m] for p in points)], "n_seeds": len(points)} for m in METRICS}
     seeds[TEMP_ON_RLCD] = with_temp
     seeds["direct_brier_temp_seed_mean_minus_direct_brier_seed_mean"] = main.mean_minus_mean(temp_trained, trained_names) if temp_trained and trained_names else None
-    log_names = {f"seed_{s}": learner_name("direct_log", 5000, s) for s in (0, 1, 2)}
-    log_trained = [name for name in log_names.values() if name in present]
-    direct_log: dict[str, Any] = {key: (main.point(name) if name in present else None) for key, name in log_names.items()}
-    if log_trained:
-        points = [main.point(name) for name in log_trained]
-        direct_log["training_seeds"] = {m: {"mean": sum(p[m] for p in points) / len(points), "range": [min(p[m] for p in points), max(p[m] for p in points)], "n_seeds": len(points)} for m in METRICS}
-    direct_log["minus_seed_0"] = {key: main.delta(name, log_names["seed_0"]) for key, name in log_names.items() if key != "seed_0" and name in present and log_names["seed_0"] in present}
+    direct_log, log_trained = seed_block("direct_log")
     seeds["direct_log"] = direct_log
     seeds["direct_log_seed_mean_minus_direct_brier_seed_mean"] = main.mean_minus_mean(log_trained, trained_names) if log_trained and trained_names else None
 
@@ -520,7 +534,8 @@ def print_tables(result: Mapping[str, Any]) -> None:
             cells = ["-" if d[key] is None else f"{d[key]['accuracy']['delta']:+.3f} [{d[key]['accuracy']['ci'][0]:+.3f}, {d[key]['accuracy']['ci'][1]:+.3f}]" for key in ("minus_direct_brier", "minus_positive_sft")]
             print(f"{n:6} {arm:20} {fmt(row[arm], 'accuracy'):>24} {fmt(row[arm], 'ece'):>24}   " + "   ".join(cells))
     print("\n== training seeds at N 5000: mean [range] of accuracy, ECE, Brier, NLL")
-    for label, block in (("direct_brier", result["seeds"]), ("full_sft", result["seeds"]["full_sft"]), ("direct_log", result["seeds"]["direct_log"])):
+    for label, block in (("direct_brier", result["seeds"]), ("positive_sft", result["seeds"].get("positive_sft") or {}), ("full_sft", result["seeds"]["full_sft"]),
+                         ("direct_log", result["seeds"]["direct_log"])):
         if block.get("training_seeds"):
             s = block["training_seeds"]
             print(f"{label:14} n {s['accuracy']['n_seeds']}  " + "  ".join(f"{m} {s[m]['mean']:.3f} [{s[m]['range'][0]:.3f}, {s[m]['range'][1]:.3f}]" for m in METRICS))

@@ -57,6 +57,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
+import matplotlib.ticker  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -96,6 +97,24 @@ def named(key: str, default: str, paper: bool) -> str:
 def tick(key: str, default: str, paper: bool) -> str:
     """named() for a tick label: the paper's longer names broken onto two lines."""
     return named(key, default, paper).replace("IPS ", "IPS\n").replace(", ", ",\n") if paper else default
+
+
+# --paper: figures are drawn at the paper's text width, 6.5 in, and included at \textwidth, so a font size in points here is the size
+# on the page. Every text element is then at least MIN_PT_PAPER.
+TEXT_WIDTH_IN = 6.5
+MIN_PT_PAPER = 8.0
+_min_pt: float | None = None
+
+
+def pt(size: float) -> float:
+    """A font size, raised to MIN_PT_PAPER under --paper."""
+    return max(size, _min_pt) if _min_pt else size
+
+
+def paper_style() -> None:
+    global _min_pt
+    _min_pt = MIN_PT_PAPER
+    plt.rcParams.update({"font.size": 8, "axes.titlesize": 9, "axes.labelsize": 9, "xtick.labelsize": 8, "ytick.labelsize": 8, "legend.fontsize": 8})
 
 
 def style() -> None:
@@ -280,20 +299,20 @@ def v2_arm_ece(runs: Path, out: Path, written: list[Path], paper: bool = False) 
             raise SystemExit(f"{arm}: the _temp runs' mean {sum(seeds) / 3} differs from runs/rlcd_stage2a_06b's {mean_after}")
         after.append(mean_after)
         after_rng.append([min(seeds), max(seeds)])
-    fig, ax = plt.subplots(figsize=(8.5, 3.9))
+    fig, ax = plt.subplots(figsize=(TEXT_WIDTH_IN, 3.2) if paper else (8.5, 3.9))
     xs = range(len(ARMS))
     for k, (label, values, ranges) in enumerate((("raw", before, before_rng), ("with its own temperature", after, after_rng))):
         pos = [x + (k - 0.5) * 0.36 for x in xs]
         err = [[v - r[0] for v, r in zip(values, ranges)], [r[1] - v for v, r in zip(values, ranges)]]
         ax.bar(pos, values, 0.32, color=SERIES[k], label=label, edgecolor=SURFACE, yerr=err, ecolor=INK_2, capsize=3, error_kw={"linewidth": 1})
     for value, key, label, style_ in ((unseen["mean_ece"]["sft"], "sft", "sft_06b", ":"), (unseen["mean_ece"]["sft_temp"], "sft_temp", "sft_06b + T", "--")):
-        ax.axhline(value, color=REFERENCE, linestyle=style_, linewidth=1.2, label=f"{named(key, label, paper)}, {value:.3f}")
+        shown = f"{value:.3f}".replace("0.", ".", 1) if paper else f"{value:.3f}"
+        ax.axhline(value, color=REFERENCE, linestyle=style_, linewidth=1.2, label=f"{named(key, label, paper)}, {shown}")
     ax.set_xticks(list(xs), [tick(arm, arm, paper) for arm in ARMS])
     ax.grid(axis="x", visible=False)
     ax.set_ylabel("unseen-schema mean ECE")
-    title = ("Full-label arms at 0.6B: mean ECE over four unseen schemas, three seeds" if paper
-             else "v2: RLCD arms on 0.6B, mean of seeds 0, 1, 2 (bars) and their range (whiskers)")
-    ax.set_title(title, loc="left")
+    if not paper:  # in the paper the caption says what is shown
+        ax.set_title("v2: RLCD arms on 0.6B, mean of seeds 0, 1, 2 (bars) and their range (whiskers)", loc="left")
     ax.legend(loc="upper right", ncol=2)
     ax.set_ylim(0, 0.3)
     fig.tight_layout(rect=(0, 0 if paper else 0.06, 1, 1))
@@ -318,7 +337,7 @@ def v3_n_curve(runs: Path, out: Path, written: list[Path], paper: bool = False) 
     stage = load(runs / "v3_stage_06b" / "metrics.json")
     curve, seeds = stage["n_curve"], stage["seeds"]
     colors = v3_colors()
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+    fig, axes = plt.subplots(1, 2, figsize=(TEXT_WIDTH_IN, 3.0) if paper else (10, 4))
     for ax, metric, label in ((axes[0], "accuracy", "accuracy"), (axes[1], "ece", "ECE (top-1, 15 bins)")):
         for k, (key, name) in enumerate(V3_LEARNERS):
             points = [curve[str(n)][key] for n in NS]
@@ -335,10 +354,10 @@ def v3_n_curve(runs: Path, out: Path, written: list[Path], paper: bool = False) 
         ax.set_xlabel("N, logged interactions the learner sees")
         ax.set_ylabel(label)
     handles, names = axes[0].get_legend_handles_labels()
-    fig.legend(handles, names, ncol=3, loc="upper left", bbox_to_anchor=(0.01, 0.93))
-    title = "Learning Banking77 from the deployment log at 0.6B: test set, 3080 records" if paper else "v3: learning Banking77 from the deployment log, v3_banking77_test_full (3080 records)"
-    fig.suptitle(title, x=0.01, ha="left", fontsize=10)
-    fig.tight_layout(rect=(0, 0 if paper else 0.07, 1, 0.82))
+    fig.legend(handles, names, ncol=3, loc="upper left", bbox_to_anchor=(0.01, 1.0 if paper else 0.93))
+    if not paper:
+        fig.suptitle("v3: learning Banking77 from the deployment log, v3_banking77_test_full (3080 records)", x=0.01, ha="left", fontsize=10)
+    fig.tight_layout(rect=(0, 0 if paper else 0.07, 1, 0.80 if paper else 0.82))
     if not paper:
         caption(fig, "Source: runs/v3_stage_06b/metrics.json: n_curve.<N>.<learner> (seed 0; whiskers 95% record bootstrap), "
                      "seeds.training_seeds and seeds.full_sft.training_seeds (thick bars right of N 5000: range over training seeds 0, 1, 2, direct_brier then full_sft). A temperature changes no prediction, so the temperature's accuracy line covers zero-shot's and direct_brier + temperature covers direct_brier's.")
@@ -434,7 +453,7 @@ def v4_offpolicy(runs: Path, out: Path, written: list[Path], paper: bool = False
     curve, seeds = stage["n_curve"], stage["seeds"]
     seed_blocks = {"direct_brier": seeds["training_seeds"], "direct_log": seeds["direct_log"]["training_seeds"], "full_sft": seeds["full_sft"]["training_seeds"]}
     colors = v4_colors()
-    fig, axes = plt.subplots(2, 1, figsize=(10, 6.4), sharex=True)
+    fig, axes = plt.subplots(2, 1, figsize=(TEXT_WIDTH_IN, 5.5) if paper else (10, 6.4), sharex=True)
     xs = range(len(OFF_POLICY))
     for ax, metric, label in ((axes[0], "accuracy", "accuracy"), (axes[1], "ece", "ECE (top-1, 15 bins)")):
         for i, (key, _) in enumerate(OFF_POLICY):
@@ -447,15 +466,14 @@ def v4_offpolicy(runs: Path, out: Path, written: list[Path], paper: bool = False
                 ax.vlines(i + 0.22, *sp[1], color=colors[key], linewidth=5, alpha=0.6)
         ax.set_ylabel(label)
         ax.grid(axis="x", visible=False)
-    axes[1].set_xticks(list(xs), [tick(key, name, paper) for key, name in OFF_POLICY], fontsize=8)
+    axes[1].set_xticks(list(xs), [tick(key, name, paper).replace("positive-only SFT", "positive-only\nSFT") if paper else name for key, name in OFF_POLICY], fontsize=pt(8))
     axes[0].plot([], [], marker="o", markersize=7, markerfacecolor=SURFACE, markeredgecolor=INK_2, color=INK_2, linestyle="none", label="N 2000, seed 0")
     axes[0].plot([], [], marker="o", markersize=7, color=INK_2, linestyle="none", label="N 5000, seed 0")
     axes[0].plot([], [], color=INK_2, linewidth=5, alpha=0.6, label="N 5000, range over training seeds 0, 1, 2")
-    axes[0].legend(loc="lower right", ncol=3)
-    title = ("Off-policy baselines on the Banking77 log at 0.6B: accuracy and ECE on the test set, 3080 records" if paper
-             else "Off-policy baselines on the Banking77 log: no arm beats direct_brier on accuracy; weighting adds nothing")
-    fig.suptitle(title, x=0.01, ha="left", fontsize=10)
-    fig.tight_layout(rect=(0, 0 if paper else 0.06, 1, 0.96))
+    axes[0].legend(loc="lower right", ncol=1 if paper else 3)
+    if not paper:
+        fig.suptitle("Off-policy baselines on the Banking77 log: no arm beats direct_brier on accuracy; weighting adds nothing", x=0.01, ha="left", fontsize=10)
+    fig.tight_layout(rect=(0, 0 if paper else 0.06, 1, 1 if paper else 0.96))
     if not paper:
         caption(fig, "Source: runs/v3_stage_06b/metrics.json: n_curve.<N>.<arm> (whiskers: 95% record bootstrap), seeds.training_seeds (direct_brier), "
                      "seeds.direct_log.training_seeds and seeds.full_sft.training_seeds (thick bars). v3_banking77_test_full, 3080 records, 0.6B.")
@@ -474,6 +492,9 @@ def v4_noise_sweep(runs: Path, out: Path, written: list[Path], paper: bool = Fal
             stored = load(runs / Path(channel["source"]).relative_to("runs"))["stored_channel"]
             if abs(stored["ece"] - channel["channel_scale"]["channel_ece"]) > 1e-12:
                 raise SystemExit(f"{channel['source']}: stored_channel.ece differs from the sweep's channel_ece at f {f}")
+    if paper:
+        noise_sweep_paper(clean, rates, zero, out, written)
+        return
     colors = v3_colors()
     xs = [0.0, *(float(f) for f in FLIPS)]
     arms = tuple((arm, named(arm, arm, paper)) for arm in ("direct_brier", "positive_sft"))
@@ -518,12 +539,10 @@ def v4_noise_sweep(runs: Path, out: Path, written: list[Path], paper: bool = Fal
     ax.set_xlabel("flip rate f, selected step, criterion growth")
     ax.set_ylabel("accuracy")
     ax.set_ylim(0.7, 0.97)
-    ax.set_title("selected against final step" if paper else "the collapse: selected against final step", loc="left")
+    ax.set_title("the collapse: selected against final step", loc="left")
     ax.legend(loc="lower left", fontsize=7)
     excess = ", ".join(f"{rates[f]['direct_brier']['channel']['channel_scale']['channel_ece_minus_reference']:.3f}".replace("0.", ".", 1) for f in FLIPS)
-    if paper:
-        fig.suptitle("Outcomes flipped at rate f, Banking77 log at 0.6B, N 5000, seed 0", x=0.01, ha="left", fontsize=10)
-    else:
+    if not paper:  # noise_sweep_paper draws the paper's version
         fig.suptitle(f"Noise-rate sweep, N 5000, seed 0: direct_brier sits near the channel line, its excess over the mapped-clean reference growing with f "
                      f"({excess}), and the collapse grows with f", x=0.01, ha="left", fontsize=10, wrap=True)
     fig.tight_layout(rect=(0, 0 if paper else 0.08, 1, 0.95))
@@ -534,12 +553,68 @@ def v4_noise_sweep(runs: Path, out: Path, written: list[Path], paper: bool = Fal
     save(fig, out, "v4_noise_sweep.png", written)
 
 
+def noise_sweep_paper(clean: dict[str, Any], rates: dict[str, Any], zero: float, out: Path, written: list[Path]) -> None:
+    """v4_noise_sweep at the paper's text width: the same three panels on evenly spaced flip rates, one legend above them, every label at 8 pt or more.
+    The paired accuracy losses are labelled without their intervals, which are in the paper's Table A.4.1."""
+    colors = v3_colors()
+    pos = list(range(1 + len(FLIPS)))
+    ticks = ["0", *(f.replace("0.", ".") for f in FLIPS)]
+    arms = (("direct_brier", PAPER_NAMES["direct_brier"]), ("positive_sft", PAPER_NAMES["positive_sft"]))
+    fig, axes = plt.subplots(1, 3, figsize=(TEXT_WIDTH_IN, 3.9))
+    handles: list[Any] = []
+    ax = axes[0]
+    for k, (arm, name) in enumerate(arms):
+        points = [(clean[arm]["ece"], clean[arm]["ece_ci"])] + [(rates[f][arm]["channel"]["channel_scale"]["channel_ece"], rates[f][arm]["channel"]["channel_scale"]["channel_ece_ci"]) for f in FLIPS]
+        refs = [clean[arm]["ece"]] + [rates[f][arm]["channel"]["channel_scale"]["reference_ece"] for f in FLIPS]
+        handles.append(ax.errorbar(pos, [v for v, _ in points], yerr=[[v - c[0] for v, c in points], [c[1] - v for v, c in points]], color=colors[arm], marker=MARKERS[k],
+                                   capsize=2, elinewidth=0.8, label=name))
+        handles.append(ax.plot(pos, refs, color=colors[arm], linestyle="--", linewidth=1.1, alpha=0.8, label=f"{name}, mapped-clean reference")[0])
+    ax.set_xticks(pos, ticks)
+    ax.set_xlabel("flip rate f")
+    ax.set_ylabel("channel-scale ECE")
+    ax.set_title("calibration to the channel", loc="left")
+    ax = axes[1]
+    for k, (arm, name) in enumerate(arms):
+        blocks = [clean[arm]] + [rates[f][arm] for f in FLIPS]
+        ys = [b["accuracy"] for b in blocks]
+        ax.errorbar(pos, ys, yerr=[[y - b["accuracy_ci"][0] for y, b in zip(ys, blocks)], [b["accuracy_ci"][1] - y for y, b in zip(ys, blocks)]], color=colors[arm],
+                    marker=MARKERS[k], capsize=2, elinewidth=0.8)
+        for x, b in zip(pos[1:], blocks[1:]):
+            label = f"{b['minus_clean']['accuracy']['delta']:+.3f}".replace("0.", ".")
+            ax.annotate(label, (x, b["accuracy"]), textcoords="offset points", xytext=(4, 4) if arm == "direct_brier" else (4, -11), fontsize=pt(6), color=INK_2)
+    handles.append(ax.axhline(zero, color=REFERENCE, linestyle="--", linewidth=1.1, label=f"zero-shot, {zero:.3f}".replace("0.", ".")))
+    ax.set_xticks(pos, ticks)
+    ax.set_xlim(-0.3, len(pos) - 0.3)
+    ax.set_xlabel("flip rate f")
+    ax.set_ylabel("accuracy")
+    ax.set_title("accuracy", loc="left")
+    ax = axes[2]
+    blocks = [clean["direct_brier"]] + [rates[f]["direct_brier"] for f in FLIPS]
+    for k, (get, line, label) in enumerate(((lambda b: b, "-", None), (lambda b: b["last"], ":", f"{PAPER_NAMES['direct_brier']}, final step 1407"))):
+        ys = [get(b)["accuracy"] for b in blocks]
+        h = ax.errorbar(pos, ys, yerr=[[y - get(b)["accuracy_ci"][0] for y, b in zip(ys, blocks)], [get(b)["accuracy_ci"][1] - y for y, b in zip(ys, blocks)]],
+                        color=colors["direct_brier"], marker=MARKERS[k], markerfacecolor=colors["direct_brier"] if k == 0 else SURFACE, linestyle=line, capsize=2,
+                        elinewidth=0.8, label=label)
+        if label:
+            handles.append(h)
+    ax.axhline(zero, color=REFERENCE, linestyle="--", linewidth=1.1)
+    ax.set_xticks(pos, [f"{t}\n{b['selection']['best_step']}\n{b['selection']['growth']:.3f}".replace("\n0.", "\n.") for t, b in zip(ticks, blocks)])
+    ax.set_xlabel("f, selected step, growth")
+    ax.set_ylabel("accuracy")
+    ax.set_ylim(0.7, 0.97)
+    ax.set_title("selected and final step", loc="left")
+    fig.legend(handles=handles, ncol=2, loc="upper left", bbox_to_anchor=(0.01, 1.0))
+    fig.tight_layout(rect=(0, 0, 1, 0.80))
+    save(fig, out, "v4_noise_sweep.png", written)
+
+
 SCALE = [("zero_shot", "zero-shot"), ("temperature", "temperature"), ("positive_sft", "positive_sft"), ("direct_brier", "direct_brier"), ("full_sft", "full_sft")]
 
 
 def scale_values(stage: dict[str, Any], key: str, metric: str) -> tuple[float, list[float] | None]:
     """A learner's value at N 5000: the training-seed mean and range where the stage file has more than one seed, else seed 0 and no range."""
-    blocks = {"direct_brier": stage["seeds"]["training_seeds"], "full_sft": stage["seeds"]["full_sft"]["training_seeds"]}
+    blocks = {"direct_brier": stage["seeds"]["training_seeds"], "full_sft": stage["seeds"]["full_sft"]["training_seeds"],
+              "positive_sft": (stage["seeds"].get("positive_sft") or {}).get("training_seeds")}  # positive_sft: once compare_v3.py has written its seeds
     sp = seed_points(blocks.get(key), metric)
     if sp is not None and sp[2] > 1:
         return sp[0], sp[1]
@@ -560,6 +635,9 @@ def forgetting_values(stage: dict[str, Any], key: str) -> tuple[float, list[floa
 def v4_scale(runs: Path, out: Path, written: list[Path], paper: bool = False) -> None:
     stages = {"0.6B": load(runs / "v3_stage_06b" / "metrics.json"), "1.7B": load(runs / "v3_stage_17b" / "metrics.json")}
     colors = v3_colors()
+    if paper:
+        scale_paper(stages, colors, out, written)
+        return
     fig, axes = plt.subplots(1, 3, figsize=(12, 4))
     panels = ((axes[0], "accuracy", "accuracy"), (axes[1], "ece", "ECE (top-1, 15 bins)"), (axes[2], None, "in-domain accuracy minus zero-shot"))
     for ax, metric, label in panels:
@@ -578,14 +656,38 @@ def v4_scale(runs: Path, out: Path, written: list[Path], paper: bool = False) ->
     axes[0].plot([], [], marker="D", markersize=7, color=INK_2, linestyle="none", label="1.7B")
     axes[0].plot([], [], color=INK_2, linewidth=5, alpha=0.45, label="range over training seeds")
     axes[0].legend(loc="upper left")
-    title = ("Banking77 log at N 5000, 0.6B and 1.7B: test-set accuracy and ECE, and in-domain accuracy change" if paper
-             else "Scale, Banking77 at N 5000: the ordering holds at 1.7B, direct_brier close to full_sft")
-    fig.suptitle(title, x=0.01, ha="left", fontsize=10)
-    fig.tight_layout(rect=(0, 0 if paper else 0.09, 1, 0.95))
+    fig.suptitle("Scale, Banking77 at N 5000: the ordering holds at 1.7B, direct_brier close to full_sft", x=0.01, ha="left", fontsize=10)
+    fig.tight_layout(rect=(0, 0.09, 1, 0.95))
     if not paper:
         caption(fig, "Source: runs/v3_stage_06b/metrics.json and runs/v3_stage_17b/metrics.json: n_curve.5000.<learner>, seeds.training_seeds and seeds.full_sft.training_seeds "
                      "(direct_brier at both sizes and 0.6B full_sft: mean of training seeds 0, 1, 2 with their range; everything else seed 0), "
                      "forgetting.test_indomain.minus_zero_shot. v3_banking77_test_full and test_indomain.")
+    save(fig, out, "v4_scale.png", written)
+
+
+def scale_paper(stages: dict[str, dict[str, Any]], colors: dict[str, str], out: Path, written: list[Path]) -> None:
+    """v4_scale at the paper's text width: the same three panels and values, with the learners down a shared vertical axis so their names are written once."""
+    fig, axes = plt.subplots(1, 3, figsize=(TEXT_WIDTH_IN, 2.9), sharey=True)
+    panels = ((axes[0], "accuracy", "accuracy"), (axes[1], "ece", "ECE (top-1, 15 bins)"), (axes[2], None, "in-domain change"))
+    for ax, metric, label in panels:
+        for i, (key, _) in enumerate(SCALE):
+            for size, dy, marker, filled in (("0.6B", -0.17, "o", False), ("1.7B", 0.17, "D", True)):
+                value, rng = forgetting_values(stages[size], key) if metric is None else scale_values(stages[size], key, metric)
+                if rng is not None:
+                    ax.hlines(i + dy, *rng, color=colors[key], linewidth=5, alpha=0.45)
+                ax.plot(value, i + dy, marker=marker, markersize=6, color=colors[key], markerfacecolor=colors[key] if filled else SURFACE, markeredgewidth=1.5, linestyle="none")
+        if metric is None:
+            ax.axvline(0, color=REFERENCE, linewidth=1)
+        ax.grid(axis="y", visible=False)
+        ax.set_title(label, loc="left")
+        ax.xaxis.set_major_locator(matplotlib.ticker.MaxNLocator(3))
+    axes[0].set_yticks(range(len(SCALE)), [PAPER_NAMES[key] for key, _ in SCALE])
+    axes[0].set_ylim(len(SCALE) - 0.5, -0.5)
+    handles = [axes[0].plot([], [], marker="o", markersize=6, markerfacecolor=SURFACE, markeredgecolor=INK_2, linestyle="none", label="0.6B")[0],
+               axes[0].plot([], [], marker="D", markersize=6, color=INK_2, linestyle="none", label="1.7B")[0],
+               axes[0].plot([], [], color=INK_2, linewidth=5, alpha=0.45, label="range over training seeds")[0]]
+    fig.legend(handles=handles, ncol=3, loc="upper left", bbox_to_anchor=(0.01, 1.0))
+    fig.tight_layout(rect=(0, 0, 1, 0.90))
     save(fig, out, "v4_scale.png", written)
 
 
@@ -594,7 +696,7 @@ def v4_emotion_n_curve(runs: Path, out: Path, written: list[Path], paper: bool =
     curve, seeds = stage["n_curve"], stage["seeds"]
     colors = v3_colors()
     learners = [(key, name) for key, name in V3_LEARNERS if key != "direct_brier_temp"]  # not run on emotion
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+    fig, axes = plt.subplots(1, 2, figsize=(TEXT_WIDTH_IN, 3.0) if paper else (10, 4))
     for ax, metric, label in ((axes[0], "accuracy", "accuracy"), (axes[1], "ece", "ECE (top-1, 15 bins)")):
         for k, (key, name) in enumerate(learners):
             points = [curve[str(n)][key] for n in NS]
@@ -613,10 +715,10 @@ def v4_emotion_n_curve(runs: Path, out: Path, written: list[Path], paper: bool =
         ax.set_xlabel("N, logged interactions the learner sees")
         ax.set_ylabel(label)
     handles, names = axes[0].get_legend_handles_labels()
-    fig.legend(handles, names, ncol=3, loc="upper left", bbox_to_anchor=(0.01, 0.93))
-    title = "Learning emotion from the deployment log at 0.6B: test set, 2000 records" if paper else "Phase 4: learning emotion from the deployment log, v3_emotion_test_full (2000 records)"
-    fig.suptitle(title, x=0.01, ha="left", fontsize=10)
-    fig.tight_layout(rect=(0, 0 if paper else 0.07, 1, 0.82))
+    fig.legend(handles, names, ncol=3, loc="upper left", bbox_to_anchor=(0.01, 1.0 if paper else 0.93))
+    if not paper:
+        fig.suptitle("Phase 4: learning emotion from the deployment log, v3_emotion_test_full (2000 records)", x=0.01, ha="left", fontsize=10)
+    fig.tight_layout(rect=(0, 0 if paper else 0.07, 1, 0.80 if paper else 0.82))
     if not paper:
         caption(fig, "Source: runs/v3_stage_emotion_06b/metrics.json: n_curve.<N>.<learner> (seed 0; whiskers 95% record bootstrap), n_curve.5000.direct_log, "
                      "seeds.training_seeds (thick bar right of N 5000: direct_brier's range over training seeds 0, 1, 2). full_sft and positive_sft are one seed. "
@@ -643,6 +745,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     out = Path(args.out) if args.out else REPO / "docs" / "figures" / ("paper" if args.paper else "")
     out.mkdir(parents=True, exist_ok=True)
     style()
+    if args.paper:
+        paper_style()
     written: list[Path] = []
     for figure in PAPER_FIGURES if args.paper else FIGURES:
         if args.paper:

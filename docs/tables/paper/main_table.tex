@@ -1,0 +1,34 @@
+% Written by scripts/main_table.py from runs/v3_stage_{06b,17b,emotion_06b}/metrics.json; do not edit by hand.
+\begin{table}[t]
+\centering
+\small
+\caption{Summary at N 5000. Three-seed mean (range) where three seeds exist, otherwise seed 0 ($\dagger$). Intervals and paired differences are in Appendix~\ref{sec:A}; every interval there is a record bootstrap with no training-seed variance.}
+\label{tab:main}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+learner & accuracy & ECE & AURC \\
+\midrule
+\multicolumn{4}{@{}l}{\textit{Banking77, 0.6B}} \\
+\quad zero-shot & .851 & .063 & .0333 \\
+\quad temperature & .851 & .020 & .0328 \\
+\quad positive-only SFT & .905$^{\dagger}$ & .078$^{\dagger}$ & .0202$^{\dagger}$ \\
+\quad CAPS-Brier & .931 (.929, .935) & .025 (.019, .031) & .0107 (.0104, .0110) \\
+\quad full-label SFT & .946 (.943, .949) & .022 (.016, .030) & .0067 (.0063, .0071) \\
+\addlinespace
+\multicolumn{4}{@{}l}{\textit{Banking77, 1.7B}} \\
+\quad zero-shot & .848 & .089 & .0350 \\
+\quad temperature & .848 & .031 & .0333 \\
+\quad positive-only SFT & .913$^{\dagger}$ & .067$^{\dagger}$ & .0177$^{\dagger}$ \\
+\quad CAPS-Brier & .947 (.942, .949) & .016 (.013, .021) & .0073 (.0066, .0085) \\
+\quad full-label SFT & .953$^{\dagger}$ & .023$^{\dagger}$ & .0053$^{\dagger}$ \\
+\addlinespace
+\multicolumn{4}{@{}l}{\textit{emotion, 0.6B}} \\
+\quad zero-shot & .540 & .251 & .295 \\
+\quad temperature & .540 & .024 & .294 \\
+\quad positive-only SFT & .615$^{\dagger}$ & .256$^{\dagger}$ & .233$^{\dagger}$ \\
+\quad CAPS-Brier & .827 (.821, .832) & .046 (.031, .070) & .059 (.058, .059) \\
+\quad full-label SFT & .871$^{\dagger}$ & .041$^{\dagger}$ & .031$^{\dagger}$ \\
+\bottomrule
+\end{tabular}
+\par\smallskip{\footnotesize $^{\dagger}$One training seed.\par}
+\end{table}
