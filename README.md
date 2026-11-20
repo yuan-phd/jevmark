@@ -298,3 +298,7 @@ The code, the experiment pipeline, the project reports and the first draft of th
 ## License
 
 Apache License 2.0, the same as the adapters on the Hugging Face Hub. See LICENSE.
+
+## Contact
+
+yuan.phd.ai@gmail.com
