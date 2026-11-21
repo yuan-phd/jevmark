@@ -114,6 +114,9 @@ response = systemone(
 
 Real output of this call, from `sft_06b` on a laptop CPU (2026-10-05, `scripts/demo.py`; the field definitions are in docs/API_SPEC.md section 3), printed one answer per line:
 
+<details>
+<summary>The full response JSON for the five questions</summary>
+
 ```json
 {
   "model": "jevmark-sft_06b",
@@ -137,6 +140,8 @@ Real output of this call, from `sft_06b` on a laptop CPU (2026-10-05, `scripts/d
 }
 ```
 
+</details>
+
 The default model is the bare backbone of `configs/base.yaml`. Set `JEVMARK_CHECKPOINT=runs/<run>` to load a trained run's adapter, `calibration.json` and `config.yaml`. Adapters are not in git: they come from the Kaggle training notebooks (docs/KAGGLE.md).
 
 Three trained adapters are published on the Hugging Face Hub at [yuanphd/jevmark](https://huggingface.co/yuanphd/jevmark): `sft_06b` and `sft_17b` (the general decision model at both sizes) and `rlcd_banking77_06b` (sft_06b adapted to Banking77 from logged feedback with CAPS-Brier, docs/RESULTS_v3.md). Load one with a Hub reference, which downloads that folder once into the Hugging Face cache and uses its own `config.yaml`:
@@ -156,6 +161,9 @@ uv run python scripts/demo.py --checkpoint hf://yuanphd/jevmark/rlcd_banking77_0
 
 `scripts/demo.py` sends the request above in one call, prints the response, then applies one confidence threshold: an answer at or above it is acted on automatically, one below it is escalated to an LLM or a human. Confidence is the response field for choice and score and max(p, 1 - p) for noul. The questions and the threshold are defined in that one file. Real output, `sft_06b` on a laptop CPU, 2026-10-05:
 
+<details>
+<summary>The demo printout: three answers acted on, two escalated</summary>
+
 ```
 confidence threshold 0.9:
   escalate   department        technical (p 0.6462)               confidence 0.5252
@@ -167,6 +175,8 @@ confidence threshold 0.9:
 3 acted on automatically, 2 escalated
 model load 1.5 s; the five-question call 404 ms on cpu
 ```
+
+</details>
 
 The five answers come from one forward pass of 265 tokens: 404 ms for that one call on the laptop CPU in fp32, after a 1.5 s model load with the weights already cached (the first run also downloads the 0.6B backbone and the 18 MB adapter). On a T4 the batch-1 median is 47.7 ms per request (docs/RESULTS_v1.md section 4). The message names both a double charge and a crash, and the model splits department between billing and technical, so that answer is escalated rather than guessed.
 
@@ -184,7 +194,7 @@ Qwen/Qwen3-1.7B-Base is the main backbone and Qwen/Qwen3-0.6B-Base the developme
 
 ## Results by phase
 
-Every number in the reports is cited to a committed `metrics.json`. The paper calls the logged-feedback learner Chosen-Action Proper Scoring (CAPS): the direct method of logged bandit feedback with a proper score on the chosen action (docs/METHOD.md). In the reports and run names CAPS-Brier and CAPS-log are `direct_brier` and `direct_log`, the released adapter `rlcd_banking77_06b` keeps its original name, and RLCD refers to the community reconstruction that motivated the study, which CAPS is not.
+Every number in the reports is cited to a committed `metrics.json`. The paper calls the logged-feedback learner Chosen-Action Proper Scoring (CAPS): the direct method of logged bandit feedback with a proper score on the chosen action (docs/METHOD.md). In the reports and run names CAPS-Brier and CAPS-log are `direct_brier` and `direct_log`, the released adapter `rlcd_banking77_06b` keeps its original name, RLCD, reinforcement learning for calibrated decisions, is the name of the unpublished recipe Jev is trained by, and OpenJev-RLCD is a published community reconstruction of Jev; CAPS is neither.
 
 - **v1, the supervised model** ([docs/RESULTS_v1.md](docs/RESULTS_v1.md)): works in-domain and reads options it never saw; 25 to 33 points ahead of same-size JSON generation in-domain and on unseen intents; ahead of gpt-4.1-mini in-domain (0.944 and 0.945 against 0.908) and on SST-5, behind it on Banking77, emotion, Yelp and, at 0.6B, AG News (500-record subset). 1.7B helps only far from the training data.
 - **v2, bandit objectives on full labels** ([docs/RESULTS_v2.md](docs/RESULTS_v2.md)): one temperature is the strongest cheap fix; a proper score used as a REINFORCE reward pushes probability away from gold (SST-5 score accuracy 0.636 to 0.111); no arm beats SFT plus that temperature, because with a known gold label the outcome carries less information than the label itself.

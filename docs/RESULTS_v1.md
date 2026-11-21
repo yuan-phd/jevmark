@@ -1,7 +1,5 @@
 # jevmark v1 results: supervised decision model
 
-Decision numbers in this report refer to the author's private working log; every number and conclusion in this report is backed by the cited metrics files and does not depend on that log.
-
 Every number in this report is read from a committed file under `runs/`, cited next to it. `metrics.json` paths are given as `run:key`, where `run` is `runs/<run>/metrics.json` unless another file is named and `key` is the path inside it (for example `sft_06b:splits.test_indomain.choice.accuracy`). Reliability diagrams are in `runs/<run>/plots/<split>.png` for the four jevmark runs.
 
 ## 1. Setup
@@ -197,3 +195,6 @@ This report is frozen at commit 8ed8750 (decision 49), and nothing above has bee
 - **Source of a gold rate in section 3.** The "gold .500" yes rate for `expresses_emotion` in the negation paragraph is not stored in a metrics file; it is the built yes share of `expresses_emotion` in test_emotion, 50.0 percent in the noul balance table of docs/DATA.md section 5.
 - **Banking77 (an unseen schema):** on 50 questions drawn uniformly from the full Banking77 test split, of which test_banking77 is the first 1000 records, the judges find some label problem in 12 and 14 percent and a clearly wrong label in 4 percent (`groups.b`, intervals .06 to .26 and .01 to .13); the rest are ambiguous or follow an annotation convention the option descriptions do not state. Accuracy on test_banking77 (.851 and .852 for SFT on the full split, section 2; .846, .850 and .918 for SFT and gpt-4.1-mini on the subset, section 4) is therefore measured against a ceiling below 1, plausibly near .96, and the gap between jevmark and gpt-4.1-mini there includes questions where the label, not the model, is in doubt. AG News, emotion and Yelp were not audited.
 
+## Addendum (2026-11-21): decision numbers
+
+This report is frozen at commit 8ed8750 (decision 49), and nothing above has been changed. Decision numbers in this report refer to the author's private working log; every number and conclusion in this report is backed by the cited metrics files and does not depend on that log.
