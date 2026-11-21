@@ -1,6 +1,6 @@
 # Method: Chosen-Action Proper Scoring (CAPS)
 
-This note states the method behind the v3 results and the paper: learning a decision model from logged bandit feedback on its own actions. Each empirical statement cites a results section and the metrics file behind it. `S:` is `runs/v3_stage_06b/metrics.json` and `N:` is `runs/v3_noise_sweep_06b/metrics.json`. References are keys of `docs/references.bib` in brackets.
+This note states the method behind the v3 results and the paper, "Learning a calibrated decision head from logged bandit feedback" ([arXiv:2611.15572](https://arxiv.org/abs/2611.15572)): learning a decision model from logged bandit feedback on its own actions. Each empirical statement cites a results section and the metrics file behind it. `S:` is `runs/v3_stage_06b/metrics.json` and `N:` is `runs/v3_noise_sweep_06b/metrics.json`. References are keys of `docs/references.bib` in brackets.
 
 ## 1. Setting
 

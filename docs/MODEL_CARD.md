@@ -23,7 +23,7 @@ jevmark is a small decision model that never generates text: a text state and a 
 
 jevmark is not affiliated with or endorsed by TypeSafe AI. Their Jev model is the inspiration; the code, the data pipeline and the adapters were built and trained independently on open-source Qwen3 base models.
 
-Code, data builders, every report and the metrics files behind every number: https://github.com/yuan-phd/jevmark. The deployment logs and every run's per-record results: https://huggingface.co/datasets/yuanphd/jevmark-runs. Paper: "Learning a calibrated decision head from logged bandit feedback", arXiv, link to follow.
+Code, data builders, every report and the metrics files behind every number: https://github.com/yuan-phd/jevmark. The deployment logs and every run's per-record results: https://huggingface.co/datasets/yuanphd/jevmark-runs. Paper: "Learning a calibrated decision head from logged bandit feedback", [arXiv:2611.15572](https://arxiv.org/abs/2611.15572).
 
 ## The adapters
 
