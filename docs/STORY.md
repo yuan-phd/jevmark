@@ -40,7 +40,7 @@ Predictions: 1 is a tie at N 500 and holds from N 2000, 2 holds, 3 fails, 4 hold
 
 ## Phase 4: experiments for a paper
 
-Four experiments tested the v3 result, and a draft paper ([arXiv:2611.15572](https://arxiv.org/abs/2611.15572)) and method statement (docs/METHOD.md) report it under the name Chosen-Action Proper Scoring (CAPS) for RLCD's pathwise Brier on the logged action.
+Four experiments tested the v3 result, and the paper, "Learning a calibrated decision head from logged bandit feedback" ([arXiv:2611.15572](https://arxiv.org/abs/2611.15572)), and the method statement (docs/METHOD.md) report it under the name Chosen-Action Proper Scoring (CAPS) for RLCD's pathwise Brier on the logged action.
 
 - **Off-policy baselines.** Propensity weights add nothing: weighted positive-only SFT is level with the unweighted one (+.000 [-.003, +.004] at N 5000), and no weighted, REINFORCE or log-score arm beats RLCD on accuracy with an interval excluding 0; a log score in place of Brier is a choice within the same family (R3 section 11).
 - **A second domain, emotion.** With a logging policy wrong on more than half the log, RLCD leads positive-only SFT at every N, by 21.7 points [19.7, 23.8] at N 5000, and stays 4.3 points [3.1, 5.6] below full labels (three RLCD seeds against one full-label seed; R3 section 13).

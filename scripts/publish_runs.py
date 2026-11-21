@@ -135,6 +135,8 @@ def card(runs_dir: Path, files: list[tuple[str, Path]], digests: dict[Path, str]
         "metrics.json are in the jevmark repository; these files are gitignored there because of their size (decision 37). Each file sits at the "
         "path it has in the repository, so copying this dataset's `runs/` over a clone's `runs/` lets every comparison script rerun on CPU.",
         "",
+        'Paper: "Learning a calibrated decision head from logged bandit feedback", [arXiv:2611.15572](https://arxiv.org/abs/2611.15572).',
+        "",
         "- `runs/<run>/results.jsonl.gz`: one JSON line per question of every evaluated split, written by `scripts/evaluate.py` (record id, "
         "question id, split, type, kind, labels, the full answer distribution, gold, confidence, prediction). "
         "`jevmark.metrics.read_results` reads it, and `scripts/recompute_metrics.py` rebuilds the run's metrics.json from it.",
