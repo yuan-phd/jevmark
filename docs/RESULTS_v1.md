@@ -1,5 +1,7 @@
 # jevmark v1 results: supervised decision model
 
+Decision numbers in this report refer to the author's private working log; every number and conclusion in this report is backed by the cited metrics files and does not depend on that log.
+
 Every number in this report is read from a committed file under `runs/`, cited next to it. `metrics.json` paths are given as `run:key`, where `run` is `runs/<run>/metrics.json` unless another file is named and `key` is the path inside it (for example `sft_06b:splits.test_indomain.choice.accuracy`). Reliability diagrams are in `runs/<run>/plots/<split>.png` for the four jevmark runs.
 
 ## 1. Setup

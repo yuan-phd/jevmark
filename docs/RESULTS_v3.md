@@ -1,5 +1,7 @@
 # jevmark v3 results: adaptation from deployment feedback
 
+Decision numbers in this report refer to the author's private working log; every number and conclusion in this report is backed by the cited metrics files and does not depend on that log.
+
 Every number cites the file it comes from, as `path:key`. Unless another file is named, numbers are from `runs/v3_stage_06b/metrics.json` (written by `scripts/compare_v3.py` at commit 83454a4, not dirty, regenerated at commit 9353145 with full_sft's seeds 1 and 2 added, at commit cd1217c with direct_brier plus a temperature added, and at commit 25d68e8 with the off-policy runs and direct_log's seeds of section 11 added; every earlier value is unchanged), shortened to `S:key`. Four more files are shortened the same way: `N:` for `runs/v3_noise_sweep_06b/metrics.json` (`scripts/compare_noise.py` at commit 36e8ee1, not dirty; the flip-rate sweep of section 4), `L:` for `runs/v3_stage_17b/metrics.json` (`scripts/compare_v3.py --size 17b` at commit 25d68e8, not dirty; section 12) `P:` for `runs/paired_v3_17b_vs_06b/metrics.json` (`scripts/paired_deltas.py`, the same arm at both sizes; section 12) and `E:` for `runs/v3_stage_emotion_06b/metrics.json` (`scripts/compare_v3.py --domain emotion` at commit 3237670, not dirty; section 13). The v1 report (`docs/RESULTS_v1.md`, frozen, decision 49) and the v2 report (`docs/RESULTS_v2.md`) are the background this starts from.
 
 ## 1. Setup
@@ -275,7 +277,7 @@ positive_sft keeps over 90 percent of answers at the .95 threshold with 93 to 94
 
 ![Coverage against accuracy at N 5000 for every learner](figures/v3_coverage.png)
 
-`figures/v3_coverage.png`: the full coverage curve at N 5000 behind the table above, thresholds 0 to 1 in steps of .05 (`<run>/metrics.json:splits.v3_banking77_test_full.choice.coverage` for v3_06b_zeroshot, v3_06b_temp_n5000 and the three trained learners at seed 0).
+`figures/v3_coverage.png`: the full coverage curve at N 5000 behind the table above, thresholds 0 to 1 in steps of .05 (`<run>/metrics.json:splits.v3_banking77_test_full.choice.coverage` for v3_06b_zeroshot, v3_06b_temp_n5000 and the three trained learners at seed 0). Wherever their curves overlap, direct_brier's kept answers are more accurate than positive_sft's and zero-shot's, and less accurate than full_sft's.
 
 ## 7. The B2 reference
 

@@ -1,5 +1,7 @@
 # jevmark v2 results: calibration
 
+Decision numbers in this report refer to the author's private working log; every number and conclusion in this report is backed by the cited metrics files and does not depend on that log.
+
 Every number cites the file it comes from, as `path:key`. `runs/<run>_temp/` holds temperature scaling of `runs/<run>/`, written by `scripts/calibrate.py` from the source run's `results.jsonl.gz` on CPU; `scripts/compare_calibration.py` prints the tables below from those files. The v1 report (`docs/RESULTS_v1.md`, frozen, decision 49) is the baseline this report starts from.
 
 ## 1. Temperature scaling

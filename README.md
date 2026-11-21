@@ -1,82 +1,59 @@
 # jevmark
 
-jevmark is a small decision model that answers without generating text. You send a message and questions with their options; in one forward pass, without changing its weights, it returns a probability for each option, and your code decides what to do with them. Because the options come with each request, it can answer with labels it never saw in training. Its probabilities are well calibrated in-domain (ECE 0.013 to 0.015) and overconfident on unfamiliar domains (ECE up to 0.22). It re-implements the idea behind TypeSafe AI's Jev on Qwen3-0.6B-Base and Qwen3-1.7B-Base with LoRA, and tests when Reinforcement Learning for Calibrated Decisions (RLCD) improves on supervised training.
+A small decision model that returns a probability for each option in one forward pass, without generating text.
+
+[![arXiv](https://img.shields.io/badge/arXiv-2611.15572-b31b1b.svg)](https://arxiv.org/abs/2611.15572)
+[![Model on Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20model-yuanphd%2Fjevmark-yellow)](https://huggingface.co/yuanphd/jevmark)
+[![Dataset on Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20dataset-yuanphd%2Fjevmark--runs-yellow)](https://huggingface.co/datasets/yuanphd/jevmark-runs)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
+jevmark is a small decision model that answers without generating text. You send a message and questions with their options; in one forward pass, without changing its weights, it returns a probability for each option, and your code decides what to do with them. Because the options come with each request, it can answer with labels it never saw in training. It re-implements the idea behind TypeSafe AI's Jev on Qwen3-0.6B-Base and Qwen3-1.7B-Base with LoRA, and tests when learning from feedback improves on supervised training.
 
 jevmark is not affiliated with or endorsed by TypeSafe AI. Their Jev model is the inspiration; the code, the data pipeline and the adapters were built and trained independently on open-source Qwen3 base models.
 
-## Results
+```python
+import os
+os.environ["JEVMARK_CHECKPOINT"] = "hf://yuanphd/jevmark/sft_06b"  # the Hub adapter
 
-Three phases, each with its own report, and a fourth that tests the v3 result for a paper; every number there is cited to a committed `metrics.json`. In one line: the supervised model works in-domain and reads options it never saw; RLCD adds nothing on full labels; it helps when the only feedback is whether the model's own answer was right, on two domains and at both sizes. A paper on these results, "Learning a calibrated decision head from logged bandit feedback", is being prepared for arXiv; link to follow. It calls the v3 learner CAPS-Brier (Chosen-Action Proper Scoring), the name used for RLCD's pathwise Brier learner from the Phase 4 section on. Decision numbers in the reports refer to the author's private working log; every number and conclusion in the reports is backed by the cited metrics files and does not depend on that log.
+from jevmark import systemone
 
-### v1: the supervised model (docs/RESULTS_v1.md)
+response = systemone(
+    "Hi, I was charged twice for my March invoice and the export button still crashes "
+    "every time I click it. I need this sorted today, please.",
+    {"department": {
+        "type": "choice",
+        "instructions": "Which team should handle this message?",
+        "criteria": {
+            "billing": "Charges, invoices, refunds and payment problems",
+            "technical": "Bugs, crashes, outages and integration problems",
+            "account": "Login, profile and account settings",
+            "other": None,
+        },
+    }},
+)
+print(response["answers"]["department"])
+```
 
-Accuracy / ECE on gold-dependent questions, full test splits (frozen base: accuracy only):
+```json
+{"type": "choice", "choice": "technical",
+ "probabilities": {"billing": 0.3526, "technical": 0.6462, "account": 0.0003, "other": 0.0008},
+ "confidence": 0.5252}
+```
 
-| split | base_06b | sft_06b | sft_17b |
-|---|---|---|---|
-| in-domain (CLINC150) | 0.492 | 0.956 / 0.013 | 0.952 / 0.015 |
-| unseen intents | 0.525 | 0.892 / 0.068 | 0.897 / 0.070 |
-| SST-5 | 0.442 | 0.773 / 0.030 | 0.790 / 0.025 |
-| AG News (unseen schema) | 0.786 | 0.788 / 0.164 | 0.847 / 0.113 |
-| emotion (unseen schema) | 0.478 | 0.628 / 0.207 | 0.645 / 0.217 |
-| Banking77 (unseen schema) | 0.718 | 0.851 / 0.067 | 0.852 / 0.087 |
-| Yelp (unseen schema) | 0.382 | 0.505 / 0.169 | 0.527 / 0.218 |
+This is an excerpt of the full five-question demo under [Usage](#usage): the output above is the `department` answer recorded there. The message names both a double charge and a crash, and the model splits its probability between billing and technical rather than guessing.
 
-- **It reads the options.** On 20 intents never seen in training, choice accuracy is 0.868 and 0.885, against 0.975 and 0.974 in-domain.
-- **Against generation** (500-record subset): 25 to 33 points ahead of same-size JSON generation in-domain and on unseen intents, which also fails to parse on up to 14.7 percent of questions. Ahead of gpt-4.1-mini in-domain (0.944 and 0.945 against 0.908) and on SST-5; behind it on Banking77, emotion, Yelp and, at 0.6B, AG News.
-- **Speed and cost:** 47.7 ms (0.6B) and 74.8 ms (1.7B) per request at batch 1 on a T4, against 777 ms for gpt-4.1-mini and about 3 s for same-size generation; about 1/76 of gpt-4.1-mini's cost per request at an assumed T4 price.
-- **Overconfident off-distribution:** ECE 0.11 to 0.22 on the unseen schemas, where the frozen base is better calibrated.
-- **Scale:** 1.7B helps only far from the training data (unseen intents, AG News, SST-5), not in-domain.
+## Results at a glance
 
-![Accuracy, ECE and batch-1 latency on the 500-record subset for jevmark, JSON generation and gpt-4.1-mini](docs/figures/v1_subset.png)
+- **In-domain:** accuracy 0.956 (0.6B) and 0.952 (1.7B) with ECE 0.013 and 0.015 on the CLINC150 test split, the distribution it was trained on, without a temperature.
+- **Unseen intents:** on 20 CLINC150 intents held out of training, choice accuracy 0.868 and 0.885, against 0.975 and 0.974 in-domain; the domains themselves were seen in training.
+- **Latency:** 47.7 ms (0.6B) and 74.8 ms (1.7B) per request, batch-1 median on a T4, against 777 ms for gpt-4.1-mini (sequential calls from the caller's network) and about 3 s for same-size JSON generation.
+- **Overconfident on unseen schemas:** ECE 0.11 to 0.22 on AG News, emotion and Yelp, where the frozen base is better calibrated; one in-domain temperature does not fix it, because each schema needs its own (1.4 to 2.9).
+- **Full labels:** none of four bandit objectives (REINFORCE with reward r and r minus p, CAPS-Brier, CAPS-log) beat cross-entropy plus one temperature on mean ECE over the four unseen schemas; with its own temperature the best is level, -0.002 [-0.006, +0.004]. 0.6B only, three seeds.
+- **From logged feedback, N 5000:** on Banking77, CAPS-Brier leads positive-only SFT by 2.6 points [1.9, 3.3] with ECE 0.053 lower (three CAPS seeds against one baseline seed), and stays below full-label SFT by 1.5 points [1.0, 2.0] at 0.6B (three-seed means) and .6 points [.2, 1.1] at 1.7B (against one full-label seed). The feedback is simulated from gold labels.
 
-### v2: RLCD on full labels (docs/RESULTS_v2.md)
+![Accuracy and ECE against N on Banking77 for every logged-feedback learner, with the paper's names](docs/figures/paper/v3_n_curve.png)
 
-- **One temperature is the strongest cheap fix.** Fitted in-domain, it brings in-domain ECE to 0.003 to 0.005 and the unseen-schema mean from 0.152 to 0.121, but each unseen schema needs its own temperature (1.4 to 2.9).
-- **A proper score as a REINFORCE reward is broken.** A wrong action's Brier reward is never below gold's, so training pushes probability away from gold; SST-5 score accuracy fell from 0.636 to 0.111.
-- **No RLCD arm beats SFT plus that temperature** on unseen-schema ECE (five arms, three seeds, 0.6B). With its own temperature the best arm is level (-0.002 [-0.006, +0.004]), and so is the control, more cross-entropy. Outcome-only reward pushes ECE to 0.24 to 0.26.
-- **Why:** with a known gold label, "was the sampled answer right" carries less information than the label itself.
-
-![Unseen-schema mean ECE per RLCD arm, raw and with its own temperature, against SFT and SFT plus T](docs/figures/v2_arm_ece.png)
-
-### v3: RLCD from deployment feedback (docs/RESULTS_v3.md)
-
-sft_06b answered 9942 Banking77 messages with 10 percent exploration, and only whether its chosen answer was right was logged. Learners trained on the first N interactions; accuracy / ECE on the full Banking77 test split:
-
-| N | zero-shot | temperature | positive-only SFT | RLCD (CAPS-Brier) | full-label SFT |
-|---|---|---|---|---|---|
-| 500 | 0.851 / 0.063 | 0.851 / 0.023 | 0.886 / 0.091 | 0.888 / 0.031 | 0.904 / 0.043 |
-| 2000 | | 0.851 / 0.018 | 0.890 / 0.082 | 0.917 / 0.022 | 0.924 / 0.017 |
-| 5000 | | 0.851 / 0.020 | 0.905 / 0.078 | 0.929 / 0.026 | 0.947 / 0.030 |
-
-- **Using the failures helps once there are enough of them.** RLCD ties positive-only SFT at N 500 and leads by 2.4 to 2.7 points from N 2000, with ECE 0.05 to 0.06 lower at every N.
-- **Labels still win.** Full-label SFT stays 1.5 points [1.0, 2.0] ahead at N 5000 (three-seed means), and the gap does not shrink with N.
-- **A temperature on top of RLCD adds nothing** (ECE moves by at most 0.003).
-- **Against gpt-4.1-mini, within noise:** at N 5000 the RLCD runs score 0.926 to 0.936 on the 500-record Banking77 subset against 0.918, from logged correctness alone; paired over the same records, the three-seed mean is +0.014 [-0.010, +0.037] above it, and full-label SFT's +0.029 [+0.003, +0.053] (`runs/b2_paired_v3/metrics.json`).
-- **Noisy feedback** (20 percent of outcomes flipped): RLCD loses less accuracy than positive-only SFT but calibrates to the noise (ECE 0.164), which a known flip rate can undo. Trained too long it memorises the noisy outcomes and falls to 0.813; stopping early on the feedback alone picked a safe step.
-- **Adaptation costs the original domain:** 2.7 to 4.3 in-domain points for RLCD and 3.6 to 5.2 for full-label SFT at N 5000; positive-only SFT under 1.
-- **Label noise:** two language-model judges (no human) find a label problem in 12 to 14 percent of Banking77 test labels, so the ceiling is near 0.96 (docs/audit/SUMMARY.md).
-
-![Accuracy and ECE against N on Banking77 for every v3 learner](docs/figures/v3_n_curve.png)
-
-The learning curve: the table above as a figure, with 95 percent intervals and, at N 5000, the range over three training seeds for RLCD and full-label SFT.
-
-![Coverage against accuracy of the kept answers at N 5000 for every v3 learner](docs/figures/v3_coverage.png)
-
-The cascade at N 5000: as the confidence threshold rises, each learner answers fewer questions and the answers it keeps are more accurate. Wherever their curves overlap, RLCD's kept answers are more accurate than positive-only SFT's and zero-shot's, and less accurate than full-label SFT's.
-
-### Phase 4: experiments for a paper
-
-The paper names the v3 learner Chosen-Action Proper Scoring (CAPS): the direct method of logged bandit feedback with a proper score on the chosen action (docs/METHOD.md). Four experiments, reported in docs/RESULTS_v3.md sections 4 and 11 to 13:
-
-- **Off-policy baselines:** propensity weights add nothing, and no weighted, REINFORCE or log-score arm beats CAPS-Brier on accuracy with an interval excluding 0.
-- **A second domain, emotion:** with a logging policy wrong on more than half the log, CAPS-Brier leads positive-only SFT at every N, by 21.7 points [19.7, 23.8] at N 5000 (seed 0), and its three-seed mean stays 4.3 points [3.1, 5.6] below full labels (one full-label seed).
-- **1.7B:** over three CAPS-Brier seeds, it leads positive-only SFT by 3.4 points [2.6, 4.1]. Against one full-label seed it is level on seed 0, -0.4 points [-1.0, +0.2], and 0.6 points [0.2, 1.1] below as a seed mean, against 1.5 points [1.0, 2.0] at 0.6B between three-seed means. Both baselines have one seed at 1.7B.
-- **Noise rates 0.1 to 0.3:** a known flip rate undoes the calibration to the noise, to ECE 0.020, 0.051 and 0.068 against 0.026 clean; the accuracy advantage under noise is gone at 0.3.
-
-![0.6B against 1.7B at N 5000: accuracy, ECE and in-domain forgetting](docs/figures/v4_scale.png)
-
-**Limits.** v2 ran on 0.6B only; all feedback is simulated from gold labels, with one logging policy per domain; at 1.7B and on emotion the baselines have one seed. Together with v2, the claim that survives is narrow: CAPS-Brier adds value over positive-only SFT when feedback is partial, and nowhere else tested.
+The whole project in two pages is [docs/STORY.md](docs/STORY.md); the paper is on [arXiv](https://arxiv.org/abs/2611.15572); the reports are [docs/RESULTS_v1.md](docs/RESULTS_v1.md), [docs/RESULTS_v2.md](docs/RESULTS_v2.md) and [docs/RESULTS_v3.md](docs/RESULTS_v3.md).
 
 ## Install
 
@@ -135,66 +112,34 @@ response = systemone(
 )
 ```
 
-Real output of this call, from `sft_06b` on a laptop CPU (2026-10-05, `scripts/demo.py`; the field definitions are in docs/API_SPEC.md section 3):
+Real output of this call, from `sft_06b` on a laptop CPU (2026-10-05, `scripts/demo.py`; the field definitions are in docs/API_SPEC.md section 3), printed one answer per line:
 
 ```json
 {
   "model": "jevmark-sft_06b",
   "answers": {
-    "department": {
-      "type": "choice",
-      "choice": "technical",
-      "probabilities": {
-        "billing": 0.3526,
-        "technical": 0.6462,
-        "account": 0.0003,
-        "other": 0.0008
-      },
-      "confidence": 0.5252
-    },
-    "refund_requested": {
-      "type": "noul",
-      "noul": 0.0216
-    },
-    "needs_human": {
-      "type": "noul",
-      "noul": 0.9557
-    },
-    "severity": {
-      "type": "score",
-      "score": 1.8884,
-      "legend": {
-        "0": "Cosmetic; no impact on functionality",
-        "1": "Broken or degraded feature, but a workaround exists",
-        "2": "Blocking issue; no workaround exists"
-      },
-      "probabilities": {
-        "0": 0.0186,
-        "1": 0.0744,
-        "2": 0.907
-      },
-      "confidence": 0.676
-    },
-    "next_tool": {
-      "type": "choice",
-      "choice": "open_bug_ticket",
-      "probabilities": {
-        "lookup_invoice": 0.0081,
-        "open_bug_ticket": 0.9813,
-        "search_help_center": 0.0106
-      },
-      "confidence": 0.9036
-    }
+    "department": {"type": "choice", "choice": "technical",
+      "probabilities": {"billing": 0.3526, "technical": 0.6462, "account": 0.0003, "other": 0.0008},
+      "confidence": 0.5252},
+    "refund_requested": {"type": "noul", "noul": 0.0216},
+    "needs_human": {"type": "noul", "noul": 0.9557},
+    "severity": {"type": "score", "score": 1.8884,
+      "legend": {"0": "Cosmetic; no impact on functionality",
+                 "1": "Broken or degraded feature, but a workaround exists",
+                 "2": "Blocking issue; no workaround exists"},
+      "probabilities": {"0": 0.0186, "1": 0.0744, "2": 0.907},
+      "confidence": 0.676},
+    "next_tool": {"type": "choice", "choice": "open_bug_ticket",
+      "probabilities": {"lookup_invoice": 0.0081, "open_bug_ticket": 0.9813, "search_help_center": 0.0106},
+      "confidence": 0.9036}
   },
-  "usage": {
-    "input_tokens": 265
-  }
+  "usage": {"input_tokens": 265}
 }
 ```
 
 The default model is the bare backbone of `configs/base.yaml`. Set `JEVMARK_CHECKPOINT=runs/<run>` to load a trained run's adapter, `calibration.json` and `config.yaml`. Adapters are not in git: they come from the Kaggle training notebooks (docs/KAGGLE.md).
 
-Three trained adapters are published on the Hugging Face Hub at [yuanphd/jevmark](https://huggingface.co/yuanphd/jevmark): `sft_06b` and `sft_17b` (the general decision model at both sizes) and `rlcd_banking77_06b` (sft_06b adapted to Banking77 from logged feedback, docs/RESULTS_v3.md; the paper calls this learner CAPS-Brier, and the adapter keeps its original name). Load one with a Hub reference, which downloads that folder once into the Hugging Face cache and uses its own `config.yaml`:
+Three trained adapters are published on the Hugging Face Hub at [yuanphd/jevmark](https://huggingface.co/yuanphd/jevmark): `sft_06b` and `sft_17b` (the general decision model at both sizes) and `rlcd_banking77_06b` (sft_06b adapted to Banking77 from logged feedback with CAPS-Brier, docs/RESULTS_v3.md). Load one with a Hub reference, which downloads that folder once into the Hugging Face cache and uses its own `config.yaml`:
 
 ```bash
 JEVMARK_CHECKPOINT=hf://yuanphd/jevmark/sft_06b python my_script.py
@@ -235,7 +180,28 @@ Thresholds and routing are the caller's job: the model returns distributions, an
 
 ## Backbones
 
-Qwen/Qwen3-1.7B-Base is the main backbone and Qwen/Qwen3-0.6B-Base the development backbone; both are config switches (`configs/sft_06b.yaml`, `configs/sft_17b.yaml`). Training is LoRA only (r 16, alpha 32, q k v o), fp16 autocast with fp32 LoRA weights, on Kaggle T4s. v2's RLCD arms and the v3 N-curve, off-policy, noise and emotion experiments ran on 0.6B; the logged-feedback comparison at N 5000 was repeated on 1.7B.
+Qwen/Qwen3-1.7B-Base is the main backbone and Qwen/Qwen3-0.6B-Base the development backbone; both are config switches (`configs/sft_06b.yaml`, `configs/sft_17b.yaml`). Training is LoRA only (r 16, alpha 32, q k v o), fp16 autocast with fp32 LoRA weights, on Kaggle T4s. v2's bandit arms and the v3 N-curve, off-policy, noise and emotion experiments ran on 0.6B; the logged-feedback comparison at N 5000 was repeated on 1.7B.
+
+## Results by phase
+
+Every number in the reports is cited to a committed `metrics.json`. The paper calls the logged-feedback learner Chosen-Action Proper Scoring (CAPS): the direct method of logged bandit feedback with a proper score on the chosen action (docs/METHOD.md). In the reports and run names CAPS-Brier and CAPS-log are `direct_brier` and `direct_log`, the released adapter `rlcd_banking77_06b` keeps its original name, and RLCD refers to the community reconstruction that motivated the study, which CAPS is not.
+
+- **v1, the supervised model** ([docs/RESULTS_v1.md](docs/RESULTS_v1.md)): works in-domain and reads options it never saw; 25 to 33 points ahead of same-size JSON generation in-domain and on unseen intents; ahead of gpt-4.1-mini in-domain (0.944 and 0.945 against 0.908) and on SST-5, behind it on Banking77, emotion, Yelp and, at 0.6B, AG News (500-record subset). 1.7B helps only far from the training data.
+- **v2, bandit objectives on full labels** ([docs/RESULTS_v2.md](docs/RESULTS_v2.md)): one temperature is the strongest cheap fix; a proper score used as a REINFORCE reward pushes probability away from gold (SST-5 score accuracy 0.636 to 0.111); no arm beats SFT plus that temperature, because with a known gold label the outcome carries less information than the label itself.
+- **v3, adaptation from logged feedback** ([docs/RESULTS_v3.md](docs/RESULTS_v3.md)): sft_06b answered 9942 Banking77 messages with 10 percent exploration, and only whether its chosen answer was right was logged. Learners trained on the first N interactions; accuracy / ECE on the full Banking77 test split, seed 0:
+
+| N | zero-shot | temperature | positive-only SFT | CAPS-Brier | full-label SFT |
+|---|---|---|---|---|---|
+| 500 | 0.851 / 0.063 | 0.851 / 0.023 | 0.886 / 0.091 | 0.888 / 0.031 | 0.904 / 0.043 |
+| 2000 | | 0.851 / 0.018 | 0.890 / 0.082 | 0.917 / 0.022 | 0.924 / 0.017 |
+| 5000 | | 0.851 / 0.020 | 0.905 / 0.078 | 0.929 / 0.026 | 0.947 / 0.030 |
+
+  CAPS-Brier ties positive-only SFT at N 500 and leads from N 2000; full labels stay ahead and the gap does not shrink with N. Adaptation costs 2.7 to 4.3 in-domain points for CAPS-Brier at N 5000.
+- **Phase 4, experiments for the paper** (docs/RESULTS_v3.md sections 4 and 11 to 13): propensity weights add nothing; on emotion, with a logging policy wrong on more than half the log, CAPS-Brier leads positive-only SFT by 21.7 points [19.7, 23.8] at N 5000 (seed 0) and stays 4.3 points [3.1, 5.6] below full labels (one full-label seed); at 1.7B it leads positive-only SFT by 3.4 points [2.6, 4.1]; under feedback flipped at a known rate of 0.1 to 0.3, inverting the rate brings ECE to 0.020, 0.051 and 0.068 against 0.026 clean.
+
+## Limits
+
+v2 ran on 0.6B only; all feedback is simulated from gold labels, with one logging policy per domain; at 1.7B and on emotion the baselines have one seed. Together with v2, the claim that survives is narrow: CAPS-Brier adds value over positive-only SFT when feedback is partial, and nowhere else tested.
 
 ## Data and leak gates
 
@@ -248,48 +214,39 @@ Training data is CLINC150 (choice and noul) and SST-5 (score), with 20 intents h
 
 ## Reproducing the tables
 
-Every run's `metrics.json`, config and training log are committed under `runs/`. The per-question files behind them (`results.jsonl.gz`, v3 `log.jsonl`) and the adapters are gitignored. The four deployment logs and every run's `results.jsonl.gz` are published as the Hugging Face dataset [yuanphd/jevmark-runs](https://huggingface.co/datasets/yuanphd/jevmark-runs), each at its path in this repository, so copying its `runs/` over a clone's `runs/` puts them in place; the dataset card lists each file's sha256, checked against the hashes the committed metrics files record (`scripts/publish_runs.py`). The sibling logs at flip rates 0.1 and 0.3 are rebuilt by `scripts/derive_flip_log.py`. The baseline `replies.jsonl` files are not published, so the gpt-4.1-mini rows need them; their sha256 is recorded. With the files in place every table recomputes on CPU:
-
-| report | table | command | output |
-|---|---|---|---|
-| v1 | any run's metrics | `uv run python scripts/recompute_metrics.py runs/<run>` | `runs/<run>/metrics.json` |
-| v1 | baselines on the subset | `uv run python scripts/compare_baselines.py` | printed, from `runs/{base,sft}_*`, `runs/b1_*`, `runs/b2_gpt-4.1-mini` |
-| v1 | 1.7B against 0.6B | `uv run python scripts/paired_deltas.py --pair runs/sft_17b runs/sft_06b --pair runs/base_17b runs/base_06b --out runs/paired_17b_vs_06b/metrics.json` | `runs/paired_17b_vs_06b/` |
-| v2 | temperature scaling | `uv run python scripts/calibrate.py runs/<run>`, then `uv run python scripts/compare_calibration.py` | `runs/<run>_temp/` |
-| v2 | the REINFORCE simulation | `uv run python scripts/simulate_advantages.py runs/sft_06b` | `runs/advantage_simulation_06b/` |
-| v2 | RLCD arms, three seeds | `uv run python scripts/compare_rlcd.py --size 06b --seeds 0 1 2 --out runs/rlcd_stage2a_06b` | `runs/rlcd_stage2a_06b/` |
-| v2 | full-label accuracy with record intervals | `uv run python scripts/v2_accuracy_table.py` | `runs/v2_accuracy_06b/` |
-| v3 | temperature learners | `uv run python scripts/calibrate.py runs/v3_06b_zeroshot --fit-log runs/v3_log_s0/log.jsonl --n <N>` | `runs/v3_06b_temp_n<N>/` |
-| v3 | temperature on direct_brier | `uv run python scripts/evaluate.py --ckpt runs/<run> --log-prefix runs/v3_log_s0/log.jsonl --n <N> --no-probes --device cpu` (with the adapter and base weights; 2 to 18 minutes per run on a laptop CPU), then `uv run python scripts/calibrate.py runs/<run> --fit-log runs/v3_log_s0/log.jsonl --n <N> --fit-probs runs/<run>_prefix` | `runs/<run>_prefix/`, `runs/<run>_temp/` |
-| v3 | the noise inversion | `uv run python scripts/invert_noisy.py runs/v3_06b_<arm>_n5000_s0_noisy --clean runs/v3_06b_<arm>_n5000_s0` | `runs/v3_06b_<arm>_n5000_s0_noisy_inverted/` |
-| v3 | where a log's negatives fall (top option or other, and the uniform term's share) | `uv run python scripts/log_stats.py runs/v3_log_s0 runs/v3_log_s1 runs/v3_log_17b_s0 runs/v3_log_emotion_s0` (needs each `log.jsonl`) | the `negatives` block of each `runs/<log>/metrics.json` |
-| v3 | every v3 table | `uv run python scripts/compare_v3.py` | `runs/v3_stage_06b/` |
-| v3 | off-policy identity and clip counts; forgetting table and selected steps | `uv run python scripts/v3_review.py off-policy`; `uv run python scripts/v3_review.py forgetting` | the `off_policy`, `forgetting_table` and `selected_steps` keys of `runs/v3_stage_06b/metrics.json` |
-| v3 | paired intervals against gpt-4.1-mini, Banking77 and emotion | `uv run python scripts/b2_paired.py` (needs `runs/b2_gpt-4.1-mini/replies.jsonl`) | `runs/b2_paired_v3/` |
-| phase 4 | the flip-rate sweep: sibling logs, inversions, table | `uv run python scripts/derive_flip_log.py --log-dir runs/v3_log_s0 --flip-rate <f>` for f 0.1 and 0.3 (needs the seed 0 `log.jsonl`); `uv run python scripts/invert_noisy.py runs/v3_06b_<arm>_n5000_s0_noisy_flip<f> --flip <f> --clean runs/v3_06b_<arm>_n5000_s0`; then `uv run python scripts/compare_noise.py` | `runs/v3_log_s0_flip<f>/`, `runs/<run>_inverted/`, `runs/v3_noise_sweep_06b/` |
-| phase 4 | the emotion tables | `uv run python scripts/compare_v3.py --domain emotion` | `runs/v3_stage_emotion_06b/` |
-| phase 4 | the emotion label-noise audit summary | `uv run python scripts/summarise_label_audit.py --domain emotion` | `docs/audit/emotion_summary.json` |
-| phase 4 | the 1.7B tables, with the direct_brier seeds | `uv run python scripts/compare_v3.py --size 17b`; `uv run python scripts/paired_deltas.py --pair runs/v3_17b_<x> runs/v3_06b_<x> ...` for zeroshot and the three learners at N 5000 `--out runs/paired_v3_17b_vs_06b/metrics.json` | `runs/v3_stage_17b/`, `runs/paired_v3_17b_vs_06b/` |
-| v3 | the label-noise audit summary | `uv run python scripts/summarise_label_audit.py` | `docs/audit/summary.json` |
-| all | every report figure | `uv run python scripts/make_figures.py` (committed metrics files only) | `docs/figures/` |
-| all | the paper's figures, with the paper's names | `uv run python scripts/make_figures.py --paper` | `docs/figures/paper/` |
-| all | the run-files dataset card and upload | `uv run python scripts/publish_runs.py` (checks and writes the card), `--upload` to publish | `data/hf_runs/README.md`, the dataset `yuanphd/jevmark-runs` |
-
-Training and evaluation themselves (`make train-sft`, `scripts/train_rlcd.py`, `make eval`) run on Kaggle through the thin notebooks in `notebooks/`.
+Every run's `metrics.json`, config and training log are committed under `runs/`.
+The per-question files and the deployment logs are published as the Hugging Face dataset [yuanphd/jevmark-runs](https://huggingface.co/datasets/yuanphd/jevmark-runs).
+The command for every table and figure is in [docs/REPRODUCE.md](docs/REPRODUCE.md).
 
 ## Documentation
 
 - docs/STORY.md: the whole project in two pages.
 - docs/RESULTS_v1.md, docs/RESULTS_v2.md, docs/RESULTS_v3.md: the reports, every number cited to a `metrics.json`.
+- docs/REPRODUCE.md: the command behind every table and figure.
 - docs/API_SPEC.md: the request and response contract.
 - docs/DATA.md, docs/KAGGLE.md: data, and how to run on Kaggle.
 - docs/MODEL_CARD.md: the card of the adapters on the Hugging Face Hub.
 - docs/audit/SUMMARY.md, docs/audit/EMOTION_SUMMARY.md: the Banking77 and emotion label-noise audits.
-- Paper: "Learning a calibrated decision head from logged bandit feedback", arXiv, link to follow.
+- Paper: "Learning a calibrated decision head from logged bandit feedback", [arXiv:2611.15572](https://arxiv.org/abs/2611.15572).
 - docs/METHOD.md: the method statement; docs/references.bib: the paper's references, each checked against the arXiv listing, the publisher's DOI record or the proceedings page.
 - docs/figures/paper/: the paper's figures, drawn from the committed metrics files.
 - docs/audit/REPO_CONSISTENCY.md: the check of this repository against the paper before submission.
 - Hugging Face: the adapters at [yuanphd/jevmark](https://huggingface.co/yuanphd/jevmark), the deployment logs and per-record results at [yuanphd/jevmark-runs](https://huggingface.co/datasets/yuanphd/jevmark-runs).
+
+## Citation
+
+The paper is on arXiv as [2611.15572](https://arxiv.org/abs/2611.15572). The code it describes is at tag `v5-paper`.
+
+```bibtex
+@misc{yuan2026calibrated,
+  title         = {Learning a calibrated decision head from logged bandit feedback},
+  author        = {Yuan, Ye},
+  year          = {2026},
+  eprint        = {2611.15572},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+```
 
 ## Use of AI assistance
 
